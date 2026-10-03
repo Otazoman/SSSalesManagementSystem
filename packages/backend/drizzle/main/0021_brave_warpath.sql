@@ -1,0 +1,1 @@
+ALTER TABLE `quotes` ADD `company_department` text;

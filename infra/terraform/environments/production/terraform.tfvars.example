@@ -1,0 +1,6 @@
+# このファイルを terraform.tfvars にコピーして値を入れる(terraform.tfvars はGit管理外)
+account_id = "ここにCloudflareのアカウントIDを入れる"
+
+# 配置地域(任意。日本から使うなら apac)。作成後は変更できないので、決めてから設定する
+# d1_location_hint = "apac"
+# r2_location      = "apac"

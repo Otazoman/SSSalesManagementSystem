@@ -1,0 +1,313 @@
+// このファイルは wrangler.jsonc の「ひな形」です(Git管理対象)。
+// 実際に使う wrangler.jsonc(Git管理外)は、リポジトリのルートで次のコマンドを実行して作ります:
+//   node infra/scripts/sync-wrangler.mjs --write
+// Terraformで作成済みの環境(本番・Staging・Secrets Store)があれば、その実IDを埋め込み、
+// 無ければ下の仮の値のまま作ります(ローカル開発はこの仮の値のままで動きます)。
+// バインディングの追加・変更は、wrangler.jsonc ではなくこのファイルに対して行い、上のコマンドで作り直してください。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-erp-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "minify": true,
+  "upload_source_maps": false,
+  "compatibility_flags": ["nodejs_compat"],
+  // Backend は公開しない(https://<Worker名>.<サブドメイン>.workers.dev とバージョンごとのプレビューURLを
+  // 無効にする)。Frontend Worker から Service Binding でだけ呼ばれる。ローカル開発(wrangler dev)には影響しない。
+  // preview_urls は未指定だと Cloudflare 側の設定のまま残るため、明示的に false にする
+  "workers_dev": false,
+  "preview_urls": false,
+  // Workers Logs: console.log / console.error を Cloudflare に保存し、画面(Workers & Pages → Worker → ログ)で検索できるようにする。
+  // 500 エラーの詳細は "[500] errorId=xxxxxxxx ..." として出るため、利用者に表示された問い合わせ番号で探せる(BUG-025)。
+  // 無料プランは1日20万件・3日間保存(超えた分は保存されないだけで、料金はかからない)
+  "observability": { "enabled": true },
+  // preview_database_id / preview_id は、ローカル開発(wrangler dev・--local)でだけ使われるIDです。
+  // ローカルのデータはこのIDごとに保存されるため、database_id / id を実IDに置き換えても
+  // ローカルのデータがそのまま使えるよう、仮の値で固定しています(デプロイ時は使われません)。
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "my-erp-db",
+      "database_id": "dev-main-db",
+      "preview_database_id": "dev-main-db",
+      "migrations_dir": "./drizzle/main",
+    },
+    {
+      "binding": "DB_LOG",
+      "database_name": "my-erp-log-db",
+      "database_id": "dev-audit-log-db",
+      "preview_database_id": "dev-audit-log-db",
+      "migrations_dir": "./drizzle/log",
+    },
+    {
+      // Item4-c: 見積書OTPダウンロード用(メイン/ログ用DBとも分離、2026-08-13ユーザー確認済み)
+      "binding": "DB_OTP",
+      "database_name": "my-erp-otp-db",
+      "database_id": "dev-otp-db",
+      "preview_database_id": "dev-otp-db",
+      "migrations_dir": "./drizzle/otp",
+    },
+    {
+      // J-2-f: 仕訳データ専用DB(伝票データと性格が異なるため分離、2026-09-13ユーザー確認済み)。
+      // スキーマ・マイグレーション(drizzle/journal)・呼び出し元コード(c.env.DB_JOURNAL)は
+      // 2026-09-09時点で既に用意されていたが、このバインディング自体が欠落していた
+      "binding": "DB_JOURNAL",
+      "database_name": "my-erp-journal-db",
+      "database_id": "dev-journal-db",
+      "preview_database_id": "dev-journal-db",
+      "migrations_dir": "./drizzle/journal",
+    },
+    {
+      // 追加要望M-1: 商談管理専用DB(営業活動データは伝票と性格が異なるため分離、2026-09-20ユーザー指示)。
+      // 本番反映前に wrangler d1 create my-erp-deals-db を実行し、database_idを実IDへ置き換えること
+      "binding": "DB_DEALS",
+      "database_name": "my-erp-deals-db",
+      "database_id": "dev-deals-db",
+      "preview_database_id": "dev-deals-db",
+      "migrations_dir": "./drizzle/deals",
+    },
+    {
+      // お知らせ・画面説明・ユーザー表示設定(色/ダークモード)専用DB(2026-09-21ユーザー指示「専用D1に保存」)。
+      // 本番反映前に wrangler d1 create my-erp-ui-db を実行し、database_idを実IDへ置き換えること
+      "binding": "DB_UI",
+      "database_name": "my-erp-ui-db",
+      "database_id": "dev-ui-db",
+      "preview_database_id": "dev-ui-db",
+      "migrations_dir": "./drizzle/ui",
+    },
+  ],
+  "r2_buckets": [
+    {
+      // 追加要望M-1: 商談の添付ファイル専用(本番反映前に wrangler r2 bucket create my-erp-deals-attachments が必要)
+      "binding": "DEALS_BUCKET",
+      "bucket_name": "my-erp-deals-attachments",
+    },
+    {
+      "binding": "SYSTEM_BUCKET",
+      "bucket_name": "system",
+    },
+    {
+      "binding": "QUATES_BUCKET",
+      "bucket_name": "my-erp-quates-attachments",
+    },
+    {
+      "binding": "PRODUCTS_BUCKET",
+      "bucket_name": "my-erp-products-attachments",
+    },
+    {
+      "binding": "PARTNERS_BUCKET",
+      "bucket_name": "my-erp-partners-attachments",
+    },
+    {
+      "binding": "WAREHOUSES_BUCKET",
+      "bucket_name": "my-erp-warehouses-attachments",
+    },
+    {
+      // Item6 Phase6-4: 出荷指示書PDF(外部倉庫向け、OTPダウンロード配布)。見積書と同じ
+      // 「document専用バケット+専用attachmentsテーブル」構成を踏襲(2026-08-24ユーザー確認済み)
+      "binding": "SHIPMENT_INSTRUCTIONS_BUCKET",
+      "bucket_name": "my-erp-shipment-instructions-attachments",
+    },
+    {
+      // Item6 Phase6-4: 入荷指示書PDF(外部倉庫向け、OTPダウンロード配布)
+      "binding": "RECEIPT_INSTRUCTIONS_BUCKET",
+      "bucket_name": "my-erp-receipt-instructions-attachments",
+    },
+    {
+      // Item9 Phase3: 購買申請の参考添付ファイル(見積書PDF等、社内向けのため他機能と異なりOTP配布は無し)
+      "binding": "PURCHASE_REQUISITIONS_BUCKET",
+      "bucket_name": "my-erp-purchase-requisitions-attachments",
+    },
+    {
+      // Item9 Phase5: 発注書PDF・添付ファイル(仕入先向け、見積書と同じOTPダウンロード配布)
+      "binding": "PURCHASE_ORDERS_BUCKET",
+      "bucket_name": "my-erp-purchase-orders-attachments",
+    },
+    // 追加要望L-3-a(2026-09-20、ユーザー許可済み): 添付・帳票PDFをモジュール別バケットへ分離。
+    // 既存ファイルは旧バケット(QUATES_BUCKET/SYSTEM_BUCKET)に残し、読み取りは「新バケット→旧バケット」の
+    // フォールバック(platform/r2/bucket-with-fallback.ts)。**本番では事前に `wrangler r2 bucket create` が必要**
+    {
+      "binding": "SALES_ORDERS_BUCKET",
+      "bucket_name": "my-erp-sales-orders-attachments",
+    },
+    {
+      "binding": "SALES_INVOICES_BUCKET",
+      "bucket_name": "my-erp-sales-invoices-attachments",
+    },
+    {
+      "binding": "BILLING_BUCKET",
+      "bucket_name": "my-erp-billing-attachments",
+    },
+    {
+      "binding": "PURCHASE_RECOGNITIONS_BUCKET",
+      "bucket_name": "my-erp-purchase-recognitions-attachments",
+    },
+    {
+      "binding": "ACCEPTANCE_INSPECTIONS_BUCKET",
+      "bucket_name": "my-erp-acceptance-inspections-attachments",
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "COMPANY_SETTINGS",
+      "id": "xxxxxxxxxxxxxx_COMPANY_SETTINGS_ID_xxxxxxxxxxxxxx",
+      "preview_id": "xxxxxxxxxxxxxx_COMPANY_SETTINGS_ID_xxxxxxxxxxxxxx",
+    },
+    {
+      "binding": "KV_PERMISSIONS",
+      "id": "yyyyyyyyyyyyyy_PERMISSIONS_CACHE_ID_yyyyyyyyyyyyyy",
+      "preview_id": "yyyyyyyyyyyyyy_PERMISSIONS_CACHE_ID_yyyyyyyyyyyyyy",
+    },
+  ],
+  // #14-2: API_KEY・SESSION_SECRET・SETUP_TOKENは、frontend/backend間で値を共有する
+  // (または将来共有しうる)ため、Worker専用のSecret(wrangler secret put)ではなく
+  // Secrets Store(1アカウント共有の箱、infra/terraform/environments/account)を使う。
+  // store_idは sync-wrangler.mjs が`terraform output secrets_store_id`(account)の値で埋める。
+  // secret_nameは、この1つの箱の中で環境ごとに名前を分ける運用(本番はそのままの名前、
+  // stagingは"_STAGING"を付ける。infra/README.mdの「Secrets Store」参照)
+  "secrets_store_secrets": [
+    { "binding": "API_KEY", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "API_KEY" },
+    { "binding": "SESSION_SECRET", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "SESSION_SECRET" },
+    { "binding": "SETUP_TOKEN", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "SETUP_TOKEN" },
+  ],
+  "triggers": {
+    // Item0: mail/Slack通知outbox処理用。1分間隔。バッチサイズはCOMPANY_SETTINGS KVのconfig(mail_batch_size)で調整可能
+    "crons": ["* * * * *"],
+  },
+  // #14-2①: Staging環境(本番と同一Cloudflareアカウント内、別リソース)。
+  // wranglerの仕様上、bindings(d1_databases/r2_buckets/kv_namespaces)・triggersは
+  // 環境ごとに継承されないため、ここに全部書き直す必要がある。
+  // database_id/kv id はプレースホルダー。infra/scripts/sync-wrangler.mjs --write で
+  // 実IDを埋めた wrangler.jsonc を作る(手順は README.md)。D1は無料プランの1アカウント10個上限のため、
+  // DB以外の5つ(DB_LOG/DB_OTP/DB_JOURNAL/DB_DEALS/DB_UI)を1つの物理データベース
+  // (my-erp-shared-db-staging)にまとめている(infra/README.mdの「D1をまとめる」参照。
+  // migrations_dirはバインディングごとに別々のまま=アプリのコードは変更不要)
+  "env": {
+    "staging": {
+      // 本番と同じく公開しない
+      "workers_dev": false,
+      "preview_urls": false,
+      // 本番と同じく Workers Logs を有効にする
+      "observability": { "enabled": true },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "my-erp-db-staging",
+          "database_id": "dev-main-db-staging",
+          "migrations_dir": "./drizzle/main",
+        },
+        {
+          "binding": "DB_LOG",
+          "database_name": "my-erp-shared-db-staging",
+          "database_id": "dev-shared-db-staging",
+          "migrations_dir": "./drizzle/log",
+        },
+        {
+          "binding": "DB_OTP",
+          "database_name": "my-erp-shared-db-staging",
+          "database_id": "dev-shared-db-staging",
+          "migrations_dir": "./drizzle/otp",
+        },
+        {
+          "binding": "DB_JOURNAL",
+          "database_name": "my-erp-shared-db-staging",
+          "database_id": "dev-shared-db-staging",
+          "migrations_dir": "./drizzle/journal",
+        },
+        {
+          "binding": "DB_DEALS",
+          "database_name": "my-erp-shared-db-staging",
+          "database_id": "dev-shared-db-staging",
+          "migrations_dir": "./drizzle/deals",
+        },
+        {
+          "binding": "DB_UI",
+          "database_name": "my-erp-shared-db-staging",
+          "database_id": "dev-shared-db-staging",
+          "migrations_dir": "./drizzle/ui",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "DEALS_BUCKET",
+          "bucket_name": "my-erp-deals-attachments-staging",
+        },
+        {
+          "binding": "SYSTEM_BUCKET",
+          "bucket_name": "system-staging",
+        },
+        {
+          "binding": "QUATES_BUCKET",
+          "bucket_name": "my-erp-quates-attachments-staging",
+        },
+        {
+          "binding": "PRODUCTS_BUCKET",
+          "bucket_name": "my-erp-products-attachments-staging",
+        },
+        {
+          "binding": "PARTNERS_BUCKET",
+          "bucket_name": "my-erp-partners-attachments-staging",
+        },
+        {
+          "binding": "WAREHOUSES_BUCKET",
+          "bucket_name": "my-erp-warehouses-attachments-staging",
+        },
+        {
+          "binding": "SHIPMENT_INSTRUCTIONS_BUCKET",
+          "bucket_name": "my-erp-shipment-instructions-attachments-staging",
+        },
+        {
+          "binding": "RECEIPT_INSTRUCTIONS_BUCKET",
+          "bucket_name": "my-erp-receipt-instructions-attachments-staging",
+        },
+        {
+          "binding": "PURCHASE_REQUISITIONS_BUCKET",
+          "bucket_name": "my-erp-purchase-requisitions-attachments-staging",
+        },
+        {
+          "binding": "PURCHASE_ORDERS_BUCKET",
+          "bucket_name": "my-erp-purchase-orders-attachments-staging",
+        },
+        {
+          "binding": "SALES_ORDERS_BUCKET",
+          "bucket_name": "my-erp-sales-orders-attachments-staging",
+        },
+        {
+          "binding": "SALES_INVOICES_BUCKET",
+          "bucket_name": "my-erp-sales-invoices-attachments-staging",
+        },
+        {
+          "binding": "BILLING_BUCKET",
+          "bucket_name": "my-erp-billing-attachments-staging",
+        },
+        {
+          "binding": "PURCHASE_RECOGNITIONS_BUCKET",
+          "bucket_name": "my-erp-purchase-recognitions-attachments-staging",
+        },
+        {
+          "binding": "ACCEPTANCE_INSPECTIONS_BUCKET",
+          "bucket_name": "my-erp-acceptance-inspections-attachments-staging",
+        },
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "COMPANY_SETTINGS",
+          "id": "xxxxxxxxxxxxxx_COMPANY_SETTINGS_STAGING_ID_xxxxxxxxxxxxxx",
+        },
+        {
+          "binding": "KV_PERMISSIONS",
+          "id": "yyyyyyyyyyyyyy_PERMISSIONS_CACHE_STAGING_ID_yyyyyyyyyyyyyy",
+        },
+      ],
+      // 本番と同じ1つの箱(store_idは同じ値)。secret_nameだけ"_STAGING"を付けて区別する
+      "secrets_store_secrets": [
+        { "binding": "API_KEY", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "API_KEY_STAGING" },
+        { "binding": "SESSION_SECRET", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "SESSION_SECRET_STAGING" },
+        { "binding": "SETUP_TOKEN", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "SETUP_TOKEN_STAGING" },
+      ],
+      "triggers": {
+        "crons": ["* * * * *"],
+      },
+    },
+  },
+}

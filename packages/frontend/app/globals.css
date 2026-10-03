@@ -1,0 +1,110 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* アプリの色(ボタン等)。用途別の色をここで定義する。
+     ダークモード・ユーザー指定の画面色を作る時は、この変数を上書きする(部品側は bg-primary 等の名前で参照) */
+  --primary: #4f46e5; /* 主要操作(登録・保存・送信) */
+  --primary-hover: #4338ca;
+  --success: #059669; /* 完了・確定・ダウンロード */
+  --success-hover: #047857;
+  --danger: #dc2626; /* 削除など元に戻せない操作 */
+  --danger-hover: #b91c1c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-success: var(--success);
+  --color-success-hover: var(--success-hover);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* お知らせ・画面説明に表示する、サーバーで無害化済みのHTML(_shared/ui/RichHtml)。
+   Tailwindの初期化で消えるリスト・見出し・リンク・表などの見た目を補う。色は画面のテーマに追従する */
+.rich-html {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.rich-html > * + * {
+  margin-top: 0.5em;
+}
+.rich-html a {
+  color: var(--color-indigo-700);
+  text-decoration: underline;
+}
+.rich-html ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.rich-html ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.rich-html h2,
+.rich-html h3,
+.rich-html h4 {
+  font-weight: 700;
+  margin-top: 0.8em;
+}
+.rich-html h2 {
+  font-size: 1.25em;
+}
+.rich-html h3 {
+  font-size: 1.1em;
+}
+.rich-html blockquote {
+  border-left: 3px solid var(--color-slate-300);
+  padding-left: 0.8em;
+  color: var(--color-slate-700);
+}
+.rich-html code,
+.rich-html pre {
+  font-family: ui-monospace, monospace;
+  background: var(--color-slate-100);
+  border-radius: 0.25em;
+}
+.rich-html code {
+  padding: 0.1em 0.3em;
+}
+.rich-html pre {
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+}
+.rich-html table {
+  border-collapse: collapse;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.rich-html th,
+.rich-html td {
+  border: 1px solid var(--color-slate-300);
+  padding: 0.3em 0.6em;
+}
+.rich-html th {
+  background: var(--color-slate-100);
+  font-weight: 700;
+}
+.rich-html hr {
+  border: 0;
+  border-top: 1px solid var(--color-slate-300);
+}
+.rich-html img {
+  max-width: 100%;
+  height: auto;
+}

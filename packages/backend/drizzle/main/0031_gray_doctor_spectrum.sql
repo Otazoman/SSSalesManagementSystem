@@ -1,0 +1,1 @@
+ALTER TABLE `quotes` ADD `sales_person_employee_number` text;

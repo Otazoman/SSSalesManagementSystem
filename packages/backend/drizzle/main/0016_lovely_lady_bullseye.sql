@@ -1,0 +1,1 @@
+ALTER TABLE `approval_flow_steps` ADD `step_name` text;

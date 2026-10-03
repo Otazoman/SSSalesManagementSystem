@@ -1,0 +1,327 @@
+/* 画面の色(ユーザーごとの設定)。色名は backend の user-preferences.schema.ts の ACCENT_COLORS と同じ。
+   - html[data-accent]: 基調色。--primary と、画面全体で使っている indigo の色を選んだ色に差し替える
+   - html[data-theme="dark"]: ダークモード。slate(文字・背景・罫線)の並びを暗い画面用に入れ替え、
+     白背景・薄い色付きの背景(バッジ等)・色付きの文字を暗い画面で読める色にする
+   部品側の書き方(bg-white text-slate-900 など)は変えない。 */
+
+html[data-accent="blue"] {
+  --primary: var(--color-blue-600);
+  --primary-hover: var(--color-blue-700);
+  --color-indigo-50: var(--color-blue-50);
+  --color-indigo-100: var(--color-blue-100);
+  --color-indigo-200: var(--color-blue-200);
+  --color-indigo-300: var(--color-blue-300);
+  --color-indigo-400: var(--color-blue-400);
+  --color-indigo-500: var(--color-blue-500);
+  --color-indigo-600: var(--color-blue-600);
+  --color-indigo-700: var(--color-blue-700);
+  --color-indigo-800: var(--color-blue-800);
+  --color-indigo-900: var(--color-blue-900);
+  --color-indigo-950: var(--color-blue-950);
+}
+
+html[data-accent="sky"] {
+  --primary: var(--color-sky-700);
+  --primary-hover: var(--color-sky-800);
+  --color-indigo-50: var(--color-sky-50);
+  --color-indigo-100: var(--color-sky-100);
+  --color-indigo-200: var(--color-sky-200);
+  --color-indigo-300: var(--color-sky-300);
+  --color-indigo-400: var(--color-sky-400);
+  --color-indigo-500: var(--color-sky-600);
+  --color-indigo-600: var(--color-sky-700);
+  --color-indigo-700: var(--color-sky-800);
+  --color-indigo-800: var(--color-sky-900);
+  --color-indigo-900: var(--color-sky-950);
+  --color-indigo-950: var(--color-sky-950);
+}
+
+html[data-accent="emerald"] {
+  --primary: var(--color-emerald-700);
+  --primary-hover: var(--color-emerald-800);
+  --color-indigo-50: var(--color-emerald-50);
+  --color-indigo-100: var(--color-emerald-100);
+  --color-indigo-200: var(--color-emerald-200);
+  --color-indigo-300: var(--color-emerald-300);
+  --color-indigo-400: var(--color-emerald-400);
+  --color-indigo-500: var(--color-emerald-600);
+  --color-indigo-600: var(--color-emerald-700);
+  --color-indigo-700: var(--color-emerald-800);
+  --color-indigo-800: var(--color-emerald-900);
+  --color-indigo-900: var(--color-emerald-950);
+  --color-indigo-950: var(--color-emerald-950);
+}
+
+html[data-accent="violet"] {
+  --primary: var(--color-violet-600);
+  --primary-hover: var(--color-violet-700);
+  --color-indigo-50: var(--color-violet-50);
+  --color-indigo-100: var(--color-violet-100);
+  --color-indigo-200: var(--color-violet-200);
+  --color-indigo-300: var(--color-violet-300);
+  --color-indigo-400: var(--color-violet-400);
+  --color-indigo-500: var(--color-violet-500);
+  --color-indigo-600: var(--color-violet-600);
+  --color-indigo-700: var(--color-violet-700);
+  --color-indigo-800: var(--color-violet-800);
+  --color-indigo-900: var(--color-violet-900);
+  --color-indigo-950: var(--color-violet-950);
+}
+
+html[data-accent="rose"] {
+  --primary: var(--color-rose-600);
+  --primary-hover: var(--color-rose-700);
+  --color-indigo-50: var(--color-rose-50);
+  --color-indigo-100: var(--color-rose-100);
+  --color-indigo-200: var(--color-rose-200);
+  --color-indigo-300: var(--color-rose-300);
+  --color-indigo-400: var(--color-rose-400);
+  --color-indigo-500: var(--color-rose-500);
+  --color-indigo-600: var(--color-rose-600);
+  --color-indigo-700: var(--color-rose-700);
+  --color-indigo-800: var(--color-rose-800);
+  --color-indigo-900: var(--color-rose-900);
+  --color-indigo-950: var(--color-rose-950);
+}
+
+html[data-accent="amber"] {
+  --primary: var(--color-amber-700);
+  --primary-hover: var(--color-amber-800);
+  --color-indigo-50: var(--color-amber-50);
+  --color-indigo-100: var(--color-amber-100);
+  --color-indigo-200: var(--color-amber-200);
+  --color-indigo-300: var(--color-amber-300);
+  --color-indigo-400: var(--color-amber-400);
+  --color-indigo-500: var(--color-amber-600);
+  --color-indigo-600: var(--color-amber-700);
+  --color-indigo-700: var(--color-amber-800);
+  --color-indigo-800: var(--color-amber-900);
+  --color-indigo-900: var(--color-amber-950);
+  --color-indigo-950: var(--color-amber-950);
+}
+
+html[data-accent="gray"] {
+  --primary: var(--color-gray-600);
+  --primary-hover: var(--color-gray-700);
+  --color-indigo-50: var(--color-gray-50);
+  --color-indigo-100: var(--color-gray-100);
+  --color-indigo-200: var(--color-gray-200);
+  --color-indigo-300: var(--color-gray-300);
+  --color-indigo-400: var(--color-gray-400);
+  --color-indigo-500: var(--color-gray-500);
+  --color-indigo-600: var(--color-gray-600);
+  --color-indigo-700: var(--color-gray-700);
+  --color-indigo-800: var(--color-gray-800);
+  --color-indigo-900: var(--color-gray-900);
+  --color-indigo-950: var(--color-gray-950);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0b1120;
+  --foreground: #f1f5f9;
+  --color-slate-50: #0b1120;
+  --color-slate-100: #172033;
+  --color-slate-200: #26334a;
+  --color-slate-300: #3a4a63;
+  --color-slate-400: #64748b;
+  --color-slate-500: #94a3b8;
+  --color-slate-600: #b4c0d0;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #f1f5f9;
+  --color-slate-950: #f8fafc;
+  --color-indigo-50: color-mix(in oklab, var(--color-indigo-500) 16%, #111a2e);
+  --color-indigo-100: color-mix(in oklab, var(--color-indigo-500) 24%, #111a2e);
+  --color-indigo-200: color-mix(in oklab, var(--color-indigo-500) 36%, #111a2e);
+  --color-red-50: color-mix(in oklab, var(--color-red-500) 16%, #111a2e);
+  --color-red-100: color-mix(in oklab, var(--color-red-500) 24%, #111a2e);
+  --color-red-200: color-mix(in oklab, var(--color-red-500) 36%, #111a2e);
+  --color-amber-50: color-mix(in oklab, var(--color-amber-500) 16%, #111a2e);
+  --color-amber-100: color-mix(in oklab, var(--color-amber-500) 24%, #111a2e);
+  --color-amber-200: color-mix(in oklab, var(--color-amber-500) 36%, #111a2e);
+  --color-emerald-50: color-mix(in oklab, var(--color-emerald-500) 16%, #111a2e);
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-500) 24%, #111a2e);
+  --color-emerald-200: color-mix(in oklab, var(--color-emerald-500) 36%, #111a2e);
+  --color-rose-50: color-mix(in oklab, var(--color-rose-500) 16%, #111a2e);
+  --color-rose-100: color-mix(in oklab, var(--color-rose-500) 24%, #111a2e);
+  --color-rose-200: color-mix(in oklab, var(--color-rose-500) 36%, #111a2e);
+  --color-sky-50: color-mix(in oklab, var(--color-sky-500) 16%, #111a2e);
+  --color-sky-100: color-mix(in oklab, var(--color-sky-500) 24%, #111a2e);
+  --color-sky-200: color-mix(in oklab, var(--color-sky-500) 36%, #111a2e);
+  --color-violet-50: color-mix(in oklab, var(--color-violet-500) 16%, #111a2e);
+  --color-violet-100: color-mix(in oklab, var(--color-violet-500) 24%, #111a2e);
+  --color-violet-200: color-mix(in oklab, var(--color-violet-500) 36%, #111a2e);
+  --color-blue-50: color-mix(in oklab, var(--color-blue-500) 16%, #111a2e);
+  --color-blue-100: color-mix(in oklab, var(--color-blue-500) 24%, #111a2e);
+  --color-blue-200: color-mix(in oklab, var(--color-blue-500) 36%, #111a2e);
+  --color-orange-50: color-mix(in oklab, var(--color-orange-500) 16%, #111a2e);
+  --color-orange-100: color-mix(in oklab, var(--color-orange-500) 24%, #111a2e);
+  --color-orange-200: color-mix(in oklab, var(--color-orange-500) 36%, #111a2e);
+  --color-green-50: color-mix(in oklab, var(--color-green-500) 16%, #111a2e);
+  --color-green-100: color-mix(in oklab, var(--color-green-500) 24%, #111a2e);
+  --color-green-200: color-mix(in oklab, var(--color-green-500) 36%, #111a2e);
+  --color-purple-50: color-mix(in oklab, var(--color-purple-500) 16%, #111a2e);
+  --color-purple-100: color-mix(in oklab, var(--color-purple-500) 24%, #111a2e);
+  --color-purple-200: color-mix(in oklab, var(--color-purple-500) 36%, #111a2e);
+}
+
+/* 白い背景(入力欄・カード・ヘッダー・メニュー)は暗い面にする。文字の white は色付きの背景の上で使うので変えない */
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .hover\:bg-white:hover,
+html[data-theme="dark"] .focus\:bg-white:focus {
+  background-color: #111a2e;
+}
+@media (min-width: 48rem) {
+  html[data-theme="dark"] .md\:bg-white {
+    background-color: #111a2e;
+  }
+}
+html[data-theme="dark"] [class*="bg-white/"] {
+  background-color: color-mix(in oklab, #111a2e 70%, transparent);
+}
+/* 濃い色のボタン(白文字)とモーダルの背景幕 */
+html[data-theme="dark"] .bg-slate-900 {
+  background-color: #475569;
+}
+html[data-theme="dark"] [class*="bg-slate-900/"] {
+  background-color: rgb(0 0 0 / 0.6);
+}
+
+/* 色付きの文字は、暗い背景で読める明るい色にする */
+html[data-theme="dark"] .text-indigo-600,
+html[data-theme="dark"] .hover\:text-indigo-600:hover,
+html[data-theme="dark"] .text-indigo-700,
+html[data-theme="dark"] .hover\:text-indigo-700:hover,
+html[data-theme="dark"] .text-indigo-800,
+html[data-theme="dark"] .hover\:text-indigo-800:hover,
+html[data-theme="dark"] .text-indigo-900,
+html[data-theme="dark"] .hover\:text-indigo-900:hover,
+html[data-theme="dark"] .text-indigo-950,
+html[data-theme="dark"] .hover\:text-indigo-950:hover {
+  color: var(--color-indigo-300);
+}
+html[data-theme="dark"] .text-red-600,
+html[data-theme="dark"] .hover\:text-red-600:hover,
+html[data-theme="dark"] .text-red-700,
+html[data-theme="dark"] .hover\:text-red-700:hover,
+html[data-theme="dark"] .text-red-800,
+html[data-theme="dark"] .hover\:text-red-800:hover,
+html[data-theme="dark"] .text-red-900,
+html[data-theme="dark"] .hover\:text-red-900:hover,
+html[data-theme="dark"] .text-red-950,
+html[data-theme="dark"] .hover\:text-red-950:hover {
+  color: var(--color-red-300);
+}
+html[data-theme="dark"] .text-amber-600,
+html[data-theme="dark"] .hover\:text-amber-600:hover,
+html[data-theme="dark"] .text-amber-700,
+html[data-theme="dark"] .hover\:text-amber-700:hover,
+html[data-theme="dark"] .text-amber-800,
+html[data-theme="dark"] .hover\:text-amber-800:hover,
+html[data-theme="dark"] .text-amber-900,
+html[data-theme="dark"] .hover\:text-amber-900:hover,
+html[data-theme="dark"] .text-amber-950,
+html[data-theme="dark"] .hover\:text-amber-950:hover {
+  color: var(--color-amber-300);
+}
+html[data-theme="dark"] .text-emerald-600,
+html[data-theme="dark"] .hover\:text-emerald-600:hover,
+html[data-theme="dark"] .text-emerald-700,
+html[data-theme="dark"] .hover\:text-emerald-700:hover,
+html[data-theme="dark"] .text-emerald-800,
+html[data-theme="dark"] .hover\:text-emerald-800:hover,
+html[data-theme="dark"] .text-emerald-900,
+html[data-theme="dark"] .hover\:text-emerald-900:hover,
+html[data-theme="dark"] .text-emerald-950,
+html[data-theme="dark"] .hover\:text-emerald-950:hover {
+  color: var(--color-emerald-300);
+}
+html[data-theme="dark"] .text-rose-600,
+html[data-theme="dark"] .hover\:text-rose-600:hover,
+html[data-theme="dark"] .text-rose-700,
+html[data-theme="dark"] .hover\:text-rose-700:hover,
+html[data-theme="dark"] .text-rose-800,
+html[data-theme="dark"] .hover\:text-rose-800:hover,
+html[data-theme="dark"] .text-rose-900,
+html[data-theme="dark"] .hover\:text-rose-900:hover,
+html[data-theme="dark"] .text-rose-950,
+html[data-theme="dark"] .hover\:text-rose-950:hover {
+  color: var(--color-rose-300);
+}
+html[data-theme="dark"] .text-sky-600,
+html[data-theme="dark"] .hover\:text-sky-600:hover,
+html[data-theme="dark"] .text-sky-700,
+html[data-theme="dark"] .hover\:text-sky-700:hover,
+html[data-theme="dark"] .text-sky-800,
+html[data-theme="dark"] .hover\:text-sky-800:hover,
+html[data-theme="dark"] .text-sky-900,
+html[data-theme="dark"] .hover\:text-sky-900:hover,
+html[data-theme="dark"] .text-sky-950,
+html[data-theme="dark"] .hover\:text-sky-950:hover {
+  color: var(--color-sky-300);
+}
+html[data-theme="dark"] .text-violet-600,
+html[data-theme="dark"] .hover\:text-violet-600:hover,
+html[data-theme="dark"] .text-violet-700,
+html[data-theme="dark"] .hover\:text-violet-700:hover,
+html[data-theme="dark"] .text-violet-800,
+html[data-theme="dark"] .hover\:text-violet-800:hover,
+html[data-theme="dark"] .text-violet-900,
+html[data-theme="dark"] .hover\:text-violet-900:hover,
+html[data-theme="dark"] .text-violet-950,
+html[data-theme="dark"] .hover\:text-violet-950:hover {
+  color: var(--color-violet-300);
+}
+html[data-theme="dark"] .text-blue-600,
+html[data-theme="dark"] .hover\:text-blue-600:hover,
+html[data-theme="dark"] .text-blue-700,
+html[data-theme="dark"] .hover\:text-blue-700:hover,
+html[data-theme="dark"] .text-blue-800,
+html[data-theme="dark"] .hover\:text-blue-800:hover,
+html[data-theme="dark"] .text-blue-900,
+html[data-theme="dark"] .hover\:text-blue-900:hover,
+html[data-theme="dark"] .text-blue-950,
+html[data-theme="dark"] .hover\:text-blue-950:hover {
+  color: var(--color-blue-300);
+}
+html[data-theme="dark"] .text-orange-600,
+html[data-theme="dark"] .hover\:text-orange-600:hover,
+html[data-theme="dark"] .text-orange-700,
+html[data-theme="dark"] .hover\:text-orange-700:hover,
+html[data-theme="dark"] .text-orange-800,
+html[data-theme="dark"] .hover\:text-orange-800:hover,
+html[data-theme="dark"] .text-orange-900,
+html[data-theme="dark"] .hover\:text-orange-900:hover,
+html[data-theme="dark"] .text-orange-950,
+html[data-theme="dark"] .hover\:text-orange-950:hover {
+  color: var(--color-orange-300);
+}
+html[data-theme="dark"] .text-green-600,
+html[data-theme="dark"] .hover\:text-green-600:hover,
+html[data-theme="dark"] .text-green-700,
+html[data-theme="dark"] .hover\:text-green-700:hover,
+html[data-theme="dark"] .text-green-800,
+html[data-theme="dark"] .hover\:text-green-800:hover,
+html[data-theme="dark"] .text-green-900,
+html[data-theme="dark"] .hover\:text-green-900:hover,
+html[data-theme="dark"] .text-green-950,
+html[data-theme="dark"] .hover\:text-green-950:hover {
+  color: var(--color-green-300);
+}
+html[data-theme="dark"] .text-purple-600,
+html[data-theme="dark"] .hover\:text-purple-600:hover,
+html[data-theme="dark"] .text-purple-700,
+html[data-theme="dark"] .hover\:text-purple-700:hover,
+html[data-theme="dark"] .text-purple-800,
+html[data-theme="dark"] .hover\:text-purple-800:hover,
+html[data-theme="dark"] .text-purple-900,
+html[data-theme="dark"] .hover\:text-purple-900:hover,
+html[data-theme="dark"] .text-purple-950,
+html[data-theme="dark"] .hover\:text-purple-950:hover {
+  color: var(--color-purple-300);
+}
+
+html[data-theme="dark"] .rich-html a {
+  color: var(--color-indigo-300);
+}

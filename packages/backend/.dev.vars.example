@@ -1,0 +1,8 @@
+FRONTEND_URL=http://localhost:8788
+FRONTEND_BASE_URL=http://localhost:8788
+# APIドキュメント(http://localhost:8788/api/docs)を表示する。開発環境専用(Staging・本番には登録しない)
+ENABLE_API_DOCS=true
+
+# API_KEY・SESSION_SECRET・SETUP_TOKENは #14-2 でSecrets Store化したため、
+# このファイルではなく `wrangler secrets-store secret create` で登録する
+# (--remote を付けなければローカル専用の値になる)。手順は README.md 参照。

@@ -1,0 +1,1 @@
+ALTER TABLE `mail_template_settings` ADD `file_name_prefix` text;

@@ -1,0 +1,1 @@
+ALTER TABLE `item_receipt_items` ADD `item_id` text NOT NULL REFERENCES items(id);

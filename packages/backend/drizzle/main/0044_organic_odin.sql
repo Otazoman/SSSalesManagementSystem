@@ -1,0 +1,1 @@
+ALTER TABLE `item_shipment_headers` ADD `delivery_note_r2_path` text;

@@ -1,0 +1,3 @@
+﻿"itemId","warehouseId","locationId","lotNumber","accountCode","qualityStatus","direction","quantity","returnReason","returnDate","memo"
+"ITEM-1003","WH-001","LOC-A-01","LOT-260804","","NORMAL","OUTBOUND","5","仕様違いのため仕入先へ返品","2026-08-28","仕入先Bへ返品"
+"ITEM-2003","WH-001","LOC-A-03","NONE","","NORMAL","INBOUND","2","サイズ違いのため返品受入","2026-08-29","得意先からの返品受入"

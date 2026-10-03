@@ -1,0 +1,1 @@
+ALTER TABLE `master_approval_requests` ADD `applicant_department_surrogate_id` text REFERENCES departments(surrogate_id);

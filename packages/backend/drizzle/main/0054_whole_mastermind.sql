@@ -1,0 +1,1 @@
+ALTER TABLE `master_approval_requests` ADD `flow_id` text REFERENCES approval_flows(id);

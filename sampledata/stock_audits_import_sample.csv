@@ -1,0 +1,4 @@
+﻿"itemId","warehouseId","locationId","lotNumber","accountCode","qualityStatus","countedQuantity","memo"
+"ITEM-1001","WH-002","LOC-C-01","LOT-260803","","NORMAL","400","定期棚卸。理論在庫と一致"
+"ITEM-1003","WH-001","LOC-A-01","LOT-260804","","NORMAL","298","定期棚卸。理論在庫より2個少ない(要確認)"
+"ITEM-3001","WH-001","LOC-A-02","LOT-260805","","NORMAL","80","定期棚卸。理論在庫と一致"

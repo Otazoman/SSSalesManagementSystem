@@ -1,0 +1,1 @@
+ALTER TABLE `mail_template_settings` ADD `report_template_path` text;

@@ -1,0 +1,2 @@
+﻿"id","title","partnerId","paymentDate","mode","periodStart","periodEnd","status","totalAmount","taxAmount","reconciledAmount","reconciliationStatus","memo","purchaseRecognitionId","itemAmount","itemTaxAmount"
+"PAY-2026-0001","原材料A 支払","SUPP-0001","2026-09-20","PER_TRANSACTION","","","ISSUED","363000","33000","363000","RECONCILED","20日締めの支払。消込済み","PC-2026-0001","363000","33000"

@@ -1,0 +1,4 @@
+# API_KEY・SESSION_SECRETは #14-2 でSecrets Store化したため、
+# このファイルではなく `wrangler secrets-store secret create` で登録する
+# (--remote を付けなければローカル専用の値になる。backendと同じ値にすること)。
+# 手順はプロジェクトルートの README.md 参照。

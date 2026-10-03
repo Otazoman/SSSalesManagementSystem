@@ -1,0 +1,1 @@
+ALTER TABLE `quotes` ADD `title` text;

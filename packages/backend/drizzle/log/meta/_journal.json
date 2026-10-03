@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1781566541522,
+      "tag": "0000_third_dracula",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782456562424,
+      "tag": "0001_dazzling_spyke",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786669919401,
+      "tag": "0002_wealthy_smasher",
+      "breakpoints": true
+    }
+  ]
+}

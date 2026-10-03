@@ -1,0 +1,1 @@
+ALTER TABLE `journal_batches` ADD `correction_of_batch_id` text;

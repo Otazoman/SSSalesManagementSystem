@@ -1,0 +1,24 @@
+{
+  "name": "Cloudflare Advanced DevContainer",
+  "image": "mcr.microsoft.com/devcontainers/universal:latest",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "eamodio.gitlens",
+        "christian-kohler.path-intellisense",
+        // ★ SQLite（D1）の中身をVS Code内で直接GUI表示・編集できる超便利拡張機能
+        "qwtel.sqlite-viewer"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "postCreateCommand": "bash -c 'source ~/.nvm/nvm.sh && nvm install 22 && nvm use 22 && npm install -g wrangler'",
+  // ★ 開発サーバー(8787)に加えて、フロントエンド検証用(8788)やGUIツール用(9000)のポートを開放
+  "forwardPorts": [8787, 8788, 9000],
+  "remoteUser": "codespace"
+}

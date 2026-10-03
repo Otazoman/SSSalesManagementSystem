@@ -1,0 +1,3 @@
+フローID,フロー名,申請種別,金額下限,金額上限,有効
+flow-inventory-stock,flow-inventory-stock,inventory_stock,0,999999999,はい
+flow-inventory-audit,flow-inventory-audit,inventory_audit,0,999999999,はい

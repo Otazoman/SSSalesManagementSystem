@@ -1,0 +1,1 @@
+ALTER TABLE `quote_items` ADD `input_type` text;

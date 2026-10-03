@@ -1,0 +1,103 @@
+{
+  "QUOTATION": {
+    "mainTitle": "御 見 積 書",
+    "titleColor": [0.2, 0.2, 0.6],
+    "amountLabel": "御見積合計金額 (税込)",
+    "introText": "下記の通り、御見積申し上げます。",
+    "showSeal": true,
+    "showConditionTable": true,
+    "conditions": [
+      { "key": "quoteTitle", "label": "件名" },
+      { "key": "deliveryDate", "label": "納期" },
+      { "key": "deliveryPlace", "label": "納品場所" },
+      { "key": "paymentTerms", "label": "支払条件" },
+      { "key": "expiryDate", "label": "見積期限" }
+    ]
+  },
+  "INVOICE": {
+    "mainTitle": "御 請 求 書",
+    "titleColor": [0.1, 0.4, 0.1],
+    "amountLabel": "御請求合計金額 (税込)",
+    "introText": "下記の通り、ご請求申し上げます。",
+    "showSeal": true,
+    "showConditionTable": false,
+    "conditions": []
+  },
+  "ORDER": {
+    "mainTitle": "御 発 注 書",
+    "titleColor": [0.2, 0.2, 0.2],
+    "amountLabel": "御発注合計金額 (税込)",
+    "introText": "下記の通り、注文いたします。",
+    "showSeal": false,
+    "showConditionTable": true,
+    "conditions": [
+      { "key": "quoteTitle", "label": "件名" },
+      { "key": "deliveryDate", "label": "希望納期" },
+      { "key": "deliveryPlace", "label": "納品場所" }
+    ]
+  },
+  "ORDER_ACKNOWLEDGMENT": {
+    "mainTitle": "注 文 請 書",
+    "titleColor": [0.2, 0.2, 0.6],
+    "amountLabel": "御注文合計金額 (税込)",
+    "introText": "下記の通り、ご注文を承りました。",
+    "showSeal": true,
+    "showConditionTable": true,
+    "conditions": [
+      { "key": "quoteTitle", "label": "件名" },
+      { "key": "deliveryDate", "label": "納期" },
+      { "key": "deliveryPlace", "label": "納品場所" },
+      { "key": "paymentTerms", "label": "支払条件" }
+    ]
+  },
+  "DELIVERY": {
+    "mainTitle": "納 品 書",
+    "titleColor": [0.3, 0.3, 0.3],
+    "amountLabel": "御納品金額合計 (税込)",
+    "introText": "下記の通り、納品いたします。",
+    "showSeal": true,
+    "showConditionTable": true,
+    "showTotals": false,
+    "conditions": [
+      { "key": "deliveryDate", "label": "出荷日" },
+      { "key": "deliveryPlace", "label": "納品先住所" },
+      { "key": "sourceWarehouseName", "label": "出荷元倉庫" },
+      { "key": "salesOrderNumber", "label": "受注番号" }
+    ]
+  },
+  "ACCEPTANCE": {
+    "mainTitle": "検 収 書",
+    "titleColor": [0.2, 0.2, 0.2],
+    "amountLabel": "検収合計金額 (税込)",
+    "introText": "下記の通り、検収いたしましたのでご報告いたします。",
+    "showSeal": true,
+    "showConditionTable": true,
+    "conditions": [
+      { "key": "purchaseOrderNumber", "label": "発注番号" },
+      { "key": "deliveryDate", "label": "入荷日" },
+      { "key": "salesPersonName", "label": "検収担当者" }
+    ]
+  },
+  "PURCHASE_RECOGNITION": {
+    "mainTitle": "仕 入 計 上 書",
+    "titleColor": [0.2, 0.2, 0.2],
+    "amountLabel": "仕入合計金額 (税込)",
+    "introText": "下記の通り、仕入計上いたしましたのでご報告いたします。",
+    "showSeal": true,
+    "showConditionTable": true,
+    "conditions": [
+      { "key": "purchaseOrderNumber", "label": "発注番号" },
+      { "key": "deliveryDate", "label": "仕入計上日" },
+      { "key": "salesPersonName", "label": "仕入担当者" }
+    ]
+  },
+  "SALES_RECOGNITION": {
+    "mainTitle": "売 上 計 上 書",
+    "titleColor": [0.2, 0.2, 0.2],
+    "amountLabel": "売上合計金額 (税込)",
+    "introText": "下記の通り、売上計上いたしましたのでご報告いたします。",
+    "showSeal": true,
+    "showConditionTable": false,
+    "conditions": []
+  }
+}

@@ -1,0 +1,15 @@
+# BUG-026: 画面(静的ファイル)に付けるブラウザ向けのセキュリティの設定。
+# Cloudflare の静的ファイル配信(Workers Static Assets)が読む設定ファイル。next build で out/ にコピーされる。
+# - X-Frame-Options / frame-ancestors: 他サイトにこのシステムの画面を埋め込ませない(クリックジャッキング対策)
+# - X-Content-Type-Options: 中身から形式を推測させない
+# - Referrer-Policy: 外部サイトへのリンクで、画面の URL(伝票番号など)を渡さない
+# - Permissions-Policy: カメラは入出庫のバーコード読み取りで使うため、このシステムの画面にだけ許可する
+# - Strict-Transport-Security: 以後は必ず https で接続させる
+# Content-Security-Policy は画面の埋め込みの禁止だけにしている(スクリプトの制限は、Next.js が埋め込むスクリプトと両立させる検証が必要なため)
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000

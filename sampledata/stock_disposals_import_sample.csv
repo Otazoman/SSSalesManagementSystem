@@ -1,0 +1,3 @@
+﻿"itemId","warehouseId","locationId","lotNumber","accountCode","qualityStatus","quantity","memo"
+"ITEM-3002","WH-001","LOC-A-03","LOT-260805","","NORMAL","3","賞味期限切れのため廃棄"
+"ITEM-1004","WH-002","LOC-C-03","LOT-260804","","NORMAL","5","水濡れで使えなくなった梱包箱を廃棄"

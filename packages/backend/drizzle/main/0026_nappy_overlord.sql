@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `notification_channel` text DEFAULT 'email' NOT NULL;

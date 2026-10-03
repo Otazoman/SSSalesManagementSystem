@@ -1,0 +1,48 @@
+// このファイルは wrangler.jsonc の「ひな形」です(Git管理対象)。
+// 実際に使う wrangler.jsonc(Git管理外)は、リポジトリのルートで次のコマンドを実行して作ります:
+//   node infra/scripts/sync-wrangler.mjs --write
+// Terraformで作成済みの環境(本番・Staging・Secrets Store)があれば、その実IDを埋め込み、
+// 無ければ下の仮の値のまま作ります(ローカル開発はこの仮の値のままで動きます)。
+// バインディングの追加・変更は、wrangler.jsonc ではなくこのファイルに対して行い、上のコマンドで作り直してください。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-erp-frontend",
+  "main": "proxy.ts",
+  "compatibility_date": "2026-06-01",
+  "minify": true,
+  "upload_source_maps": false,
+  "compatibility_flags": ["nodejs_compat"],
+  // Backend Worker への Service Binding(proxy.ts の env.BACKEND)。URL(旧 BACKEND_URL)への fetch は、
+  // Frontend/Backend が同じ workers.dev ゾーンにあると Backend Worker を通らず 404 になるため
+  // (Cloudflareの仕様)、Worker同士を直接つなぐ。ローカルでは、同じPCで起動中の Backend
+  // (wrangler dev、Worker名 my-erp-backend)に自動で接続される。Backend を先にデプロイすること
+  "services": [{ "binding": "BACKEND", "service": "my-erp-backend" }],
+  "assets": {
+    "directory": "./out",
+    "binding": "ASSETS",
+  },
+  // #14-2: API_KEY・SESSION_SECRETはbackendと値を共有するため、Secrets Store(1アカウント
+  // 共有の箱、infra/terraform/environments/account)を使う。store_idはbackend側と同じ値
+  // (sync-wrangler.mjs が`terraform output secrets_store_id`の値で埋める)。BACKEND_URLは共有不要な単なるURLのため
+  // 引き続きSecret(wrangler secret put ... --env staging)のまま、wrangler.jsoncには書かない
+  "secrets_store_secrets": [
+    { "binding": "API_KEY", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "API_KEY" },
+    { "binding": "SESSION_SECRET", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "SESSION_SECRET" },
+  ],
+  // #14-2①: Staging環境(本番と同一Cloudflareアカウント内)。bindings(assets・secrets_store_secrets)は
+  // 環境ごとに継承されないため書き直しが必要(内容は本番と同じ。secret_nameだけ"_STAGING"を付けて区別)
+  "env": {
+    "staging": {
+      // services は環境ごとに引き継がれないため書き直す(接続先は Staging の Backend)
+      "services": [{ "binding": "BACKEND", "service": "my-erp-backend-staging" }],
+      "assets": {
+        "directory": "./out",
+        "binding": "ASSETS",
+      },
+      "secrets_store_secrets": [
+        { "binding": "API_KEY", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "API_KEY_STAGING" },
+        { "binding": "SESSION_SECRET", "store_id": "SECRETS_STORE_ID_PLACEHOLDER", "secret_name": "SESSION_SECRET_STAGING" },
+      ],
+    },
+  },
+}

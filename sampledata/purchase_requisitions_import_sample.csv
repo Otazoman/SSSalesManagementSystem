@@ -1,0 +1,4 @@
+﻿"id","title","departmentSurrogateId","applicantId","inputPersonEmployeeNumber","requestType","status","partnerId","partnerName","partnerInputType","accountCode","projectId","totalAmount","taxAmount","memo","itemId","itemName","inputType","quantity","estimatedUnitPrice","unitCode","taxCategoryCode","itemMemo"
+"PR-2026-0001","原材料Aの定期購入","0031","EMP0006","EMP0006","ONE_TIME","APPROVED","SUPP-0001","","MASTER","5101","","363000","33000","承認済み。発注PO-2026-0001につながる","ITEM-1001","原材料A(粉体)","MASTER","300","1100","KG","TAX_10",""
+"PR-2026-0002","制御基板の追加購入","0031","EMP0006","EMP0006","ONE_TIME","APPROVED","SUPP-0002","","MASTER","5101","PRJ-2026-003","253000","23000","新製品開発用(プロジェクトに紐づけ)。発注PO-2026-0002につながる","ITEM-1003","部品C(制御基板)","MASTER","100","2300","PCS","TAX_10",""
+"PR-2026-0003","梱包資材の前払購入","0031","EMP0005","EMP0005","PREPAYMENT","DRAFT","SUPP-0003","","MASTER","5101","","71500","6500","前払が必要な購入(承認申請前)","ITEM-1004","梱包資材D(箱)","MASTER","500","130","BOX","TAX_10",""

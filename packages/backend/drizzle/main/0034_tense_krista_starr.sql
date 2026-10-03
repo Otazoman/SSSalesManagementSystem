@@ -1,0 +1,1 @@
+ALTER TABLE `item_structures` ADD `status` text DEFAULT 'temporary' NOT NULL;

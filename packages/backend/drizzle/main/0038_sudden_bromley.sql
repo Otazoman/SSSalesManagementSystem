@@ -1,0 +1,22 @@
+CREATE TABLE `stock_audits` (
+	`id` text PRIMARY KEY NOT NULL,
+	`item_id` text NOT NULL,
+	`warehouse_id` text NOT NULL,
+	`location_id` text NOT NULL,
+	`lot_number` text DEFAULT 'NONE' NOT NULL,
+	`account_code` text NOT NULL,
+	`quality_status` text DEFAULT 'NORMAL' NOT NULL,
+	`theoretical_quantity` real NOT NULL,
+	`counted_quantity` real NOT NULL,
+	`difference_quantity` real NOT NULL,
+	`status` text DEFAULT 'UNAPPROVED' NOT NULL,
+	`current_approval_layer` integer DEFAULT 1 NOT NULL,
+	`approval_flow_id` text,
+	`memo` text,
+	`qr_code_key` text,
+	`created_by` text NOT NULL,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`item_id`) REFERENCES `items`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`account_code`) REFERENCES `accounts`(`code`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`approval_flow_id`) REFERENCES `approval_flows`(`id`) ON UPDATE no action ON DELETE no action
+);

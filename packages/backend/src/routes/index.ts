@@ -1,0 +1,62 @@
+// routes/index.ts
+
+export { accountsRouter as accounts } from "./master/accounts";
+export { approvalFlowsRouter as approvalFlows } from "./admin/approval-flows";
+export { auditLogsRouter as auditLogs } from "./admin/audit-logs"; // audit-log.ts 内のルーター
+export { authRouter as auth } from "./auth";
+export { businessLocationsRouter as businessLocations } from "./master/business-locations";
+export { companySettingsRouter as companySettings } from "./admin/company-settings";
+export { departmentsRouter as departments } from "./admin/departments";
+export { itemStructuresRouter as itemStructures } from "./master/item-structures";
+export { itemReorderSettingsRouter as itemReorderSettings } from "./master/item-reorder-settings";
+export { journalPostingRulesRouter as journalPostingRules } from "./master/journal-posting-rules";
+export { journalPostingEventsRouter as journalPostingEvents } from "./admin/journal-posting-events";
+export { journalSourcesRouter as journalSources } from "./admin/journal-sources";
+export { journalBatchesRouter as journalBatches } from "./admin/journal-batches";
+export { journalExportRouter as journalExport } from "./admin/journal-export";
+export { journalExportFormatRouter as journalExportFormat } from "./admin/journal-export-format";
+export { progressRouter as progress } from "./progress";
+export { documentCompletionRouter as documentCompletion } from "./document-completion";
+export { d1ExplorerRouter as d1Explorer } from "./admin/d1-explorer";
+export { announcementsRouter as announcements } from "./admin/announcements";
+export { screenDescriptionsRouter as screenDescriptions } from "./admin/screen-descriptions";
+export { userPreferencesRouter as userPreferences } from "./user-preferences";
+export { receiptInstructionsRouter as receiptInstructions } from "./inventory/receipt-instructions";
+export { shipmentInstructionsRouter as shipmentInstructions } from "./inventory/shipment-instructions";
+export { stockAuditsRouter as stockAudits } from "./inventory/audits";
+export { stockDisposalsRouter as stockDisposals } from "./inventory/disposals";
+export { stockReceiptsRouter as stockReceipts } from "./inventory/receipts";
+export { stockReclassificationsRouter as stockReclassifications } from "./inventory/reclassifications";
+export { stockReturnsRouter as stockReturns } from "./inventory/returns";
+export { stockShipmentsRouter as stockShipments } from "./inventory/shipments";
+export { stocksRouter as stocks } from "./inventory/stocks";
+export { locationsRouter as locations } from "./master/locations";
+export { mailLogsRouter as mailLogs } from "./admin/mail-logs"; // mail-log.ts 内のルーター
+export { mailSettingsRouter as mailSettings } from "./admin/mail-settings";
+export { otpLogsRouter as otpLogs } from "./admin/otp-logs";
+export { approvalsRouter as approvals } from "./workflow/approvals";
+export { partnerContactsRouter as partnerContacts } from "./master/partner-contacts";
+export { partnerDeliveryDestinationsRouter as partnerDeliveryDestinations } from "./master/partner-delivery-destinations";
+export { partnersRouter as partners } from "./master/partners"; // partners.ts を customers としてエクスポート
+export { permissionsRouter as permissions } from "./admin/permissions";
+export { productPricesRouter as productPrices } from "./master/product-prices";
+export { r2ExplorerRouter as r2Explorer } from "./admin/r2-explorer";
+export { productsRouter as products } from "./master/products";
+export { projectsRouter as projects } from "./master/projects";
+export { purchaseRequisitionsRouter as purchaseRequisitions } from "./purchase/requisitions";
+export { purchaseOrdersRouter as purchaseOrders } from "./purchase/orders";
+export { purchaseRecognitionsRouter as purchaseRecognitions } from "./purchase/recognitions";
+export { paymentRouter as purchasePayments } from "./purchase/payment";
+export { quotesRouter as quotes } from "./sales/quotes";
+export { salesOrdersRouter as salesOrders } from "./sales/orders";
+export { salesInvoicesRouter as salesInvoices } from "./sales/invoices";
+export { billingRouter as salesBilling } from "./sales/billing";
+export { cashReceiptsRouter as salesCashReceipts } from "./sales/cash-receipts";
+export { dealsRouter as salesDeals } from "./sales/deals";
+export { rolesRouter as roles } from "./admin/roles";
+export { unitsRouter as units } from "./master/units";
+export { usersRouter as users } from "./admin/users";
+export { warehousesRouter as warehouses } from "./master/warehouses";
+export { warehouseContactsRouter as warehouseContacts } from "./master/warehouse-contacts";
+export { workflowTasksRouter as workflowTasks } from "./workflow/workflow-tasks";
+export { taxCategoriesRouter as taxCategories } from "./admin/tax-categories";

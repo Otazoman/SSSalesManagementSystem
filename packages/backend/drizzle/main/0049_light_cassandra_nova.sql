@@ -1,0 +1,1 @@
+ALTER TABLE `sales_orders` ADD `input_person_employee_number` text;

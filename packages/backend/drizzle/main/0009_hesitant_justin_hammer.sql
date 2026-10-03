@@ -1,0 +1,1 @@
+ALTER TABLE `item_prices` ADD `status` text DEFAULT 'pending' NOT NULL;

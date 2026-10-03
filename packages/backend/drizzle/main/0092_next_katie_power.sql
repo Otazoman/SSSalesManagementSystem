@@ -1,0 +1,2 @@
+ALTER TABLE `item_receipt_headers` ADD `source_warehouse_id` text REFERENCES warehouses(id);--> statement-breakpoint
+ALTER TABLE `item_shipment_headers` ADD `destination_warehouse_id` text REFERENCES warehouses(id);

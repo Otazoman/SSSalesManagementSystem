@@ -1,0 +1,42 @@
+CREATE TABLE `stock_disposals` (
+	`id` text PRIMARY KEY NOT NULL,
+	`item_id` text NOT NULL,
+	`warehouse_id` text NOT NULL,
+	`location_id` text NOT NULL,
+	`lot_number` text DEFAULT 'NONE' NOT NULL,
+	`account_code` text NOT NULL,
+	`quality_status` text DEFAULT 'NORMAL' NOT NULL,
+	`quantity` real NOT NULL,
+	`status` text DEFAULT 'UNAPPROVED' NOT NULL,
+	`current_approval_layer` integer DEFAULT 1 NOT NULL,
+	`approval_flow_id` text,
+	`memo` text,
+	`created_by` text NOT NULL,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`item_id`) REFERENCES `items`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`account_code`) REFERENCES `accounts`(`code`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`approval_flow_id`) REFERENCES `approval_flows`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `stock_returns` (
+	`id` text PRIMARY KEY NOT NULL,
+	`item_id` text NOT NULL,
+	`warehouse_id` text NOT NULL,
+	`location_id` text NOT NULL,
+	`lot_number` text DEFAULT 'NONE' NOT NULL,
+	`account_code` text NOT NULL,
+	`quality_status` text DEFAULT 'NORMAL' NOT NULL,
+	`direction` text NOT NULL,
+	`quantity` real NOT NULL,
+	`return_reason` text,
+	`return_date` integer NOT NULL,
+	`status` text DEFAULT 'UNAPPROVED' NOT NULL,
+	`current_approval_layer` integer DEFAULT 1 NOT NULL,
+	`approval_flow_id` text,
+	`memo` text,
+	`created_by` text NOT NULL,
+	`created_at` integer NOT NULL,
+	FOREIGN KEY (`item_id`) REFERENCES `items`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`account_code`) REFERENCES `accounts`(`code`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`approval_flow_id`) REFERENCES `approval_flows`(`id`) ON UPDATE no action ON DELETE no action
+);
