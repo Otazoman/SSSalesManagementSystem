@@ -206,6 +206,40 @@ export class PurchaseOrderRepository {
     await this.db.insert(schema.orderItems).values(data);
   }
 
+  // CSV取込の明細ID(lineId)の検証用: その明細IDを持つ発注のID(無ければnull)
+  async findOrderIdOfItem(orderItemId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ orderId: schema.orderItems.orderId })
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.id, orderItemId))
+      .limit(1);
+    return rows[0]?.orderId ?? null;
+  }
+
+  // CSV取込の再取込用: 発注明細が仕入・入庫・発注の添付から参照されているか。参照されている明細を消すと
+  // FK制約で取込全体が失敗するため、参照されていれば明細を入れ替えない(受注のCSV取込と同じ方針)
+  async hasDownstreamItemReferences(orderItemIds: string[]): Promise<boolean> {
+    if (orderItemIds.length === 0) return false;
+    const [recognitionRows, receiptRows, attachmentRows] = await Promise.all([
+      this.db
+        .select({ id: schema.purchaseRecognitionItems.id })
+        .from(schema.purchaseRecognitionItems)
+        .where(inArray(schema.purchaseRecognitionItems.sourceOrderItemId, orderItemIds))
+        .limit(1),
+      this.db
+        .select({ id: schema.itemReceiptItems.id })
+        .from(schema.itemReceiptItems)
+        .where(inArray(schema.itemReceiptItems.orderItemId, orderItemIds))
+        .limit(1),
+      this.db
+        .select({ id: schema.orderAttachments.id })
+        .from(schema.orderAttachments)
+        .where(inArray(schema.orderAttachments.orderItemId, orderItemIds))
+        .limit(1),
+    ]);
+    return recognitionRows.length > 0 || receiptRows.length > 0 || attachmentRows.length > 0;
+  }
+
   async deleteOrderItems(orderId: string) {
     await this.db.delete(schema.orderItems).where(eq(schema.orderItems.orderId, orderId));
   }

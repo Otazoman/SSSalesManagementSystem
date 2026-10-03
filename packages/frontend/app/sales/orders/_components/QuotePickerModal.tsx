@@ -42,6 +42,10 @@ export function QuotePickerModal({
     Record<string, QuoteItemSelectionState>
   >({});
   const [error, setError] = useState("");
+  // BUG-059: 見積明細ごとの受注済み数量(分割受注の残数量を表示し、残数量を初期値にする)
+  const [orderedQuantities, setOrderedQuantities] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -83,9 +87,21 @@ export function QuotePickerModal({
         salesPersonEmployeeNumber: detail.salesPersonEmployeeNumber ?? null,
         projectId: detail.projectId ?? null,
       });
+      // BUG-059: 受注済み数量を取得できない場合は、従来どおり見積数量を初期値にする(選択自体は妨げない)
+      const progress = await apiFetch<
+        Array<{ quoteItemId: string; orderedQuantity: number }>
+      >(`/api/sales-orders/quote-progress/${quote.id}`).catch((err) => {
+        console.error("見積の受注済み数量の取得に失敗しました", err);
+        return [];
+      });
+      const ordered = Object.fromEntries(
+        progress.map((p) => [p.quoteItemId, p.orderedQuantity]),
+      );
+      setOrderedQuantities(ordered);
       const initialSelections: Record<string, QuoteItemSelectionState> = {};
       items.forEach((item) => {
-        initialSelections[item.id] = { checked: true, quantity: item.quantity };
+        const remaining = Math.max(item.quantity - (ordered[item.id] ?? 0), 0);
+        initialSelections[item.id] = { checked: remaining > 0, quantity: remaining };
       });
       setSelections(initialSelections);
       setStep("PICK_ITEMS");
@@ -217,7 +233,7 @@ export function QuotePickerModal({
         <div className="flex-1 overflow-y-auto space-y-3">
           <div className="flex justify-between items-center">
             <p className="text-[11px] text-slate-500">
-              選択した明細(数量は変更可能)を受注フォームへコピーします。まだ保存はされません。内容を確認・調整してから画面下部の保存操作で確定してください。
+              選択した明細(数量は変更可能。既に受注した数量を除いた残数量を初期値にしています)を受注フォームへコピーします。まだ保存はされません。内容を確認・調整してから画面下部の保存操作で確定してください。
             </p>
             <button
               type="button"
@@ -227,14 +243,17 @@ export function QuotePickerModal({
               ← 見積を選び直す
             </button>
           </div>
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="border border-slate-200 rounded-lg overflow-x-auto">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 border-b font-bold text-slate-500">
+              <thead className="bg-slate-50 border-b font-bold text-slate-700">
                 <tr>
                   <th className="p-2 w-10 text-center">選択</th>
                   <th className="p-2">品目</th>
-                  <th className="p-2 w-28">数量</th>
-                  <th className="p-2 w-28 text-right">単価</th>
+                  <th className="p-2 w-16 text-right">見積数量</th>
+                  <th className="p-2 w-16 text-right">既受注数量</th>
+                  <th className="p-2 w-16 text-right">残数量</th>
+                  <th className="p-2 w-24">受注数量</th>
+                  <th className="p-2 w-24 text-right">単価</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -253,6 +272,15 @@ export function QuotePickerModal({
                     </td>
                     <td className="p-2 font-semibold text-slate-700">
                       {item.itemName || item.itemId}
+                    </td>
+                    <td className="p-2 text-right font-mono text-slate-700">
+                      {item.quantity}
+                    </td>
+                    <td className="p-2 text-right font-mono text-slate-700">
+                      {orderedQuantities[item.id] ?? 0}
+                    </td>
+                    <td className="p-2 text-right font-mono font-bold text-slate-800">
+                      {Math.max(item.quantity - (orderedQuantities[item.id] ?? 0), 0)}
                     </td>
                     <td className="p-2">
                       <input

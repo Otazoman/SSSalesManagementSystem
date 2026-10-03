@@ -8,6 +8,8 @@ export interface QuoteAttachment {
 }
 
 export interface QuoteItem {
+  // 保存済みの明細のID(新しく追加した明細には無い)。保存時に送り、明細IDを保ったまま更新する
+  id?: string;
   itemId: string;
   itemName?: string;
   inputType: "MASTER" | "DIRECT";

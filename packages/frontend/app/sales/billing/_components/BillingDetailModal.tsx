@@ -7,6 +7,7 @@ import { BillingMailModal } from "./BillingMailModal";
 import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletionControl";
 import { METHOD_LABELS } from "../../../_shared/payment-method-labels";
 import { todayJst } from "../../../_shared/jst-date";
+import { useConfirm } from "../../../_shared/hooks/use-confirm";
 
 interface BillingDetailModalProps {
   detail: BillingDetail | null;
@@ -61,10 +62,13 @@ export function BillingDetailModal({
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Set<string>>(
     new Set(),
   );
+  const confirm = useConfirm();
 
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
+  // BUG-051: 未発行(下書き)の請求には入金を記録できない(請求書を発行するとISSUEDになる)
+  const isDraft = detail.status === "DRAFT";
 
   const toggleExpanded = (itemId: string) => {
     setExpandedInvoiceIds((prev) => {
@@ -77,7 +81,16 @@ export function BillingDetailModal({
 
   const handleSubmitReceipt = async () => {
     const amountNumber = Number(amount);
-    if (!amountNumber || amountNumber <= 0) return;
+    if (!amountNumber || amountNumber <= 0 || isDraft) return;
+    // BUG-051: 未消込額を超える分は、サーバー側で前受金(入金(単体入金))として登録される
+    if (
+      amountNumber > remaining &&
+      !(await confirm(
+        `入金額 ¥${amountNumber.toLocaleString()} は未消込額 ¥${remaining.toLocaleString()} を超えています。\n超えた ¥${(amountNumber - remaining).toLocaleString()} は前受金(入金(単体入金))として登録します。よろしいですか？`,
+      ))
+    ) {
+      return;
+    }
     const success = await onRecordPaymentReceipt(detail.id, {
       receivedDate,
       amount: amountNumber,
@@ -283,34 +296,34 @@ export function BillingDetailModal({
           </h4>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">
+              <label className="text-[10px] font-bold text-slate-800">
                 入金日
               </label>
               <input
                 type="date"
-                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
                 value={receivedDate}
                 onChange={(e) => setReceivedDate(e.target.value)}
               />
             </div>
             <div className="flex flex-col space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">
+              <label className="text-[10px] font-bold text-slate-800">
                 入金額
               </label>
               <input
                 type="number"
-                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder={String(remaining)}
               />
             </div>
             <div className="flex flex-col space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">
+              <label className="text-[10px] font-bold text-slate-800">
                 入金方法
               </label>
               <select
-                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
               >
@@ -322,22 +335,27 @@ export function BillingDetailModal({
               </select>
             </div>
             <div className="flex flex-col space-y-1">
-              <label className="text-[10px] font-bold text-slate-500">
+              <label className="text-[10px] font-bold text-slate-800">
                 メモ
               </label>
               <input
                 type="text"
-                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+                className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
               />
             </div>
           </div>
+          {isDraft && (
+            <p className="text-[11px] font-bold text-amber-800">
+              ⚠️ 請求書を発行してから入金を記録できます(未発行の請求には入金を記録できません)。
+            </p>
+          )}
           <div className="flex justify-end">
             <Button
               variant="success"
               onClick={handleSubmitReceipt}
-              disabled={!amount || Number(amount) <= 0}
+              disabled={isDraft || !amount || Number(amount) <= 0}
             >
               入金を記録する
             </Button>

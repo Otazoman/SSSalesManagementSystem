@@ -71,3 +71,70 @@ describe("BillingDetailModal(編集キャンセル時の確認)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BillingDetailModal: BUG-051 未発行の請求・請求額を超える入金", () => {
+  function renderWith(detail: BillingDetail, onRecord = vi.fn(async () => true)) {
+    render(
+      <BillingDetailModal
+        detail={detail}
+        onClose={vi.fn()}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={onRecord}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return onRecord;
+  }
+
+  it("未発行(下書き)の請求では、発行が必要なことを表示し、入金を記録できない", () => {
+    renderWith(DETAIL);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+
+    expect(screen.getByText(/請求書を発行してから入金を記録できます/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "入金を記録する" })).toBeDisabled();
+  });
+
+  it("未消込額を超える入金は、超えた分を前受金として登録することを確認し、キャンセルなら記録しない", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onRecord = renderWith({ ...DETAIL, status: "ISSUED", reconciledAmount: 1000 });
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "15000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("¥5,000 は前受金"));
+    expect(onRecord).not.toHaveBeenCalled();
+  });
+
+  it("確認で続けると、入力した金額のまま記録する(超過分の前受金はサーバー側で登録する)", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const onRecord = renderWith({ ...DETAIL, status: "ISSUED" });
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "12000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+
+    expect(onRecord).toHaveBeenCalledWith("BL-1", expect.objectContaining({ amount: 12000 }));
+  });
+
+  it("未消込額以内の入金は、確認を出さずに記録する", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const onRecord = renderWith({ ...DETAIL, status: "ISSUED" });
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "11000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onRecord).toHaveBeenCalledTimes(1);
+  });
+});

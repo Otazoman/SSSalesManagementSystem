@@ -109,6 +109,11 @@ export class SalesOrderService {
     return this.crud.getOrderReservationsForItem(itemId);
   }
 
+  // BUG-059: 見積明細ごとの受注済み数量・残数量(見積から受注を作成する画面用)
+  getQuoteOrderProgress(quoteId: string) {
+    return this.crud.getQuoteOrderProgress(quoteId);
+  }
+
   // Item7残課題6: 受注明細ごとの出荷済/残数量・倉庫別引当内訳(出荷指示/出庫の作成導線用)
   getShipmentProgress(c: Context, orderId: string) {
     return this.shipment.getShipmentProgress(orderId, c.env.DB);

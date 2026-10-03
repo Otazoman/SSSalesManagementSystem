@@ -40,6 +40,9 @@ interface ReceiptInstructionItemOption {
 interface PurchaseOrderOption {
   id: string;
   status: string;
+  // BUG-062: 選択肢に件名・仕入先名を添えるため
+  title?: string | null;
+  partnerId?: string | null;
 }
 
 interface PurchaseOrderItemOption {
@@ -105,6 +108,8 @@ export function useStockReceiptForm(
   const [instructionItems, setInstructionItems] = useState<ReceiptInstructionItemOption[]>([]);
   // Item9: 「発注から選ぶ」(発注→入荷の消込連携)。倉庫種別を問わず選べる(receiptInstructionIdと同じ方針)
   const [orders, setOrders] = useState<PurchaseOrderOption[]>([]);
+  // BUG-062: 「発注から選ぶ」の選択肢に仕入先名を添えるための取引先名(倉庫種別を問わず取得する)
+  const [partnerNames, setPartnerNames] = useState<Record<string, string>>({});
   const [orderId, setOrderId] = useState("");
   const [orderItems, setOrderItems] = useState<PurchaseOrderItemOption[]>([]);
   const [selectedOrderItemId, setSelectedOrderItemId] = useState<string | null>(null);
@@ -146,6 +151,10 @@ export function useStockReceiptForm(
           "/api/purchase-orders?status=APPROVED&limit=200",
         );
         setOrders(orderList.data);
+        // 選択肢の表示用のため、取得に失敗しても入庫の操作は続けられるようにする
+        apiFetch<PartnerRecord[]>("/api/partners")
+          .then((list) => setPartnerNames(Object.fromEntries(list.map((p) => [p.id, p.name]))))
+          .catch((err) => console.error("取引先名の取得に失敗しました", err));
 
         if (warehouseType === "EXTERNAL") {
           const partnerList = await apiFetch<PartnerRecord[]>("/api/partners?status=active");
@@ -397,6 +406,14 @@ export function useStockReceiptForm(
     instructionItems,
     applyInstructionItem,
     orders,
+    // BUG-062: 「発注番号 件名(仕入先名)」の形の選択肢(件名・仕入先名が無ければ省く)
+    orderOptions: orders.map((o) => {
+      const partnerName = o.partnerId ? partnerNames[o.partnerId] : undefined;
+      return {
+        id: o.id,
+        label: `${o.id}${o.title ? ` ${o.title}` : ""}${partnerName ? `(${partnerName})` : ""}`,
+      };
+    }),
     orderId,
     setOrderId,
     orderItems,

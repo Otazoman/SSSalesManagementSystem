@@ -2,6 +2,7 @@ import { Context } from "hono";
 import { Env } from "../../../types/env";
 import { SalesOrderRepository } from "./sales-order.repository";
 import { SalesOrderShipmentService } from "./sales-order-shipment.service";
+import { WarehouseStockReservationRepository } from "../../../platform/inventory/warehouse-stock-reservation.repository";
 import { WarehousesRepository } from "../../master/warehouses/warehouses.repository";
 import { StockRepository } from "../../inventory/stocks/stocks.repository";
 import { ShipmentInstructionsService } from "../../inventory/shipment-instructions/shipment-instructions.service";
@@ -73,6 +74,7 @@ export class SalesOrderBulkShipmentService {
     const db = createDb(c.env.DB);
     const stockRepo = StockRepository.fromDb(db);
     const warehouseNameCache = new Map<string, string>();
+    const reservationRepo = new WarehouseStockReservationRepository(c.env.DB);
 
     const results: BulkPlanOrderResult[] = [];
     for (const orderId of orderIds) {
@@ -103,7 +105,11 @@ export class SalesOrderBulkShipmentService {
       }
 
       const progress = await shipmentSvc.getShipmentProgress(orderId, c.env.DB);
-      const remaining = progress.filter((p) => p.remainingQuantity > 0 && p.itemId);
+      // BUG-056: サービス品目(isService)は在庫を持たず出荷しないため、一括作成の対象(要手動対応を含む)から除く
+      const serviceItemIds = await reservationRepo.findServiceItemIds(progress.map((p) => p.itemId));
+      const remaining = progress.filter(
+        (p) => p.remainingQuantity > 0 && p.itemId && !serviceItemIds.has(p.itemId),
+      );
 
       if (remaining.length === 0) {
         results.push({

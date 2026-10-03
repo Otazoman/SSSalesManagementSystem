@@ -3,6 +3,8 @@
 // 4箇所で使う)。
 
 export interface PurchaseOrderItemInput {
+  // CSV取込で明細ID(lineId)を指定した場合はその値を明細のIDにする(空なら自動採番)
+  lineId?: string | null;
   itemId: string;
   itemName?: string | null;
   inputType?: "MASTER" | "DIRECT" | null;
@@ -26,7 +28,7 @@ export function buildPurchaseOrderItemInsertRow(
   sortOrder: number,
 ) {
   return {
-    id: crypto.randomUUID(),
+    id: item.lineId || crypto.randomUUID(),
     orderId,
     purchaseRequestItemId: item.purchaseRequestItemId || null,
     itemId: item.itemId || null,

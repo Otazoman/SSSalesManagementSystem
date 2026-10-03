@@ -53,6 +53,10 @@ interface CreatePaymentModalProps {
 
 // Item10 Phase5: 未払(APPROVED・paymentStatus=UNPAID)の仕入一覧から対象を選び支払を確定する導線。
 // K-5-1: 「検収から選択」(仕入計上を介さない検収記録)、K-5-3: 「明細を直接入力」(完全手動)を追加した
+// BUG-057: 伝票区分がPURCHASE以外(RETURN/DISCOUNT/CORRECTION)の仕入は赤伝
+const isRedSlipRecognition = (rec: { documentType?: string }) =>
+  !!rec.documentType && rec.documentType !== "PURCHASE";
+
 export function CreatePaymentModal({
   isOpen,
   partners,
@@ -84,7 +88,8 @@ export function CreatePaymentModal({
         createForm.purchaseRecognitionIds.includes(rec.id) &&
         !rec.isAdvancePrepaid,
     )
-    .reduce((s, rec) => s + rec.totalAmount, 0);
+    // BUG-057: 赤伝(返品・値引・訂正)は差し引く(Backendの支払額の計算と同じ)
+    .reduce((s, rec) => s + (isRedSlipRecognition(rec) ? -rec.totalAmount : rec.totalAmount), 0);
   const itemReceiptsTotal = createForm.itemReceiptSelections.reduce(
     (s, sel) => s + (Number(sel.amount) || 0),
     0,
@@ -135,16 +140,19 @@ export function CreatePaymentModal({
             支払先*
           </label>
           <select
-            className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+            className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
             value={createForm.partnerId}
             onChange={(e) => onPartnerChange(e.target.value)}
           >
             <option value="">選択してください</option>
-            {partners.map((p) => (
-              <option key={p.id} value={p.id}>
-                [{p.id}] {p.name}
-              </option>
-            ))}
+            {/* BUG-063: 取引停止の仕入先は選択肢に出さない(選択中の場合は表示を残す) */}
+            {partners
+              .filter((p) => p.status !== "suspended" || p.id === createForm.partnerId)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  [{p.id}] {p.name}
+                </option>
+              ))}
           </select>
         </div>
         <div className="flex flex-col space-y-1">
@@ -331,7 +339,7 @@ export function CreatePaymentModal({
                             ¥0(前払で相殺)
                           </span>
                         ) : (
-                          `¥${rec.totalAmount.toLocaleString()}`
+                          `${isRedSlipRecognition(rec) ? "△" : ""}¥${rec.totalAmount.toLocaleString()}`
                         )}
                       </span>
                     </label>

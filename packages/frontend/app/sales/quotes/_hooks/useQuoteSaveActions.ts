@@ -8,6 +8,8 @@ interface SavedQuoteSummary {
   customerName: string;
   totalAmount: number;
   isRevisionUp: boolean;
+  // BUG-058: 編集で確定(APPROVED)にして保存した場合はtrue。保存後の画面に「このまま確定する」を出さない
+  isConfirmed: boolean;
 }
 
 interface UseQuoteSaveActionsProps {
@@ -104,6 +106,8 @@ export function useQuoteSaveActions({
       salesPersonEmployeeNumber: payload.salesPersonEmployeeNumber || null,
       inputPersonEmployeeNumber: payload.inputPersonEmployeeNumber || null,
       items: payload.items.map((item: any) => ({
+        // 明細ID。サーバー側で明細IDを保ったまま更新し、受注明細とのつながりを保つ(新しい明細・改定時は無視される)
+        id: item.id ?? null,
         itemId: item.itemId,
         itemName: item.itemName || null,
         inputType: item.inputType,
@@ -161,6 +165,8 @@ export function useQuoteSaveActions({
         customerName: customerName,
         totalAmount: payload.totalAmount,
         isRevisionUp,
+        // 新規登録・改定はBackendで必ず下書きになる。編集の保存だけが選んだステータスのまま保存される
+        isConfirmed: !!editingId && !isRevisionUp && payload.status === "APPROVED",
       });
 
       // 改定（新バージョン作成）だった場合はフォームを最新IDに追従させる
@@ -220,6 +226,8 @@ export function useQuoteSaveActions({
     };
 
     const items = payload.items.map((item: any) => ({
+      // 明細ID。承認時に明細IDを保ったまま更新し、受注明細とのつながりを保つ
+      id: item.id ?? null,
       itemId: item.itemId,
       itemName: item.itemName || null,
       inputType: item.inputType || null,

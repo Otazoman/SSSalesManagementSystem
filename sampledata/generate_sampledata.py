@@ -436,6 +436,22 @@ def totals(lines):
     return int(subtotal + tax), int(tax)
 
 
+def line_id(doc_id, n):
+    """明細ID(lineId)。伝票番号 + "-L" + 明細の行番号(1から)。見積・受注・発注のCSVに出力し、
+    受注(sourceQuoteItemId)・売上と仕入(sourceOrderItemId)から元の明細を指すために使う"""
+    return f"{doc_id}-L{n}"
+
+
+def source_line(doc_id, lines, item_id):
+    """元の伝票(doc_id の lines)のうち、同じ品目の明細の明細ID。元の伝票が無ければ空欄"""
+    if not doc_id:
+        return ""
+    for n, ln in enumerate(lines, 1):
+        if ln[0] == item_id:
+            return line_id(doc_id, n)
+    raise ValueError(f"{doc_id} に品目 {item_id} の明細がありません")
+
+
 def item_cols(item_id, qty, price, memo=""):
     it = ITEM[item_id]
     return [item_id, it[1], "MASTER", qty, price, it[5], it[6], memo]
@@ -460,10 +476,11 @@ Q = [  # id, title, partner, date, until, status, sales, lines, memo
 qrows = []
 for qid, title, pid, d, until, st, sp, lines, memo in Q:
     tot, tax = totals(lines)
-    for ln in lines:
-        qrows.append((qid, title, pid, DEPT_SALES, d, until, st, tot, tax, memo, "", sp, sp, *item_cols(*ln)))
+    for n, ln in enumerate(lines, 1):
+        qrows.append((qid, title, pid, DEPT_SALES, d, until, st, tot, tax, memo, "", sp, sp, line_id(qid, n), *item_cols(*ln)))
+QLINES = {q[0]: q[7] for q in Q}
 QHEAD = ["id", "title", "partnerId", "companyDepartment", "quoteDate", "validUntil", "status", "totalAmount", "taxAmount", "memo", "terms",
-         "updatedBy", "inputPersonEmployeeNumber", "itemId", "itemName", "inputType", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo"]
+         "updatedBy", "inputPersonEmployeeNumber", "lineId", "itemId", "itemName", "inputType", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo"]
 write("quotes_import_sample.csv", QHEAD, qrows)
 
 SO = [  # id, title, partner, sourceQuote, date, status, sales, lines, memo
@@ -479,11 +496,13 @@ SO = [  # id, title, partner, sourceQuote, date, status, sales, lines, memo
 srows = []
 for sid, title, pid, sq, d, st, sp, lines, memo in SO:
     tot, tax = totals(lines)
-    for ln in lines:
+    for n, ln in enumerate(lines, 1):
         it = item_cols(*ln)
-        srows.append((sid, title, pid, sq, DEPT_SALES, d, st, tot, tax, memo, "", sp, sp, it[0], it[1], "", it[2], it[3], it[4], it[5], it[6], it[7]))
+        src = source_line(sq, QLINES.get(sq, []), ln[0])
+        srows.append((sid, title, pid, sq, DEPT_SALES, d, st, tot, tax, memo, "", sp, sp, line_id(sid, n), it[0], it[1], src, it[2], it[3], it[4], it[5], it[6], it[7]))
+SOLINES = {o[0]: o[7] for o in SO}
 SHEAD = ["id", "title", "partnerId", "sourceQuoteId", "companyDepartment", "orderDate", "status", "totalAmount", "taxAmount", "memo", "terms",
-         "updatedBy", "inputPersonEmployeeNumber", "itemId", "itemName", "sourceQuoteItemId", "inputType", "quantity", "unitPrice", "unitCode",
+         "updatedBy", "inputPersonEmployeeNumber", "lineId", "itemId", "itemName", "sourceQuoteItemId", "inputType", "quantity", "unitPrice", "unitCode",
          "taxCategoryCode", "itemMemo"]
 write("sales_orders_import_sample.csv", SHEAD, srows)
 
@@ -506,7 +525,9 @@ for iid, title, pid, so, d, st, dt, orig, bs, sp, lines, memo in INV:
     inv_total[iid] = (tot, tax)
     for ln in lines:
         it = item_cols(*ln)
-        irows.append((iid, title, pid, so, DEPT_SALES, d, st, dt, orig, tot, tax, memo, bs, sp, sp, it[0], it[1], "MASTER", "", it[3], it[4], it[5], it[6], it[7]))
+        # 通常売上(SALE)は受注の同じ品目の明細を指す(受注を経由しない売上・赤伝は空欄)
+        src = source_line(so, SOLINES.get(so, []), ln[0]) if dt == "SALE" else ""
+        irows.append((iid, title, pid, so, DEPT_SALES, d, st, dt, orig, tot, tax, memo, bs, sp, sp, it[0], it[1], "MASTER", src, it[3], it[4], it[5], it[6], it[7]))
 IHEAD = ["id", "title", "partnerId", "salesOrderId", "companyDepartment", "invoiceDate", "status", "documentType", "originalInvoiceId", "totalAmount",
          "taxAmount", "memo", "billingStatus", "salesPersonEmployeeNumber", "inputPersonEmployeeNumber", "itemId", "itemName", "inputType",
          "sourceOrderItemId", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo"]
@@ -568,14 +589,15 @@ po_total = {}
 for pid_, req, sup, title, d, st, dd, place, terms, buyer, paid, lines, memo in PO:
     tot, tax = totals(lines)
     po_total[pid_] = (tot, tax)
-    for ln in lines:
+    for n, ln in enumerate(lines, 1):
         it = item_cols(*ln)
         porows.append((pid_, req, sup, title, d, st, "5101", tot, tax, memo, CO["companyName"], CO["companyDepartment"], CO["companyAddress"], CO["companyTel"],
-                       CO["companyFax"], dd, place, terms, buyer, buyer, paid, it[0], it[1], "MASTER", it[3], it[4], it[5], it[6], ""))
+                       CO["companyFax"], dd, place, terms, buyer, buyer, paid, line_id(pid_, n), it[0], it[1], "MASTER", it[3], it[4], it[5], it[6], ""))
+POLINES = {p[0]: p[11] for p in PO}
 write("purchase_orders_import_sample.csv",
       ["id", "requestId", "partnerId", "title", "orderDate", "status", "accountCode", "totalAmount", "taxAmount", "memo", "companyName", "companyDepartment",
        "companyAddress", "companyTel", "companyFax", "deliveryDate", "deliveryPlace", "paymentTerms", "purchasePersonEmployeeNumber",
-       "inputPersonEmployeeNumber", "isPaid", "itemId", "itemName", "inputType", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo"], porows)
+       "inputPersonEmployeeNumber", "isPaid", "lineId", "itemId", "itemName", "inputType", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo"], porows)
 
 RC = [  # id, title, partner, order, date, status, doctype, original, payStatus, buyer, lines, memo
     ("PC-2026-0001", "原材料A 仕入", "SUPP-0001", "PO-2026-0001", "2026-08-31", "APPROVED", "PURCHASE", "", "PAID", "EMP0006", [("ITEM-1001", 300, 1100)], "入庫済みの全量を仕入計上。支払済み"),
@@ -590,7 +612,9 @@ for rid, title, sup, order, d, st, dt, orig, ps, buyer, lines, memo in RC:
     rc_total[rid] = (tot, tax)
     for ln in lines:
         it = item_cols(*ln)
-        rrows.append((rid, title, sup, order, "0031", d, st, dt, orig, tot, tax, memo, ps, buyer, buyer, it[0], it[1], "MASTER", "", it[3], it[4], it[5], it[6], ""))
+        # 通常仕入(PURCHASE)は発注の同じ品目の明細を指す(発注を経由しない仕入・赤伝は空欄)
+        src = source_line(order, POLINES.get(order, []), ln[0]) if dt == "PURCHASE" else ""
+        rrows.append((rid, title, sup, order, "0031", d, st, dt, orig, tot, tax, memo, ps, buyer, buyer, it[0], it[1], "MASTER", src, it[3], it[4], it[5], it[6], ""))
 write("purchase_recognitions_import_sample.csv",
       ["id", "title", "partnerId", "orderId", "companyDepartment", "recognitionDate", "status", "documentType", "originalRecognitionId", "totalAmount", "taxAmount",
        "memo", "paymentStatus", "purchasePersonEmployeeNumber", "inputPersonEmployeeNumber", "itemId", "itemName", "inputType", "sourceOrderItemId",

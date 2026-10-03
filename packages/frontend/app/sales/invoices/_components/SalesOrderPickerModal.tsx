@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Button } from "../../../_shared/ui/Button";
 import { Modal } from "../../../_shared/ui/Modal";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
-import { ApiListResponse } from "../../../_shared/api/response-types";
 import { SalesOrderItemProgress, SalesOrderSummary } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
+import { fetchListByIdOrTitle } from "../../../_shared/api/search-by-id-or-title";
 
 interface SalesOrderPickerModalProps {
   initialSalesOrderId?: string;
@@ -14,7 +14,10 @@ interface SalesOrderPickerModalProps {
     selections: Array<{ progress: SalesOrderItemProgress; quantity: number }>,
     // 追加要望: 選択した受注のプロジェクトを売上計上へそのまま引き継ぐ
     projectId?: string | null,
-  ) => void;
+    // BUG-050: 選択した受注・発注の取引先。フォーム側で取引先を切り替える。
+    // 取り込めない場合は理由を返し、このモーダルに表示する
+    partnerId?: string | null,
+  ) => string | undefined | void;
 }
 
 // Item8: 「受注から選択」ピッカー。purchase/requisitions/_components/SalesOrderPickerModal.tsxと
@@ -41,12 +44,11 @@ export function SalesOrderPickerModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    apiFetch<SalesOrderSummary[] | ApiListResponse<SalesOrderSummary>>(
-      `/api/sales-orders?status=APPROVED${debouncedSearch ? `&id=${encodeURIComponent(debouncedSearch)}&title=${encodeURIComponent(debouncedSearch)}` : ""}`,
-    )
-      .then((data) => {
+    // BUG-064: 番号・件名のどちらかに一致する受注を探す
+    fetchListByIdOrTitle<SalesOrderSummary>("/api/sales-orders?status=APPROVED", debouncedSearch)
+      .then((list) => {
         if (cancelled) return;
-        setOrders(Array.isArray(data) ? data : data.data);
+        setOrders(list);
       })
       .catch((err) => {
         console.error("受注一覧の取得に失敗しました", err);
@@ -112,9 +114,15 @@ export function SalesOrderPickerModal({
       return;
     }
 
-    const selectedOrderProject =
-      orders.find((o) => o.id === selectedOrderId)?.projectId ?? null;
-    onApply(selectedOrderId, selections, selectedOrderProject);
+    const selectedOrder = orders.find((o) => o.id === selectedOrderId);
+    const selectedOrderProject = selectedOrder?.projectId ?? null;
+    const applyError = onApply(
+      selectedOrderId,
+      selections,
+      selectedOrderProject,
+      selectedOrder?.partnerId ?? null,
+    );
+    if (applyError) setError(applyError);
   };
 
   return (

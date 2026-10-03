@@ -52,7 +52,8 @@ export function QuoteStatusAndActions({
   const badge = getDocumentLifecycleStatus(status);
   // Item4-e: 承認機能が無効な場合はpartners(取引先マスタ)と同様、ステータスを画面から直接変更できる
   // (承認機能が有効な場合のみ、変更にワークフロー審査を必須とする)
-  const canEditStatusDirectly = !isQuoteWfEnabled && !isLocked;
+  // BUG-058: 新規登録は必ず下書きで保存される(Backend)ため、ステータスを選べるのは編集時だけにする
+  const canEditStatusDirectly = !isQuoteWfEnabled && !isLocked && !!editingId;
 
   return (
     <>
@@ -102,6 +103,11 @@ export function QuoteStatusAndActions({
       {canEditStatusDirectly && (
         <p className="text-[10px] text-slate-600 -mt-2">
           承認機能が無効なため、ステータスはこの画面から直接変更できます。
+        </p>
+      )}
+      {!editingId && (
+        <p className="text-[10px] text-slate-600 -mt-2">
+          新規登録は下書きで保存されます。確定(承認申請)は保存後に行います。
         </p>
       )}
 

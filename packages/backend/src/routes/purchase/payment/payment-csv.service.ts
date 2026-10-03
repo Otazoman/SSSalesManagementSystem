@@ -3,7 +3,7 @@ import { PaymentRepository } from "./payment.repository";
 import { RESOURCE_KEY } from "./payment-constants";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { parseCsv } from "../../../platform/csv/csv-parser";
-import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconRow } from "../../../platform/csv/reconciliation-rows";
+import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconLimit, type ReconRow } from "../../../platform/csv/reconciliation-rows";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 
 // Item10 Phase5: billing-csv.service.tsと同じ方針。payment_headers+payment_header_items
@@ -266,16 +266,23 @@ export class PaymentCsvService {
 
     const existingHeaderIds = new Set<string>();
     const existingKeys = new Set<string>();
+    const limits = new Map<string, ReconLimit>();
     for (const id of new Set(rows.map((r) => r.headerId))) {
-      if (!(await this.repo.findHeaderById(id))) continue;
+      const header = await this.repo.findHeaderById(id);
+      if (!header) continue;
       existingHeaderIds.add(id);
-      for (const r of await this.repo.findDisbursementsByHeaderId(id)) {
+      const existing = await this.repo.findDisbursementsByHeaderId(id);
+      limits.set(id, {
+        totalAmount: header.totalAmount,
+        reconciledAmount: existing.reduce((sum, r) => sum + r.amount, 0),
+      });
+      for (const r of existing) {
         existingKeys.add(
           reconKey({ headerId: id, date: new Date(r.paidDate), amount: r.amount, method: r.method, memo: r.memo ?? null }),
         );
       }
     }
-    assertReconRowsAreNew(rows, parseErrors, existingHeaderIds, existingKeys, "支払消込", "支払");
+    assertReconRowsAreNew(rows, parseErrors, existingHeaderIds, existingKeys, "支払消込", "支払", limits);
 
     let count = 0;
     const affectedHeaderIds = new Set<string>();

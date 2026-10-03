@@ -300,45 +300,47 @@ export function useSalesInvoiceForm({
     setSalesPersonDepartment(user ? resolveDepartmentId("", user) : "");
   };
 
+  // BUG-054: 入力した品目・数量はその場で反映し(単価の取得を待たない)、単価の取得結果は、応答が返った時点で
+  // その明細の品目・数量が変わっていない場合だけ反映する。以前は単価の取得を待ってから入力前の明細一覧を元に
+  // 上書きしていたため、続けて入力すると、後から返った古い入力への応答で数量が戻ることがあった
   const handleItemChange = async (index: number, field: keyof SalesInvoiceItem, value: any) => {
-    const updated = [...items];
-    const currentItem = { ...updated[index], [field]: value };
-
-    if (currentItem.inputType === "MASTER" && (field === "itemId" || field === "quantity")) {
-      const targetItemId = field === "itemId" ? value : currentItem.itemId;
-      const targetQuantity = field === "quantity" ? Number(value) : currentItem.quantity;
-
-      if (targetItemId) {
-        let priceToApply = 0;
-        const specialPriceVal = await fetchSpecialPrice(partnerId, targetItemId, targetQuantity);
-        if (specialPriceVal !== null) {
-          priceToApply = specialPriceVal;
-        } else {
-          const originalProd = products.find((p) => p.id === targetItemId);
-          if (originalProd) priceToApply = originalProd.price ?? 0;
-        }
-
-        updated[index] = {
-          ...currentItem,
-          itemId: targetItemId,
-          quantity: targetQuantity,
-          unitPrice: priceToApply,
-        };
-        if (field === "itemId") {
-          const prod = products.find((p) => p.id === value);
-          if (prod) {
-            updated[index].itemName = prod.name;
-            updated[index].unitCode = prod.baseUnitCode || "";
-            updated[index].taxCategoryCode = prod.taxCategoryCode || "";
-          }
-        }
-        setItems(updated);
-        return;
+    const currentItem = { ...items[index], [field]: value };
+    const needsPrice =
+      currentItem.inputType === "MASTER" && (field === "itemId" || field === "quantity");
+    if (needsPrice && field === "quantity") currentItem.quantity = Number(value);
+    if (needsPrice && field === "itemId") {
+      const prod = products.find((p) => p.id === value);
+      if (prod) {
+        currentItem.itemName = prod.name;
+        currentItem.unitCode = prod.baseUnitCode || "";
+        currentItem.taxCategoryCode = prod.taxCategoryCode || "";
       }
     }
+    setItems((prev) => prev.map((item, i) => (i === index ? currentItem : item)));
 
-    updated[index] = { ...updated[index], [field]: value };
-    setItems(updated);
+    const targetItemId = currentItem.itemId;
+    if (!needsPrice || !targetItemId) return;
+    const targetQuantity = currentItem.quantity;
+
+    let priceToApply = 0;
+    const specialPriceVal = await fetchSpecialPrice(partnerId, targetItemId, targetQuantity);
+    if (specialPriceVal !== null) {
+      priceToApply = specialPriceVal;
+    } else {
+      const originalProd = products.find((p) => p.id === targetItemId);
+      if (originalProd) priceToApply = originalProd.price ?? 0;
+    }
+
+    setItems((prev) =>
+      prev.map((item, i) =>
+        i === index &&
+        item.inputType === "MASTER" &&
+        item.itemId === targetItemId &&
+        item.quantity === targetQuantity
+          ? { ...item, unitPrice: priceToApply }
+          : item,
+      ),
+    );
   };
 
   const handleItemTypeChange = (index: number, type: "MASTER" | "DIRECT") => {
@@ -433,12 +435,18 @@ export function useSalesInvoiceForm({
     setShowOrderPicker(true);
   };
 
-  // ピッカーで選択された受注・明細(数量入力込み)を、現在の明細一覧へ追加する
+  // ピッカーで選択された受注・明細(数量入力込み)を、現在の明細一覧へ追加する。
+  // BUG-050: 取引先を受注の得意先に切り替える。別の得意先の受注明細が既に入っている場合は
+  // 追加せず、ピッカーに表示する理由を返す(1つの売上に複数の得意先の受注は混在できない)
   const applyOrderSelection = (
     targetOrderId: string,
     selections: Array<{ progress: SalesOrderItemProgress; quantity: number }>,
     orderProjectId?: string | null,
-  ) => {
+    orderPartnerId?: string | null,
+  ): string | undefined => {
+    if (orderPartnerId && orderPartnerId !== partnerId && items.some((item) => !!item.sourceOrderItemId)) {
+      return "別の得意先の受注明細が既に入っているため、この受注は追加できません(1つの売上には同じ得意先の受注だけをまとめられます)";
+    }
     const newItems: SalesInvoiceItem[] = selections
       .filter((s) => s.quantity > 0)
       .map((s) => ({
@@ -454,6 +462,7 @@ export function useSalesInvoiceForm({
       }));
 
     setSalesOrderId(targetOrderId);
+    if (orderPartnerId) setPartnerId(orderPartnerId);
     if (orderProjectId) setProjectId(orderProjectId);
     setItems((prev) => {
       const withoutEmptyFirstRow = prev.length === 1 && !prev[0].itemId ? [] : prev;

@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { createLineIdChecker } from "../../../platform/csv/line-id";
 import { QuoteRepository } from "./quote.repository";
 import { RESOURCE_KEY } from "./quote-constants";
 import { buildQuoteItemInsertRow } from "./quote-item-mapper";
@@ -39,6 +40,8 @@ export class QuoteCsvService {
       "terms",
       "updatedBy",
       "inputPersonEmployeeNumber",
+      // 明細ID。受注のCSV(sourceQuoteItemId)から見積明細を指すために使う。取り込み直しても同じIDになる
+      "lineId",
       "itemId",
       "itemName",
       "inputType",
@@ -83,6 +86,7 @@ export class QuoteCsvService {
         csvField(q.terms),
         csvField(employeeNoVal),
         csvField(inputPersonVal),
+        csvField(item?.id),
         csvField(`${itemIdVal}`),
         csvField(item?.itemName),
         csvField(inputTypeVal),
@@ -136,6 +140,7 @@ export class QuoteCsvService {
     const idxTerms = getIdx(["terms"]);
     const idxUpdatedBy = getIdx(["updatedby", "updated_by"]);
     const idxInputPerson = getIdx(["inputpersonemployeenumber", "input_person_employee_number"]);
+    const idxLineId = getIdx(["lineid", "line_id"]);
     const idxItemId = getIdx(["itemid", "item_id"]);
     const idxItemName = getIdx(["itemname", "item_name"]);
     const idxInputType = getIdx(["inputtype", "input_type"]);
@@ -147,6 +152,9 @@ export class QuoteCsvService {
 
     let count = 0;
     const clearedQuoteIds = new Set<string>();
+    // 受注から明細を参照されている見積は、明細を入れ替えない(受注との明細のつながりを保つ)
+    const itemsLockedQuoteIds = new Set<string>();
+    const checkLineId = createLineIdChecker("見積", (lineId) => this.repo.findQuoteIdOfItem(lineId));
     const quoteSortOrders = new Map<string, number>();
 
     // BUG-049: ここから commit() までの DB への書き込みは記録だけして、1回の batch で書き込む(途中で失敗した時に半端に残らないように)
@@ -167,7 +175,12 @@ export class QuoteCsvService {
       };
 
       if (!clearedQuoteIds.has(id)) {
-        await tx.repo.deleteQuoteItems(id);
+        const existingItems = await this.repo.findQuoteItems(id);
+        if (await this.repo.hasDownstreamItemReferences(existingItems.map((item: { id: string }) => item.id))) {
+          itemsLockedQuoteIds.add(id);
+        } else {
+          await tx.repo.deleteQuoteItems(id);
+        }
         clearedQuoteIds.add(id);
         quoteSortOrders.set(id, 0);
 
@@ -206,7 +219,9 @@ export class QuoteCsvService {
       }
 
       const itemId = getCellVal(idxItemId);
-      if (itemId) {
+      if (itemId && !itemsLockedQuoteIds.has(id)) {
+        const lineId = getCellVal(idxLineId);
+        await checkLineId(lineId, id);
         const currentSortOrder = quoteSortOrders.get(id) || 0;
         const rawQty = getCellVal(idxQuantity);
         const rawPrice = getCellVal(idxUnitPrice);
@@ -225,6 +240,7 @@ export class QuoteCsvService {
         await tx.repo.insertQuoteItem(
           buildQuoteItemInsertRow(
             {
+              lineId,
               itemId,
               itemName: getCellVal(idxItemName),
               inputType: normalizedInputType,

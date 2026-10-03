@@ -568,6 +568,13 @@ function drawItemsTable(
   return { page, currentY, subTotal };
 }
 
+// BUG-053: 備考欄の上端。税率別内訳がある場合はその下端の10pt下、無い場合は明細表の下端の15pt下に置く。
+// 以前は「合計欄を描く時に currentY を35pt下げる」ことを前提に currentY + 20 としていたため、
+// 合計欄を描かない納品書(showTotals: false)では備考欄が明細の最終行に重なっていた
+export function resolveMemoBoxTopY(tableBottomY: number, breakdownBottomY: number | null): number {
+  return breakdownBottomY !== null ? breakdownBottomY - 10 : tableBottomY - 15;
+}
+
 // 6. 小計・消費税・値引・税率別内訳・合計・備考欄（最終ページ）
 function drawFooterBlock(
   initialPage: PDFPage,
@@ -603,11 +610,13 @@ function drawFooterBlock(
 
   // 備考欄の枠（高さ60px）も含めて、十分なスペースがあるか検証(showTotals=falseの場合は
   // 小計/消費税/合計ブロック分の高さを見積もる必要が無いため必要スペースを縮小する)
-  const totalsBlockHeight = showTotals ? 140 : 40;
+  // BUG-053: 合計欄が無い場合も、備考欄(15pt空けて高さ65)が収まるかを確認する
+  const totalsBlockHeight = showTotals ? 140 : data.memo ? 85 : 40;
   if (currentY - totalsBlockHeight - taxBreakdownExtraHeight < bottomLimit) {
     page = createPage();
     currentY = height - 60;
   }
+  const tableBottomY = currentY;
 
   let discountRowOffset = 0;
   if (showTotals) {
@@ -753,9 +762,8 @@ function drawFooterBlock(
     const boxWidth = 260;
     const boxHeight = 65;
     // Item4-b: 税率別内訳が表示されている場合はその下端(breakdownBottomY)を基準に、
-    // 無い場合は従来通りcurrentY基準の位置に配置する
-    const boxTopY =
-      breakdownBottomY !== null ? breakdownBottomY - 10 : currentY + 20;
+    // 無い場合は明細表の下端(tableBottomY)を基準に配置する(BUG-053)
+    const boxTopY = resolveMemoBoxTopY(tableBottomY, breakdownBottomY);
     const boxY = boxTopY - boxHeight;
 
     // 1. 備考欄の外枠（黒の薄い線）を描画

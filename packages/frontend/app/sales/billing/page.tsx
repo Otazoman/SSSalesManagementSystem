@@ -81,6 +81,7 @@ export default function SalesBillingPage() {
     handleGeneratePDF,
     handleRecordPaymentReceipt,
     handleCSVImportChange,
+    handlePaymentReceiptsCSVImportChange,
     showMailModal,
     setShowMailModal,
     recipientEmail,
@@ -226,6 +227,28 @@ export default function SalesBillingPage() {
                   className="hidden"
                   disabled={!canCreate || isSubmitting}
                   onChange={handleCSVImportChange}
+                />
+                {/* BUG-060: 入金消込(入金の記録)のCSV取込 */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    document
+                      .getElementById("billing-payment-receipts-csv-import-hidden-input")
+                      ?.click()
+                  }
+                  disabled={!canCreate || isSubmitting}
+                  title="列: billingHeaderId,receivedDate,amount,method,memo"
+                  className="text-xs border border-slate-300 px-3 py-1.5 rounded font-bold text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+                >
+                  📤 入金消込CSVインポート
+                </button>
+                <input
+                  id="billing-payment-receipts-csv-import-hidden-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  disabled={!canCreate || isSubmitting}
+                  onChange={handlePaymentReceiptsCSVImportChange}
                 />
                 <Button
                   size="sm"

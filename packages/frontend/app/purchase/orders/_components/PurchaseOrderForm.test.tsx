@@ -161,3 +161,23 @@ describe("PurchaseOrderForm: 納品場所(拠点/倉庫)選択", () => {
     expect(setDeliveryPlace).toHaveBeenCalledWith("A");
   });
 });
+
+describe("PurchaseOrderForm: BUG-063 取引停止の仕入先", () => {
+  const suppliers = [
+    { id: "SUPP-1", name: "仕入先A", status: "active" },
+    { id: "SUPP-5", name: "仕入先E(取引停止)", status: "suspended" },
+  ];
+
+  it("新規登録では、取引停止の仕入先を選択肢に出さない", () => {
+    render(<PurchaseOrderForm {...baseProps({ suppliers, partnerId: "" })} />);
+
+    expect(screen.getByRole("option", { name: "[SUPP-1] 仕入先A" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /SUPP-5/ })).not.toBeInTheDocument();
+  });
+
+  it("既に取引停止の仕入先が選ばれている伝票では、その仕入先を表示に残す", () => {
+    render(<PurchaseOrderForm {...baseProps({ suppliers, partnerId: "SUPP-5", editingId: "PO-1" })} />);
+
+    expect(screen.getByRole("option", { name: /SUPP-5/ })).toBeInTheDocument();
+  });
+});

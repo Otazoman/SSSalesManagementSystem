@@ -7,7 +7,7 @@ import { useConfirm } from "../../../_shared/hooks/use-confirm";
 
 interface UsePaymentActionsProps {
   syncPayments: (filters: Record<string, string>) => Promise<void>;
-  handleImportCSV: (file: File) => Promise<boolean>;
+  handleImportCSV: (file: File, url?: string) => Promise<boolean>;
   setMessage: (msg: string) => void;
   setError: (msg: string) => void;
 }
@@ -454,7 +454,34 @@ export function usePaymentActions({
     e.target.value = "";
   };
 
+  // BUG-060: 支払消込のCSV取込(画面が無く、APIでしか取り込めなかった)。支払消込の記録を「追加」する取込のため、
+  // 同じファイルを2回取り込むとサーバー側でエラーになり、1件も登録しない(既存の二重取込チェック)
+  const handleDisbursementsCSVImportChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (
+      !(await confirm(
+        `選択したCSVファイル [ ${file.name} ] を読み込んで、支払消込を記録しますか？\n※支払の記録を追加する取込です。同じファイルを2回取り込むとエラーになり、1件も登録しません。\n(列: paymentHeaderId,paidDate,amount,method,memo)`,
+      ))
+    ) {
+      e.target.value = "";
+      return;
+    }
+
+    const success = await handleImportCSV(file, "/api/purchase-payments/disbursements/bulk-register");
+    if (success) {
+      void syncPayments({
+        ...filters,
+        mode: filterMode === "all" ? "" : filterMode,
+        reconciliationStatus: filterReconciliationStatus === "all" ? "" : filterReconciliationStatus,
+      });
+    }
+    e.target.value = "";
+  };
+
   return {
+    handleDisbursementsCSVImportChange,
     filterMode,
     setFilterMode,
     filterReconciliationStatus,

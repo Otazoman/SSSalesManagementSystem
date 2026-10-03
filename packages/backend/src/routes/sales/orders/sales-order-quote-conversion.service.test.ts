@@ -237,3 +237,63 @@ describe("Item7: 見積からの受注作成(スナップショット方式)", (
     expect(items[0].quantity).toBe(60);
   });
 });
+
+describe("BUG-059: 見積の明細ごとの受注済み数量(見積から受注を作成する画面用)", () => {
+  async function seedQuote() {
+    await db.insert(schema.quotes).values({
+      id: "Q-P",
+      partnerId: "partner-1",
+      quoteDate: now,
+      status: "APPROVED",
+      totalAmount: 30000,
+      taxAmount: 3000,
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+    await db.insert(schema.quoteItems).values([
+      { id: "Q-P-1", quoteId: "Q-P", itemId: "ITEM-1", itemName: "品目1", quantity: 10, unitPrice: 2000, amount: 20000, sortOrder: 0 },
+      { id: "Q-P-2", quoteId: "Q-P", itemId: "ITEM-2", itemName: "品目2", quantity: 5, unitPrice: 2000, amount: 10000, sortOrder: 1 },
+    ]);
+  }
+
+  async function callQuoteProgress(quoteId: string) {
+    const ctx = createExecutionContext();
+    const res = await salesOrdersRouter.request(
+      `/quote-progress/${quoteId}`,
+      { headers: { Cookie: await buildSessionCookieHeader("applicant-1") } },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  it("分割して受注した数量を合計し、明細ごとの受注済み数量・残数量を返す", async () => {
+    await seedQuote();
+    for (const [id, quantity] of [["O-P-1", 4], ["O-P-2", 3]] as const) {
+      const res = await callCreateOrder("applicant-1", {
+        id,
+        partnerId: "partner-1",
+        sourceQuoteId: "Q-P",
+        orderDate: "2026-01-01",
+        quoteItemSelections: [{ quoteItemId: "Q-P-1", quantity }],
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const res = await callQuoteProgress("Q-P");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([
+      { quoteItemId: "Q-P-1", quantity: 10, orderedQuantity: 7, remainingQuantity: 3 },
+      { quoteItemId: "Q-P-2", quantity: 5, orderedQuantity: 0, remainingQuantity: 5 },
+    ]);
+  });
+
+  it("存在しない見積は404", async () => {
+    const res = await callQuoteProgress("NOPE");
+    expect(res.status).toBe(404);
+  });
+});

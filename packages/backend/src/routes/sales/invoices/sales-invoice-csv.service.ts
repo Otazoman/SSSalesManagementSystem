@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { SalesInvoiceRepository } from "./sales-invoice.repository";
+import { assertSalesOrderPartnerMatches } from "./sales-invoice-source-partner";
 import { RESOURCE_KEY } from "./sales-invoice-constants";
 import { buildSalesInvoiceItemInsertRow } from "./sales-invoice-item-mapper";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
@@ -152,6 +153,16 @@ export class SalesInvoiceCsvService {
         const trimmed = cols[idx].trim();
         return trimmed === "" ? null : trimmed;
       };
+
+      // BUG-050: 行ごとに、取引先と元の受注の得意先が一致することを確認する
+      // (commit() より前に止めるため、1行でも異なれば1件も取り込まない)
+      await assertSalesOrderPartnerMatches(
+        this.repo,
+        partnerId,
+        getCellVal(idxSalesOrderId),
+        [getCellVal(idxSourceOrderItemId)],
+        `CSVの売上[${id}]: `,
+      );
 
       if (!clearedInvoiceIds.has(id)) {
         await tx.repo.deleteInvoiceItems(id);

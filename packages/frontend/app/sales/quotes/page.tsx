@@ -370,7 +370,7 @@ export default function QuotesPage() {
           }}
           previewLabel="👁️ 保存した見積書をプレビューで確認"
           approveLabel={
-            savedQuoteSummary.isRevisionUp
+            savedQuoteSummary.isRevisionUp || savedQuoteSummary.isConfirmed
               ? undefined
               : isQuoteWfEnabled
                 ? "🚀 このまま承認を申請する"

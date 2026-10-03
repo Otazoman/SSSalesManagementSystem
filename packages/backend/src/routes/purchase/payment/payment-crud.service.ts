@@ -416,6 +416,8 @@ export class PaymentCrudService {
         title: rec.title,
         partnerId: rec.partnerId,
         recognitionDate: rec.recognitionDate,
+        // BUG-057: 赤伝(返品・値引・訂正)は支払額から差し引くため、画面で区別できるよう伝票区分を返す
+        documentType: rec.documentType,
         totalAmount: rec.totalAmount,
         taxAmount: rec.taxAmount,
         isAdvancePrepaid: !!advanceOrder,

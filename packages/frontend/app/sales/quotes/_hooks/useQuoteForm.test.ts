@@ -421,3 +421,36 @@ describe("useQuoteForm", () => {
     });
   });
 });
+
+describe("useQuoteForm: BUG-054 数量の入力と単価の取得の順序", () => {
+  it("単価の応答を待たずに品目・数量が反映され、古い入力への応答で数量・単価が上書きされない", async () => {
+    mockFetch();
+    const resolvers: Array<(price: number | null) => void> = [];
+    const fetchSpecialPrice = vi.fn(() => new Promise<number | null>((resolve) => resolvers.push(resolve)));
+    const { result } = renderEditingQuoteForm({ fetchSpecialPrice });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    const pending: Promise<void>[] = [];
+    act(() => {
+      pending.push(result.current.handleItemChange(0, "itemId", "PROD-1"));
+    });
+    expect(result.current.items[0].itemId).toBe("PROD-1");
+    act(() => {
+      pending.push(result.current.handleItemChange(0, "quantity", 1));
+    });
+    act(() => {
+      pending.push(result.current.handleItemChange(0, "quantity", 15));
+    });
+    expect(result.current.items[0].quantity).toBe(15);
+
+    // 応答は新しい入力の順に返る(古い入力への応答が後から返る)
+    await act(async () => {
+      resolvers[2](900);
+      resolvers[1](1000);
+      resolvers[0](1100);
+      await Promise.all(pending);
+    });
+
+    expect(result.current.items[0]).toMatchObject({ itemId: "PROD-1", quantity: 15, unitPrice: 900 });
+  });
+});

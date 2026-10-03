@@ -21,6 +21,7 @@ import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-sett
 import { roundTaxAmount } from "../../../_shared/tax-amounts";
 import { useTaxRoundingMode } from "../../../_shared/hooks/use-tax-rounding-mode";
 import { todayJst } from "../../../_shared/jst-date";
+import { useConfirm } from "../../../_shared/hooks/use-confirm";
 
 interface UsePurchaseRequisitionOperationsProps {
   canRead: boolean;
@@ -41,6 +42,7 @@ export function usePurchaseRequisitionOperations({
   currentUserEmployeeNumber,
 }: UsePurchaseRequisitionOperationsProps) {
   const [requisitions, setRequisitions] = useState<PurchaseRequisitionRecord[]>([]);
+  const confirm = useConfirm();
   const [allItems, setAllItems] = useState<ItemMaster[]>([]);
   const [projects, setProjects] = useState<ProjectLookup[]>([]);
   const [orgDepartments, setOrgDepartments] = useState<DepartmentOption[]>([]);
@@ -817,6 +819,14 @@ export function usePurchaseRequisitionOperations({
   };
 
   const handleImportCsv = async (file: File) => {
+    // BUG-061: ほかの伝票(見積・受注・売上・請求・仕入・支払)と同じく、取り込む前に上書きの確認を出す
+    if (
+      !(await confirm(
+        `選択したCSVファイル [ ${file.name} ] を読み込んで、購買申請データをCSVインポート(登録・同期)しますか？\n※既存の同一コードデータは明細含め上書きされます。`,
+      ))
+    ) {
+      return false;
+    }
     setIsSubmitting(true);
     setError("");
     setMessage("");

@@ -3,6 +3,8 @@
 // sales-orders.adapter.tsの3箇所での重複を防ぐ)で集約する。
 
 export interface SalesOrderItemInput {
+  // CSV取込で明細ID(lineId)を指定した場合はその値を明細のIDにする(空なら自動採番)
+  lineId?: string | null;
   itemId: string;
   itemName?: string | null;
   inputType?: string | null;
@@ -26,7 +28,7 @@ export function buildSalesOrderItemInsertRow(
   sortOrder: number,
 ) {
   return {
-    id: crypto.randomUUID(),
+    id: item.lineId || crypto.randomUUID(),
     salesOrderId,
     sourceQuoteItemId: item.sourceQuoteItemId || null,
     itemId: item.itemId,

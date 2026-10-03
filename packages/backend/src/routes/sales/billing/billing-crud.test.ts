@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
@@ -576,6 +576,11 @@ describe("BillingReconciliationService.recordPaymentReceipt: 消込ロジック"
         salesInvoiceIds: ["SI-1"],
       }),
     );
+    // BUG-051: 未発行(下書き)の請求には入金を記録できないため、請求書を発行した状態にしておく
+    await db
+      .update(schema.billingHeaders)
+      .set({ status: "ISSUED" })
+      .where(eq(schema.billingHeaders.id, result.id as string));
     return result.id as string;
   }
 
@@ -616,13 +621,14 @@ describe("BillingReconciliationService.recordPaymentReceipt: 消込ロジック"
     const result = await withContext((c) =>
       getService(c).recordPaymentReceipt(c, billingId, {
         receivedDate: now.toISOString(),
-        amount: 5000,
+        // BUG-051: 合計金額(税込 10,000)を超える分は記録しない(請求は前受金へ回す)ため、累計がちょうど合計になる金額にする
+        amount: 4000,
         method: "CASH",
         memo: "残額入金",
       }),
     );
 
-    expect(result.reconciledAmount).toBe(11000);
+    expect(result.reconciledAmount).toBe(10000);
     expect(result.reconciliationStatus).toBe("RECONCILED");
   });
 
@@ -637,5 +643,90 @@ describe("BillingReconciliationService.recordPaymentReceipt: 消込ロジック"
         }),
       ),
     ).rejects.toThrow("見つかりません");
+  });
+});
+
+describe("BillingReconciliationService.recordPaymentReceipt: BUG-051 未発行の請求・請求額を超える入金", () => {
+  async function createIssuedBilling(): Promise<string> {
+    await seedInvoice("SI-1", { totalAmount: 10000, taxAmount: 1000 });
+    const result = await withContext((c) =>
+      getService(c).createBilling(c, {
+        partnerId: "P-1",
+        mode: "PER_TRANSACTION",
+        billingDate: now.toISOString(),
+        periodStart: null,
+        periodEnd: null,
+        title: null,
+        memo: null,
+        salesInvoiceIds: ["SI-1"],
+      }),
+    );
+    const billingId = result.id as string;
+    await db.update(schema.billingHeaders).set({ status: "ISSUED" }).where(eq(schema.billingHeaders.id, billingId));
+    return billingId;
+  }
+
+  afterEach(async () => {
+    await db.delete(schema.paymentReceipts);
+    await db.delete(schema.cashReceipts);
+  });
+
+  const pay = (billingId: string, amount: number) =>
+    withContext((c) =>
+      getService(c).recordPaymentReceipt(c, billingId, {
+        receivedDate: now.toISOString(),
+        amount,
+        method: "BANK_TRANSFER",
+        memo: null,
+      }),
+    );
+  const totalOf = async (billingId: string) =>
+    (await db.select().from(schema.billingHeaders).where(eq(schema.billingHeaders.id, billingId)))[0].totalAmount;
+
+  it("未発行(下書き)の請求には入金を記録できない(BadRequestError・記録されない)", async () => {
+    const billingId = await createIssuedBilling();
+    await db.update(schema.billingHeaders).set({ status: "DRAFT" }).where(eq(schema.billingHeaders.id, billingId));
+
+    await expect(pay(billingId, 5000)).rejects.toThrow(/未発行/);
+    expect(await db.select().from(schema.paymentReceipts)).toHaveLength(0);
+  });
+
+  it("請求額を超える入金は、残額までを消込にし、超えた分を前受金(単体入金)として登録する", async () => {
+    const billingId = await createIssuedBilling();
+    const total = await totalOf(billingId);
+
+    const result = await pay(billingId, total + 4000);
+
+    expect(result.reconciledAmount).toBe(total);
+    expect(result.reconciliationStatus).toBe("RECONCILED");
+    expect(result.advanceAmount).toBe(4000);
+    const receipts = await db.select().from(schema.paymentReceipts).where(eq(schema.paymentReceipts.billingHeaderId, billingId));
+    expect(receipts.map((r) => r.amount)).toEqual([total]);
+    const advances = await db.select().from(schema.cashReceipts);
+    expect(advances).toHaveLength(1);
+    expect(advances[0]).toMatchObject({ id: result.advanceCashReceiptId, partnerId: "P-1", amount: 4000, status: "UNLINKED" });
+    expect(advances[0].memo).toContain(billingId);
+  });
+
+  it("消込完了の請求への入金は、全額を前受金(単体入金)として登録し、消込額は増えない", async () => {
+    const billingId = await createIssuedBilling();
+    const total = await totalOf(billingId);
+    await pay(billingId, total);
+
+    const result = await pay(billingId, 3000);
+
+    expect(result.reconciledAmount).toBe(total);
+    expect(result.advanceAmount).toBe(3000);
+    expect(await db.select().from(schema.paymentReceipts)).toHaveLength(1);
+    expect((await db.select().from(schema.cashReceipts)).map((r) => r.amount)).toEqual([3000]);
+  });
+
+  it("残額以内の入金では、前受金は登録しない", async () => {
+    const billingId = await createIssuedBilling();
+
+    const result = await pay(billingId, 5000);
+
+    expect(result.advanceAmount).toBe(0);
+    expect(await db.select().from(schema.cashReceipts)).toHaveLength(0);
   });
 });

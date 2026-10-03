@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../src/db/schema";
 import { SCREEN_MASTER } from "../src/constants/screens";
-import { IMPORT_ENDPOINTS, postCsv, sampleCsv, sampleFileNames } from "./support/csv-import";
+import { IMPORT_ENDPOINTS, getApi, postCsv, sampleCsv, sampleFileNames } from "./support/csv-import";
 
 // リポジトリ直下の sampledata/ にある取込用サンプルCSVを、本番と同じAPI・推奨する取込順で
 // 順番に取り込み、全て成功することを確認する(サンプルが仕様変更で古くなっていないことの検知)。
@@ -185,6 +185,86 @@ describe("取込後のデータが、サンプルの想定どおりになって�
     expect((await dealsDb.select().from(dealsSchema.dealAttendees)).length).toBe(9);
     expect((await dealsDb.select().from(dealsSchema.dealQuotes)).map((q) => q.quoteId)).toEqual(["QT-2026-0004-1"]);
     expect(deals.find((d) => d.title === "初回ヒアリング")?.memo).toContain("\n");
+  });
+
+  // 見積・受注・発注のCSVは明細ID(lineId)を持ち、受注(sourceQuoteItemId)・売上と仕入(sourceOrderItemId)は
+  // 元の伝票の明細をそのIDで指す。これが無いと、残数量(売上・仕入の「受注/発注から選択」、見積からの受注作成)が
+  // サンプルでは正しく計算されない
+  it("明細のつながり: 受注明細は見積明細を、売上・仕入の明細は受注・発注の明細を明細IDで指す", async () => {
+    const sourceOf = async <T extends { itemId: string | null }>(rows: T[], key: keyof T) =>
+      Object.fromEntries(rows.map((r) => [r.itemId, r[key]]));
+    const orderItems = await db.select().from(schema.salesOrderItems);
+    const invoiceItems = await db.select().from(schema.salesInvoiceItems);
+    const recognitionItems = await db.select().from(schema.purchaseRecognitionItems);
+    const by = <T extends Record<string, any>>(rows: T[], parentKey: string, parentId: string) => rows.filter((r) => r[parentKey] === parentId);
+
+    expect((await db.select().from(schema.quoteItems)).map((i) => i.id)).toContain("QT-2026-0001-1-L1");
+    expect(await sourceOf(by(orderItems, "salesOrderId", "SO-2026-0001"), "sourceQuoteItemId")).toEqual({
+      "ITEM-2001": "QT-2026-0001-1-L1",
+      "ITEM-2004": "QT-2026-0001-1-L2",
+      "ITEM-9001": "QT-2026-0001-1-L3",
+    });
+    expect(await sourceOf(by(orderItems, "salesOrderId", "SO-2026-0003"), "sourceQuoteItemId")).toEqual({ "ITEM-3001": "QT-2026-0005-1-L1" });
+    expect(await sourceOf(by(orderItems, "salesOrderId", "SO-2026-0004"), "sourceQuoteItemId")).toEqual({ "ITEM-2003": null });
+    expect(await sourceOf(by(invoiceItems, "salesInvoiceId", "SI-2026-0003"), "sourceOrderItemId")).toEqual({ "ITEM-3001": "SO-2026-0003-L1" });
+    expect(await sourceOf(by(invoiceItems, "salesInvoiceId", "SI-2026-0004"), "sourceOrderItemId")).toEqual({ "ITEM-9001": null });
+    expect(await sourceOf(by(recognitionItems, "purchaseRecognitionId", "PC-2026-0004"), "sourceOrderItemId")).toEqual({
+      "ITEM-3001": "PO-2026-0003-L1",
+      "ITEM-3002": "PO-2026-0003-L2",
+    });
+    expect(await sourceOf(by(recognitionItems, "purchaseRecognitionId", "PC-2026-0003"), "sourceOrderItemId")).toEqual({ "ITEM-1003": null });
+  });
+
+  it("残数量: 見積の受注済み数量・受注の売上済み数量・発注の仕入済み数量が、サンプルの分納・一部受注を反映する", async () => {
+    const quote = await getApi("/api/sales-orders/quote-progress/QT-2026-0005-1");
+    expect(quote.body).toEqual([
+      { quoteItemId: "QT-2026-0005-1-L1", quantity: 20, orderedQuantity: 20, remainingQuantity: 0 },
+      { quoteItemId: "QT-2026-0005-1-L2", quantity: 5, orderedQuantity: 0, remainingQuantity: 5 },
+    ]);
+    const order = await getApi("/api/sales-invoices/order-progress/SO-2026-0003");
+    expect(order.body.map((p: any) => [p.salesOrderItemId, p.invoicedQuantity, p.remainingQuantity])).toEqual([["SO-2026-0003-L1", 12, 8]]);
+    const po = await getApi("/api/purchase-recognitions/order-progress/PO-2026-0001");
+    expect(po.body.map((p: any) => [p.sourceOrderItemId, p.recognizedQuantity, p.remainingQuantity])).toEqual([["PO-2026-0001-L1", 300, 0]]);
+  });
+
+  it("出力したCSVには明細ID(lineId)が含まれる(出力 → 取り込み直しでも明細IDが変わらない)", async () => {
+    for (const [url, lineId] of [
+      ["/api/quotes/csv-download", "QT-2026-0001-1-L1"],
+      ["/api/sales-orders/csv-download", "SO-2026-0001-L1"],
+      ["/api/purchase-orders/csv-download", "PO-2026-0001-L1"],
+    ]) {
+      const { status, body } = await getApi(url);
+      expect(status, url).toBe(200);
+      expect(String(body).split(/\r?\n/)[0], url).toContain("lineId");
+      expect(String(body), url).toContain(lineId);
+    }
+  });
+
+  it("見積・受注・発注のCSVを取り込み直しても、後続の伝票から参照されている明細はそのまま残り、エラーにならない", async () => {
+    for (const file of ["quotes_import_sample.csv", "sales_orders_import_sample.csv", "purchase_orders_import_sample.csv"]) {
+      const { status, body } = await importCsv(IMPORT_ENDPOINTS[file].url, csvOf(file), false);
+      expect(status, `${file}: ${JSON.stringify(body)}`).toBe(200);
+    }
+    const linked = (await db.select().from(schema.salesOrderItems)).filter((i) => i.sourceQuoteItemId).length;
+    expect(linked).toBe(6);
+    expect((await db.select().from(schema.quoteItems)).map((i) => i.id)).toContain("QT-2026-0001-1-L1");
+  });
+
+  it("明細IDがCSV内で重複している・別の伝票の明細IDを使っている場合はエラーにし、1件も取り込まない", async () => {
+    const header = "id,title,partnerId,quoteDate,status,totalAmount,taxAmount,lineId,itemId,itemName,inputType,quantity,unitPrice,unitCode,taxCategoryCode";
+    const row = (id: string, lineId: string) =>
+      `${id},明細IDの確認,CUST-0001,2026-09-01,DRAFT,1100,100,${lineId},ITEM-9001,設置作業,MASTER,1,1000,H,TAX_10`;
+    const before = await count(schema.quotes);
+
+    const duplicated = await importCsv("/api/quotes/bulk-register", [header, row("QT-LINE-1", "QT-LINE-1-L1"), row("QT-LINE-2", "QT-LINE-1-L1")].join("\n"), false);
+    expect(duplicated.status).toBe(400);
+    expect(JSON.stringify(duplicated.body)).toContain("QT-LINE-1-L1");
+
+    const otherDocument = await importCsv("/api/quotes/bulk-register", [header, row("QT-LINE-3", "QT-2026-0001-1-L1")].join("\n"), false);
+    expect(otherDocument.status).toBe(400);
+    expect(JSON.stringify(otherDocument.body)).toContain("QT-2026-0001-1-L1");
+
+    expect(await count(schema.quotes)).toBe(before);
   });
 
   // sampledata/README.md の注意書き(在庫系CSVは取り込むたびに新しい入庫として登録される)が事実であることの確認。

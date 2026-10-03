@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { PurchaseRecognitionRepository } from "./purchase-recognition.repository";
+import { assertPurchaseOrderPartnerMatches } from "./purchase-recognition-source-partner";
 import { PurchaseRecognitionPayload } from "./purchase-recognition.schema";
 import { RESOURCE_KEY } from "./purchase-recognition-constants";
 import {
@@ -262,6 +263,12 @@ export class PurchaseRecognitionCrudService {
     const documentType = this.validateDocumentType(body);
     const items = (body.items || []) as PurchaseRecognitionItemInput[];
     await this.validateRemainingQuantities(c, documentType, items);
+    await assertPurchaseOrderPartnerMatches(
+      this.repo,
+      body.partnerId || (body as any).supplierId || null,
+      body.orderId,
+      items.map((item) => item.sourceOrderItemId),
+    );
 
     const opId = await this.repo.getFallbackOperatorId(c);
     let recognitionId = body.id;
@@ -400,6 +407,12 @@ export class PurchaseRecognitionCrudService {
     const documentType = this.validateDocumentType(body);
     const items = (body.items || []) as PurchaseRecognitionItemInput[];
     await this.validateRemainingQuantities(c, documentType, items);
+    await assertPurchaseOrderPartnerMatches(
+      this.repo,
+      body.partnerId || (body as any).supplierId || null,
+      body.orderId,
+      items.map((item) => item.sourceOrderItemId),
+    );
 
     const opId = await this.repo.getFallbackOperatorId(c);
     const targetPartnerId = body.partnerId || (body as any).supplierId || null;

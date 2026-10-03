@@ -110,3 +110,33 @@ describe("CreatePaymentModal: L-1-b 二重支払の警告", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("CreatePaymentModal: BUG-057 赤伝(返品など)の表示と選択合計", () => {
+  it("赤伝は△付きで表示し、選択合計から差し引く", () => {
+    renderModal({
+      createForm: { ...baseForm, purchaseRecognitionIds: ["SR-1", "SR-RED"] },
+      candidateRecognitions: [
+        { ...recognition, totalAmount: 253000 },
+        { ...recognition, id: "SR-RED", totalAmount: 12650, documentType: "RETURN" },
+      ],
+    });
+
+    expect(screen.getByText("△¥12,650")).toBeInTheDocument();
+    expect(screen.getByText("¥240,350")).toBeInTheDocument();
+  });
+});
+
+describe("CreatePaymentModal: BUG-063 取引停止の仕入先", () => {
+  it("支払先の選択肢に、取引停止の仕入先を出さない", () => {
+    renderModal({
+      createForm: { ...baseForm, partnerId: "" },
+      partners: [
+        { id: "P-1", name: "仕入先1", status: "active" },
+        { id: "P-5", name: "仕入先E(取引停止)", status: "suspended" },
+      ],
+    });
+
+    expect(screen.getByRole("option", { name: "[P-1] 仕入先1" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /P-5/ })).not.toBeInTheDocument();
+  });
+});

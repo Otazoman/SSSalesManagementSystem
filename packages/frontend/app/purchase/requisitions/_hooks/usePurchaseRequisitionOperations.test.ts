@@ -676,3 +676,40 @@ describe("usePurchaseRequisitionOperations", () => {
     expect(result.current.items[0].salesOrderItemId).toBeNull();
   });
 });
+
+describe("usePurchaseRequisitionOperations: BUG-061 CSV取込の上書きの確認", () => {
+  const csvFile = () => new File(["id"], "requisitions.csv", { type: "text/csv" });
+  const bulkCalls = (fetchSpy: ReturnType<typeof vi.fn>) =>
+    fetchSpy.mock.calls.filter(([url]) => url.toString().includes("/api/purchase-requisitions/bulk-register"));
+
+  it("取込の前に上書きの確認を出し、キャンセルなら取り込まない", async () => {
+    const fetchSpy = vi.fn();
+    mockInitialFetches(fetchSpy);
+    vi.stubGlobal("fetch", fetchSpy);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { result } = renderHook(() => usePurchaseRequisitionOperations(defaultProps()));
+
+    await act(async () => {
+      await result.current.handleImportCsv(csvFile());
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("上書きされます"));
+    expect(bulkCalls(fetchSpy)).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it("確認で続けると取り込む", async () => {
+    const fetchSpy = vi.fn();
+    mockInitialFetches(fetchSpy);
+    vi.stubGlobal("fetch", fetchSpy);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { result } = renderHook(() => usePurchaseRequisitionOperations(defaultProps()));
+
+    await act(async () => {
+      await result.current.handleImportCsv(csvFile());
+    });
+
+    expect(bulkCalls(fetchSpy)).toHaveLength(1);
+    confirmSpy.mockRestore();
+  });
+});

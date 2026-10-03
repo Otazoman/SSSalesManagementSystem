@@ -38,7 +38,8 @@ async function seedBilling(id: string, partnerId = "P-1", totalAmount = 11000) {
     partnerId,
     billingDate: now,
     mode: "PER_TRANSACTION",
-    status: "DRAFT",
+    // BUG-051: 未発行(下書き)の請求には入金を紐づけできないため、発行済みの請求を用意する
+    status: "ISSUED",
     totalAmount,
     taxAmount: 0,
     reconciledAmount: 0,
@@ -161,5 +162,32 @@ describe("追加要望L-1-a: 単体入金", () => {
     expect(lines[0]).toContain("id,partnerId,receiptDate,amount");
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain("P-1");
+  });
+});
+
+describe("BUG-051: 単体入金の紐づけ(未発行の請求・未消込額の超過)", () => {
+  it("未発行(下書き)の請求には紐づけできず、入金は未紐づけのまま(消込もされない)", async () => {
+    await seedBilling("BL-1", "P-1", 11000);
+    await db.update(schema.billingHeaders).set({ status: "DRAFT" }).where(eq(schema.billingHeaders.id, "BL-1"));
+    const id = await register({ amount: 5000 });
+
+    const res = await call(`/${id}/link`, "POST", { billingHeaderId: "BL-1" });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("未発行");
+    expect(((await (await call(`/${id}`)).json()) as any).status).toBe("UNLINKED");
+    expect(await db.select().from(schema.paymentReceipts)).toHaveLength(0);
+  });
+
+  it("請求の未消込額を超える入金は紐づけできず、未紐づけ(前受金)のまま残る", async () => {
+    await seedBilling("BL-1", "P-1", 11000);
+    const id = await register({ amount: 12000 });
+
+    const res = await call(`/${id}/link`, "POST", { billingHeaderId: "BL-1" });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("未消込額");
+    expect(((await (await call(`/${id}`)).json()) as any).status).toBe("UNLINKED");
+    expect(await db.select().from(schema.paymentReceipts)).toHaveLength(0);
   });
 });

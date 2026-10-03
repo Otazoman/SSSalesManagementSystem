@@ -386,6 +386,83 @@ describe("SalesInvoiceCrudService: 受注明細単位の残数量検証", () => 
   });
 });
 
+describe("SalesInvoiceCrudService: BUG-050 受注の得意先との一致", () => {
+  beforeEach(async () => {
+    await db.insert(schema.partners).values({
+      id: "P-2",
+      name: "取引先2",
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+  });
+
+  const makeBody = (partnerId: string, orderItemId: string, salesOrderId: string | null = "SO-P1") => ({
+    partnerId,
+    salesOrderId,
+    invoiceDate: now.toISOString(),
+    totalAmount: 1100,
+    taxAmount: 100,
+    items: [
+      {
+        itemId: "ITEM-1",
+        itemName: "品目A",
+        sourceOrderItemId: orderItemId,
+        quantity: 1,
+        unitPrice: 1000,
+        taxCategoryCode: "TAX_10",
+      },
+    ],
+  });
+
+  it("受注の得意先と異なる取引先で売上を登録するとBadRequestErrorで、売上は作られない", async () => {
+    const orderItemId = await seedSalesOrder("SO-P1", 10);
+    const body = makeBody("P-2", orderItemId);
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(body));
+
+    await expect(
+      withContext((c) => getService(c).createInvoice(c, formData, body as any)),
+    ).rejects.toThrow(/得意先/);
+    expect(await db.select().from(schema.salesInvoices)).toHaveLength(0);
+  });
+
+  it("受注番号を指定せず、明細だけ別の得意先の受注明細を指定した場合もBadRequestError", async () => {
+    const orderItemId = await seedSalesOrder("SO-P1", 10);
+    const body = makeBody("P-2", orderItemId, null);
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(body));
+
+    await expect(
+      withContext((c) => getService(c).createInvoice(c, formData, body as any)),
+    ).rejects.toThrow(/得意先/);
+  });
+
+  it("受注の得意先と同じ取引先なら売上を登録できる", async () => {
+    const orderItemId = await seedSalesOrder("SO-P1", 10);
+    const body = makeBody("P-1", orderItemId);
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(body));
+
+    const created = await withContext((c) => getService(c).createInvoice(c, formData, body as any));
+    expect(created.success).toBe(true);
+  });
+
+  it("更新で取引先を受注の得意先と異なるものに変えるとBadRequestError", async () => {
+    const orderItemId = await seedSalesOrder("SO-P1", 10);
+    const body = makeBody("P-1", orderItemId);
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(body));
+    const created = await withContext((c) => getService(c).createInvoice(c, formData, body as any));
+    const id = (created as any).id as string;
+
+    await expect(
+      withContext((c) => getService(c).updateInvoice(c, id, new FormData(), makeBody("P-2", orderItemId) as any)),
+    ).rejects.toThrow(/得意先/);
+  });
+});
+
 describe("SalesInvoiceCrudService: 削除", () => {
   it("DRAFT状態の売上は直接削除できる", async () => {
     const formData = new FormData();

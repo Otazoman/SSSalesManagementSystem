@@ -20,6 +20,21 @@ export class WarehouseStockReservationRepository {
     this.db = drizzle(d1, { schema });
   }
 
+  // BUG-056: 品目マスタでサービス(isService)の品目id。在庫を持たないため、引当・不足確認の対象外にする。
+  // D1は1文100変数までのため、90件ずつ問い合わせる
+  async findServiceItemIds(itemIds: Array<string | null | undefined>): Promise<Set<string>> {
+    const ids = [...new Set(itemIds.filter((id): id is string => !!id))];
+    const result = new Set<string>();
+    for (let i = 0; i < ids.length; i += 90) {
+      const rows = await this.db
+        .select({ id: schema.items.id })
+        .from(schema.items)
+        .where(and(inArray(schema.items.id, ids.slice(i, i + 90)), eq(schema.items.isService, true)));
+      for (const r of rows) result.add(r.id);
+    }
+    return result;
+  }
+
   static fromDb(
     db: ReturnType<typeof drizzle<typeof schema>>,
   ): WarehouseStockReservationRepository {
@@ -281,8 +296,10 @@ export async function reserveOrderItemsWarehouseAware(
   now: Date,
 ): Promise<Map<string, WarehouseAwareReservationResult>> {
   const results = new Map<string, WarehouseAwareReservationResult>();
+  // BUG-056: サービス品目(isService)は在庫を持たないため対象外
+  const serviceItemIds = await repo.findServiceItemIds(items.map((item) => item.itemId));
   for (const item of items) {
-    if (!isReservableLine(item)) continue;
+    if (!isReservableLine(item) || serviceItemIds.has(item.itemId)) continue;
     const allocationRequest = parseAllocationRequest(item.warehouseAllocationRequest);
     const result = await reserveSingleItem(repo, item.itemId, item.quantity, allocationRequest, now);
     for (const r of result.reservations) {
@@ -302,9 +319,12 @@ export async function retryBackorderedItems(
   now: Date,
 ): Promise<Map<string, WarehouseAwareReservationResult>> {
   const results = new Map<string, WarehouseAwareReservationResult>();
+  // BUG-056: サービス品目(isService)は在庫を持たないため対象外
+  const serviceItemIds = await repo.findServiceItemIds(items.map((item) => item.itemId));
   for (const item of items) {
     if (item.backorderedQuantity <= 0) continue;
     if (!isReservableLine({ ...item, quantity: item.backorderedQuantity })) continue;
+    if (serviceItemIds.has(item.itemId as string)) continue;
     const result = await reserveSingleItem(repo, item.itemId as string, item.backorderedQuantity, null, now);
     for (const r of result.reservations) {
       await repo.insertReservationLedgerRow(item.id, r.warehouseId, r.quantity, now);
@@ -393,9 +413,11 @@ export async function adjustReservationForUpdateSubmission(
 
   // 2. 新明細に対して引当を試みる(ledgerへの書込みは行わない、対象の実明細行がまだ無いため)
   const outcomeItems: PendingUpdateReservationOutcomeItem[] = [];
+  // BUG-056: サービス品目(isService)は在庫を持たないため対象外
+  const serviceItemIds = await repo.findServiceItemIds(newItems.map((item) => item.itemId));
   for (let index = 0; index < newItems.length; index++) {
     const item = newItems[index];
-    if (!isReservableLine(item)) continue;
+    if (!isReservableLine(item) || serviceItemIds.has(item.itemId)) continue;
     const allocationRequest = parseAllocationRequest(item.warehouseAllocationRequest);
     const result = await reserveSingleItem(repo, item.itemId, item.quantity, allocationRequest, now);
     outcomeItems.push({
@@ -471,8 +493,10 @@ export async function previewStockShortage(
     string,
     { quantity: number; allocationRequest: WarehouseAllocationRequestLine[] }
   >();
+  // BUG-056: サービス品目(isService)は在庫を持たないため対象外
+  const serviceItemIds = await repo.findServiceItemIds(items.map((item) => item.itemId));
   for (const item of items) {
-    if (!isReservableLine(item)) continue;
+    if (!isReservableLine(item) || serviceItemIds.has(item.itemId)) continue;
     const existing = byItem.get(item.itemId) || { quantity: 0, allocationRequest: [] };
     existing.quantity += item.quantity;
     const req = parseAllocationRequest(item.warehouseAllocationRequest);

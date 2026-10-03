@@ -163,6 +163,8 @@ describe("POST /:id/payment-receipts", () => {
 
   it("存在する請求への消込記録は200・集計を返す", async () => {
     await seedBilling("BL-1");
+    // BUG-051: 未発行(下書き)の請求には入金を記録できないため、発行済みにする
+    await db.update(schema.billingHeaders).set({ status: "ISSUED" }).where(eq(schema.billingHeaders.id, "BL-1"));
     const ctx = createExecutionContext();
     const res = await billingRouter.request(
       "/BL-1/payment-receipts",
@@ -178,6 +180,25 @@ describe("POST /:id/payment-receipts", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reconciliationStatus: string };
     expect(body.reconciliationStatus).toBe("RECONCILED");
+  });
+});
+
+describe("POST /:id/payment-receipts BUG-051", () => {
+  it("未発行(下書き)の請求への消込記録は400", async () => {
+    await seedBilling("BL-1");
+    const ctx = createExecutionContext();
+    const res = await billingRouter.request(
+      "/BL-1/payment-receipts",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receivedDate: now.toISOString(), amount: 11000 }),
+      },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(400);
   });
 });
 

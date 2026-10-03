@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { createLineIdChecker } from "../../../platform/csv/line-id";
 import { PurchaseOrderRepository } from "./purchase-order.repository";
 import { RESOURCE_KEY } from "./purchase-order-constants";
 import { buildPurchaseOrderItemInsertRow } from "./purchase-order-item-mapper";
@@ -46,6 +47,8 @@ export class PurchaseOrderCsvService {
       "purchasePersonEmployeeNumber",
       "inputPersonEmployeeNumber",
       "isPaid",
+      // 明細ID。仕入のCSV(sourceOrderItemId)から発注明細を指すために使う。取り込み直しても同じIDになる
+      "lineId",
       "itemId",
       "itemName",
       "inputType",
@@ -82,6 +85,7 @@ export class PurchaseOrderCsvService {
         csvField(`${o.purchasePersonEmployeeNumber || ""}`),
         csvField(`${o.inputPersonEmployeeNumber || ""}`),
         o.isPaid ? "TRUE" : "FALSE",
+        csvField(item?.id),
         csvField(`${item?.itemId || ""}`),
         csvField(item?.itemName),
         csvField(`${item?.inputType || "MASTER"}`),
@@ -133,6 +137,7 @@ export class PurchaseOrderCsvService {
     ]);
     const idxInputPerson = getIdx(["inputpersonemployeenumber", "input_person_employee_number"]);
     const idxIsPaid = getIdx(["ispaid", "is_paid"]);
+    const idxLineId = getIdx(["lineid", "line_id"]);
     const idxItemId = getIdx(["itemid", "item_id"]);
     const idxItemName = getIdx(["itemname", "item_name"]);
     const idxInputType = getIdx(["inputtype", "input_type"]);
@@ -150,6 +155,9 @@ export class PurchaseOrderCsvService {
 
     // BUG-049: ここから commit() までの DB への書き込みは記録だけして、1回の batch で書き込む(途中で失敗した時に半端に残らないように)
     const tx = recordWritesForBatch(this.repo);
+    // 仕入・入庫などから明細を参照されている発注は、明細を入れ替えない(消すとFK制約で取込全体が失敗するため)
+    const itemsLockedOrderIds = new Set<string>();
+    const checkLineId = createLineIdChecker("発注", (lineId) => this.repo.findOrderIdOfItem(lineId));
     for (const cols of allLines.slice(1)) {
       if (cols.length <= idxId || !cols[idxId]) continue;
       const id = cols[idxId].trim();
@@ -162,7 +170,12 @@ export class PurchaseOrderCsvService {
       };
 
       if (!clearedIds.has(id)) {
-        await tx.repo.deleteOrderItems(id);
+        const existingItems = await this.repo.findOrderItems(id);
+        if (await this.repo.hasDownstreamItemReferences(existingItems.map((item: { id: string }) => item.id))) {
+          itemsLockedOrderIds.add(id);
+        } else {
+          await tx.repo.deleteOrderItems(id);
+        }
         clearedIds.add(id);
 
         const rawTotal = getCellVal(idxTotalAmount);
@@ -203,7 +216,9 @@ export class PurchaseOrderCsvService {
 
       const itemId = getCellVal(idxItemId);
       const itemName = getCellVal(idxItemName);
-      if (itemId || itemName) {
+      if ((itemId || itemName) && !itemsLockedOrderIds.has(id)) {
+        const lineId = getCellVal(idxLineId);
+        await checkLineId(lineId, id);
         const rawQty = getCellVal(idxQuantity);
         const rawPrice = getCellVal(idxUnitPrice);
         const rawInputType = getCellVal(idxInputType);
@@ -214,6 +229,7 @@ export class PurchaseOrderCsvService {
         await tx.repo.insertOrderItem(
           buildPurchaseOrderItemInsertRow(
             {
+              lineId,
               itemId: itemId || "",
               itemName,
               inputType: rawInputType === "DIRECT" ? "DIRECT" : "MASTER",

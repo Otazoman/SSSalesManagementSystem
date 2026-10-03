@@ -8,6 +8,8 @@ import { SearchQuotesQuery } from "./quote.schema";
 import { resolveOperatorEmployeeNumber } from "../../../platform/repository/fallback-operator";
 import { combineConditions } from "../../../platform/repository/search-conditions";
 import { PaginationParams, toOffset } from "../../../platform/http/pagination";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { buildQuoteItemInsertRow, QuoteItemInput } from "./quote-item-mapper";
 import { buildOrderBy, SortQuery } from "../../../platform/http/sort";
 import { containsText } from "../../../platform/repository/text-search";
 
@@ -175,6 +177,28 @@ export class QuoteRepository {
       });
   }
 
+  // CSV取込の明細ID(lineId)の検証用: その明細IDを持つ見積のID(無ければnull)
+  async findQuoteIdOfItem(quoteItemId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ quoteId: schema.quoteItems.quoteId })
+      .from(schema.quoteItems)
+      .where(eq(schema.quoteItems.id, quoteItemId))
+      .limit(1);
+    return rows[0]?.quoteId ?? null;
+  }
+
+  // CSV取込の再取込用: 見積明細が受注明細から参照されているか(参照されていれば明細を入れ替えない。
+  // 入れ替えると受注との明細のつながりが消え、見積の受注済み数量が分からなくなるため。受注のCSV取込と同じ方針)
+  async hasDownstreamItemReferences(quoteItemIds: string[]): Promise<boolean> {
+    if (quoteItemIds.length === 0) return false;
+    const rows = await this.db
+      .select({ id: schema.salesOrderItems.id })
+      .from(schema.salesOrderItems)
+      .where(inArray(schema.salesOrderItems.sourceQuoteItemId, quoteItemIds))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   // 明細クリア
   // Item7残課題(2026-08-27、ユーザー報告): 見積から受注を作成すると
   // sales_order_items.sourceQuoteItemIdが本テーブルの行を参照するが、この参照にFK制約の
@@ -201,29 +225,62 @@ export class QuoteRepository {
       .where(eq(schema.quoteItems.quoteId, quoteId));
   }
 
-  // BUG-048: 承認済みの伝票の変更申請の承認時に、ヘッダーの更新・明細の入れ替え・履歴を1回の batch で書き込む
-  // (以前は1つずつ書き込んでいたため、途中で失敗すると明細が消えたままになりえた)。itemRows が null なら明細は変えない
+  // 見積の明細を、明細IDを保ったまま保存内容に合わせる書き込みを組み立てる(まだ実行しない)。
+  // 保存内容の明細のうち、この見積に既にある明細IDを持つものは更新、それ以外は新しい明細として追加し、
+  // 保存内容に無い明細は削除する。受注明細から参照されている明細(sourceQuoteItemId)は削除させない(400)。
+  // 以前は明細を全件入れ替え、受注明細からの参照をNULLへ退避していたが、見積の既受注数量(BUG-059)の計算に
+  // 使うようになったため、明細IDとつながりを保つ方式に変えた
+  async buildItemSyncWrites(quoteId: string, items: Array<QuoteItemInput & { id?: string | null }>) {
+    const existingIds = new Set(
+      (await this.db.select({ id: schema.quoteItems.id }).from(schema.quoteItems).where(eq(schema.quoteItems.quoteId, quoteId))).map(
+        (row) => row.id,
+      ),
+    );
+    const keptIds = new Set(items.map((item) => item.id).filter((id): id is string => !!id && existingIds.has(id)));
+    const removedIds = [...existingIds].filter((id) => !keptIds.has(id));
+
+    if (removedIds.length > 0) {
+      const referencing = await this.db
+        .select({ salesOrderId: schema.salesOrderItems.salesOrderId })
+        .from(schema.salesOrderItems)
+        .where(inArray(schema.salesOrderItems.sourceQuoteItemId, removedIds));
+      if (referencing.length > 0) {
+        const orderIds = [...new Set(referencing.map((row) => row.salesOrderId))].join(", ");
+        throw new BadRequestError(
+          `受注[${orderIds}]から参照されている見積明細は削除できません(明細を残したまま数量などを変更してください)`,
+        );
+      }
+    }
+
+    const writes: any[] = [];
+    if (removedIds.length > 0) {
+      writes.push(this.db.delete(schema.quoteItems).where(inArray(schema.quoteItems.id, removedIds)));
+    }
+    items.forEach((item, index) => {
+      const isKept = !!item.id && keptIds.has(item.id);
+      const row = buildQuoteItemInsertRow({ ...item, lineId: isKept ? item.id : null }, quoteId, index);
+      if (isKept) {
+        const { id: rowId, ...values } = row;
+        writes.push(this.db.update(schema.quoteItems).set(values).where(eq(schema.quoteItems.id, rowId)));
+      } else {
+        writes.push(this.db.insert(schema.quoteItems).values(row));
+      }
+    });
+    return writes;
+  }
+
+  // BUG-048: 承認済みの伝票の変更申請の承認時に、ヘッダーの更新・明細の更新・履歴を1回の batch で書き込む
+  // (以前は1つずつ書き込んでいたため、途中で失敗すると明細が消えたままになりえた)。items が null なら明細は変えない。
+  // 明細は buildItemSyncWrites で明細IDを保ったまま更新する(受注明細とのつながりを保つ)
   async applyApprovedUpdate(
     quoteId: string,
     header: Partial<typeof schema.quotes.$inferInsert>,
-    itemRows: (typeof schema.quoteItems.$inferInsert)[] | null,
+    items: Array<QuoteItemInput & { id?: string | null }> | null,
     history: typeof schema.quoteHistoryLogs.$inferInsert,
   ) {
     const statements: any[] = [this.db.update(schema.quotes).set(header).where(eq(schema.quotes.id, quoteId))];
-    if (itemRows) {
-      const oldIds = (
-        await this.db.select({ id: schema.quoteItems.id }).from(schema.quoteItems).where(eq(schema.quoteItems.quoteId, quoteId))
-      ).map((row) => row.id);
-      if (oldIds.length > 0) {
-        statements.push(
-          this.db
-            .update(schema.salesOrderItems)
-            .set({ sourceQuoteItemId: null })
-            .where(inArray(schema.salesOrderItems.sourceQuoteItemId, oldIds)),
-        );
-      }
-      statements.push(this.db.delete(schema.quoteItems).where(eq(schema.quoteItems.quoteId, quoteId)));
-      for (const row of itemRows) statements.push(this.db.insert(schema.quoteItems).values(row));
+    if (items) {
+      statements.push(...(await this.buildItemSyncWrites(quoteId, items)));
     }
     statements.push(this.db.insert(schema.quoteHistoryLogs).values(history));
     await this.db.batch(statements as [any, ...any[]]);

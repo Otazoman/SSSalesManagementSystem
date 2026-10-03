@@ -365,12 +365,18 @@ export function usePurchaseRecognitionForm({
     setShowOrderPicker(true);
   };
 
-  // ピッカーで選択された発注・明細(数量入力込み)を、現在の明細一覧へ追加する
+  // ピッカーで選択された発注・明細(数量入力込み)を、現在の明細一覧へ追加する。
+  // BUG-050: 取引先を発注の仕入先に切り替える。別の仕入先の発注明細が既に入っている場合は
+  // 追加せず、ピッカーに表示する理由を返す(1つの仕入に複数の仕入先の発注は混在できない)
   const applyOrderSelection = (
     targetOrderId: string,
     selections: Array<{ progress: OrderItemProgress; quantity: number }>,
     orderProjectId?: string | null,
-  ) => {
+    orderPartnerId?: string | null,
+  ): string | undefined => {
+    if (orderPartnerId && orderPartnerId !== partnerId && items.some((item) => !!item.sourceOrderItemId)) {
+      return "別の仕入先の発注明細が既に入っているため、この発注は追加できません(1つの仕入には同じ仕入先の発注だけをまとめられます)";
+    }
     const newItems: PurchaseRecognitionItem[] = selections
       .filter((s) => s.quantity > 0)
       .map((s) => ({
@@ -386,6 +392,8 @@ export function usePurchaseRecognitionForm({
       }));
 
     setOrderId(targetOrderId);
+    // 対象検収は仕入先ごとの記録のため、仕入先が変わる場合は選択をクリアする(handlePartnerChangeと同じ)
+    if (orderPartnerId) handlePartnerChange(orderPartnerId);
     if (orderProjectId) setProjectId(orderProjectId);
     setItems((prev) => {
       const withoutEmptyFirstRow = prev.length === 1 && !prev[0].itemId ? [] : prev;

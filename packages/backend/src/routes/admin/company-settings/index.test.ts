@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { companySettingsRouter } from "./index";
+import { isQuoteWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
 
 /**
  * Frontendリファクタ3-0（ページネーション有効/無効フラグ）の追加に伴う最小限のテスト。
@@ -150,5 +151,25 @@ describe("秘密の値(smtp_pass・slack_bot_token)", () => {
     await put({ smtp_pass: "pass-2", slack_bot_token: "xoxb-2" });
     expect((await stored()).smtp_pass).toBe("pass-2");
     expect((await stored()).slack_bot_token).toBe("xoxb-2");
+  });
+});
+
+describe("BUG-052: 承認機能の項目を送らずに保存した時", () => {
+  it("承認機能はOFFとして保存され、GETもOFFを返し、実際の判定もOFF", async () => {
+    const putRes = await companySettingsRouter.request(
+      "/",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_pagination_enabled: true }),
+      },
+      env,
+    );
+    expect(putRes.status).toBe(200);
+
+    const body = await (await companySettingsRouter.request("/", {}, env)).json();
+    expect(body.is_quote_approval_enabled).toBe(false);
+    expect(body.is_partner_approval_enabled).toBe(false);
+    expect(await isQuoteWorkflowGloballyEnabled(env.COMPANY_SETTINGS)).toBe(false);
   });
 });

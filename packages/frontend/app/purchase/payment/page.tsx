@@ -72,6 +72,7 @@ export default function PurchasePaymentPage() {
     handleSubmitCreatePayment,
     handleRecordDisbursement,
     handleCSVImportChange,
+    handleDisbursementsCSVImportChange,
     selectedPaymentIds,
     handleToggleSelectPayment,
     isFirmBankingModalOpen,
@@ -183,6 +184,28 @@ export default function PurchasePaymentPage() {
                 className="hidden"
                 disabled={!canCreate || isSubmitting}
                 onChange={handleCSVImportChange}
+              />
+              {/* BUG-060: 支払消込(支払の記録)のCSV取込 */}
+              <button
+                type="button"
+                onClick={() =>
+                  document
+                    .getElementById("payment-disbursements-csv-import-hidden-input")
+                    ?.click()
+                }
+                disabled={!canCreate || isSubmitting}
+                title="列: paymentHeaderId,paidDate,amount,method,memo"
+                className="text-xs border border-slate-300 px-3 py-1.5 rounded font-bold text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+              >
+                📤 支払消込CSVインポート
+              </button>
+              <input
+                id="payment-disbursements-csv-import-hidden-input"
+                type="file"
+                accept=".csv"
+                className="hidden"
+                disabled={!canCreate || isSubmitting}
+                onChange={handleDisbursementsCSVImportChange}
               />
               <button
                 type="button"

@@ -21,54 +21,54 @@ export const UpdateCompanySettingsSchema = v.object({
   company_invoice_registration_no: v.optional(v.string(), ""),
   is_audit_log_enabled: v.optional(booleanTransform, true),
   // 旧is_master_approval_enabled。実態は取引先マスタ専用のフラグのため実情に合わせて改名(本番未稼働のため移行処理なしで改名)。
-  is_partner_approval_enabled: v.optional(booleanTransform, true),
+  is_partner_approval_enabled: v.optional(booleanTransform, false),
   // Item4-e: マスタ単位の承認トグル(取引先=is_partner_approval_enabledは既存のまま維持、
   // 他9マスタ分を新規追加)。現時点で実際に機能を持つのは取引先(is_partner_approval_enabled)のみ。
   // 他9項目は将来のItem5実装時に使う想定で、値の保存先だけ先に用意しておく(画面のみ整備、詳細実装は後日)。
-  is_partner_contact_approval_enabled: v.optional(booleanTransform, true),
-  is_product_approval_enabled: v.optional(booleanTransform, true),
-  is_product_price_approval_enabled: v.optional(booleanTransform, true),
-  is_item_structure_approval_enabled: v.optional(booleanTransform, true),
-  is_unit_approval_enabled: v.optional(booleanTransform, true),
-  is_account_approval_enabled: v.optional(booleanTransform, true),
-  is_warehouse_approval_enabled: v.optional(booleanTransform, true),
-  is_location_approval_enabled: v.optional(booleanTransform, true),
+  is_partner_contact_approval_enabled: v.optional(booleanTransform, false),
+  is_product_approval_enabled: v.optional(booleanTransform, false),
+  is_product_price_approval_enabled: v.optional(booleanTransform, false),
+  is_item_structure_approval_enabled: v.optional(booleanTransform, false),
+  is_unit_approval_enabled: v.optional(booleanTransform, false),
+  is_account_approval_enabled: v.optional(booleanTransform, false),
+  is_warehouse_approval_enabled: v.optional(booleanTransform, false),
+  is_location_approval_enabled: v.optional(booleanTransform, false),
   // 新規要望: 営業拠点マスタ(2026-09-23新設)
-  is_business_location_approval_enabled: v.optional(booleanTransform, true),
-  is_tax_category_approval_enabled: v.optional(booleanTransform, true),
+  is_business_location_approval_enabled: v.optional(booleanTransform, false),
+  is_tax_category_approval_enabled: v.optional(booleanTransform, false),
   // Item4-e: 伝票単位の承認トグル(旧is_document_approval_enabledという単一グローバルフラグを廃止し、
   // 伝票種別ごとに置き換え)。現時点で実際に機能を持つのはis_quote_approval_enabledのみ。
   // 他7項目は将来のItem7-10実装時に使う想定で、値の保存先だけ先に用意しておく。
-  is_quote_approval_enabled: v.optional(booleanTransform, true),
-  is_sales_order_approval_enabled: v.optional(booleanTransform, true),
+  is_quote_approval_enabled: v.optional(booleanTransform, false),
+  is_sales_order_approval_enabled: v.optional(booleanTransform, false),
   // Item9 Phase3: 購買申請。ON時は購買申請の承認申請提出(REGISTER)・変更申請(UPDATE)・
   // 削除申請(DELETE)がWorkflowEngine経由の承認必須になる(quotes/sales_ordersと同じ標準パターン)。
-  is_purchase_requisition_approval_enabled: v.optional(booleanTransform, true),
-  is_purchase_order_approval_enabled: v.optional(booleanTransform, true),
-  is_sales_approval_enabled: v.optional(booleanTransform, true),
-  is_purchase_approval_enabled: v.optional(booleanTransform, true),
+  is_purchase_requisition_approval_enabled: v.optional(booleanTransform, false),
+  is_purchase_order_approval_enabled: v.optional(booleanTransform, false),
+  is_sales_approval_enabled: v.optional(booleanTransform, false),
+  is_purchase_approval_enabled: v.optional(booleanTransform, false),
   // Item8/10(2026-09-13ユーザー確認済み): 売上/仕入の残計上可能数量の基準を選択式にする。
   // false(既定)=受注/発注明細数量に対して独立計上可能。true=出荷/入荷済み数量までしか計上不可
   is_sales_invoice_requires_shipment: v.optional(booleanTransform, false),
   is_purchase_recognition_requires_receipt: v.optional(booleanTransform, false),
-  is_receiving_approval_enabled: v.optional(booleanTransform, true),
-  is_shipping_approval_enabled: v.optional(booleanTransform, true),
-  is_inventory_approval_enabled: v.optional(booleanTransform, true),
+  is_receiving_approval_enabled: v.optional(booleanTransform, false),
+  is_shipping_approval_enabled: v.optional(booleanTransform, false),
+  is_inventory_approval_enabled: v.optional(booleanTransform, false),
   // Item6: 在庫マスタ(外部倉庫の指示発行/実績反映、廃棄決定)。今回は値の保存先のみ用意し、
   // workflow-engine/settings.ts側の判定関数は次回以降のセッションで実装する(後日配線パターン)。
-  is_shipping_instruction_approval_enabled: v.optional(booleanTransform, true),
-  is_shipping_result_approval_enabled: v.optional(booleanTransform, true),
-  is_receiving_instruction_approval_enabled: v.optional(booleanTransform, true),
-  is_receiving_result_approval_enabled: v.optional(booleanTransform, true),
-  is_disposal_approval_enabled: v.optional(booleanTransform, true),
+  is_shipping_instruction_approval_enabled: v.optional(booleanTransform, false),
+  is_shipping_result_approval_enabled: v.optional(booleanTransform, false),
+  is_receiving_instruction_approval_enabled: v.optional(booleanTransform, false),
+  is_receiving_result_approval_enabled: v.optional(booleanTransform, false),
+  is_disposal_approval_enabled: v.optional(booleanTransform, false),
   // Item6 Phase6-3-2: 品質区分変更(破損・不良品管理)。良品⇔破損品/検品待ちどちらの向きの
   // 変更も承認対象とする。targetTypeは入出庫と同じinventory_stockを共有するため、
   // 承認フロー設定自体は新規に追加不要(このON/OFFフラグのみ独立させる)。
-  is_damage_approval_enabled: v.optional(booleanTransform, true),
+  is_damage_approval_enabled: v.optional(booleanTransform, false),
   // Item6 Phase6-3-3: 返品(仕入先へ返品/得意先から返品の両方向)。在庫を増減させる操作のため
   // 独立のフラグとする。targetTypeは入出庫と同じinventory_stockを共有するため、
   // 承認フロー設定自体は新規に追加不要(このON/OFFフラグのみ独立させる)。
-  is_return_approval_enabled: v.optional(booleanTransform, true),
+  is_return_approval_enabled: v.optional(booleanTransform, false),
   is_pagination_enabled: v.optional(booleanTransform, false),
   // BUG-042: 消費税の端数処理(伝票ごと・税率ごとに1回)。floor=切り捨て / round=四捨五入 / ceil=切り上げ
   tax_rounding_mode: v.optional(v.picklist(["floor", "round", "ceil"]), "floor"),

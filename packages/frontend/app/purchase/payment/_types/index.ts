@@ -94,6 +94,8 @@ export interface UnpaidPurchaseRecognition {
   title: string | null;
   partnerId: string;
   recognitionDate: string;
+  // BUG-057: PURCHASE以外(RETURN/DISCOUNT/CORRECTION)は赤伝。選択合計から差し引く
+  documentType?: string;
   totalAmount: number;
   taxAmount: number;
   // trueの場合、紐づく発注が前払済み(isPaid=true)のため選択すると金額¥0の支払明細になる
@@ -109,4 +111,6 @@ export interface PartnerMaster {
   id: string;
   name: string;
   type?: string;
+  // BUG-063: "suspended"(取引停止)は新規の選択肢に出さない
+  status?: string;
 }

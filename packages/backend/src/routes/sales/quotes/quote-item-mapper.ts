@@ -3,6 +3,8 @@
 // quotes.adapter.ts(承認確定時のUPDATE反映)の4箇所でほぼ同一の項目一覧が重複していたため集約。
 
 export interface QuoteItemInput {
+  // CSV取込で明細ID(lineId)を指定した場合はその値を明細のIDにする(空なら自動採番)
+  lineId?: string | null;
   itemId: string;
   itemName?: string | null;
   inputType?: string | null;
@@ -20,7 +22,7 @@ export function buildQuoteItemInsertRow(
   sortOrder: number,
 ) {
   return {
-    id: crypto.randomUUID(),
+    id: item.lineId || crypto.randomUUID(),
     quoteId,
     itemId: item.itemId,
     itemName: item.itemName || null,

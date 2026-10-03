@@ -8,6 +8,10 @@ import { signSessionToken } from "../../../platform/auth/session-token";
 import type { Env } from "../../../types/env";
 import { salesOrdersRouter } from "./index";
 import { WorkflowTasksService } from "../../workflow/workflow-tasks/workflow-tasks.service";
+import {
+  previewStockShortage,
+  WarehouseStockReservationRepository,
+} from "../../../platform/inventory/warehouse-stock-reservation.repository";
 
 // #14-2⑥: 元々2401行あったsales-order.service.test.tsから、在庫引当(ハード引当)・バックオーダー・
 // 欠品自動提案・関連する受注一覧検索(バックオーダー有無・注残有無)の部分を分割したもの。
@@ -1400,5 +1404,50 @@ describe("Item7残課題2-5フォローアップ5: 承認済み受注への変�
 
     expect((await findOrder("O-1"))?.status).toBe("APPROVED");
     expect(await findReservedQuantity("ITEM-1")).toBe(20);
+  });
+});
+
+describe("BUG-056: サービス品目(isService)は在庫の引当・不足確認の対象外", () => {
+  async function seedServiceItem(itemId: string) {
+    await db.insert(schema.items).values({
+      id: itemId,
+      name: `サービス${itemId}`,
+      baseUnitCode: "PCS",
+      accountCode: "ACC1",
+      isService: true,
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+  }
+
+  it("サービス品目を含む受注を確定しても、サービス品目はバックオーダーにならず、在庫品目だけ引き当てる", async () => {
+    await seedItemMasterAndStock("ITEM-1", 100);
+    await seedServiceItem("ITEM-SVC");
+    await seedOrder("O-1", { status: "DRAFT" });
+    await seedOrderItem("O-1", { itemId: "ITEM-1", quantity: 30, inputType: "MASTER" });
+    await seedOrderItem("O-1", { itemId: "ITEM-SVC", quantity: 2, inputType: "MASTER", sortOrder: 1 });
+
+    const res = await callSubmitForApproval("O-1", "applicant-1");
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { warning?: string };
+    expect(body.warning ?? "").not.toContain("バックオーダー");
+    expect(await findReservedQuantity("ITEM-1")).toBe(30);
+    expect(await findReservedQuantity("ITEM-SVC")).toBe(0);
+    expect(await findOrderItemBackorder("O-1", "ITEM-SVC")).toBe(0);
+  });
+
+  it("在庫不足の事前確認でも、サービス品目は不足として扱わない", async () => {
+    await seedItemMasterAndStock("ITEM-1", 100);
+    await seedServiceItem("ITEM-SVC");
+
+    const shortages = await previewStockShortage(new WarehouseStockReservationRepository(env.DB), [
+      { id: "L-1", itemId: "ITEM-SVC", inputType: "MASTER", quantity: 5 },
+      { id: "L-2", itemId: "ITEM-1", inputType: "MASTER", quantity: 500 },
+    ]);
+
+    expect(shortages.map((s) => s.itemId)).toEqual(["ITEM-1"]);
   });
 });

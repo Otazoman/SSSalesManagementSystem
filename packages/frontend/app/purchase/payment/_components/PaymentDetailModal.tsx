@@ -36,6 +36,8 @@ export function PaymentDetailModal({
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
+  // BUG-051: 未消込額を超える支払は記録できない(仕入側には単体の前渡金の仕組みが無いため)
+  const isOverRemaining = Number(amount) > remaining;
 
   const handleSubmitDisbursement = async () => {
     const amountNumber = Number(amount);
@@ -158,34 +160,34 @@ export function PaymentDetailModal({
         </h4>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">
+            <label className="text-[10px] font-bold text-slate-800">
               支払日
             </label>
             <input
               type="date"
-              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
               value={paidDate}
               onChange={(e) => setPaidDate(e.target.value)}
             />
           </div>
           <div className="flex flex-col space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">
+            <label className="text-[10px] font-bold text-slate-800">
               支払額
             </label>
             <input
               type="number"
-              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder={String(remaining)}
             />
           </div>
           <div className="flex flex-col space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">
+            <label className="text-[10px] font-bold text-slate-800">
               支払方法
             </label>
             <select
-              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
               value={method}
               onChange={(e) => setMethod(e.target.value)}
             >
@@ -197,20 +199,25 @@ export function PaymentDetailModal({
             </select>
           </div>
           <div className="flex flex-col space-y-1">
-            <label className="text-[10px] font-bold text-slate-500">メモ</label>
+            <label className="text-[10px] font-bold text-slate-800">メモ</label>
             <input
               type="text"
-              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900"
+              className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
             />
           </div>
         </div>
+        {isOverRemaining && (
+          <p className="text-[11px] font-bold text-red-700">
+            ⚠️ 未消込額(¥{remaining.toLocaleString()})を超える金額は記録できません。
+          </p>
+        )}
         <div className="flex justify-end">
           <Button
             variant="success"
             onClick={handleSubmitDisbursement}
-            disabled={!amount || Number(amount) <= 0}
+            disabled={!amount || Number(amount) <= 0 || isOverRemaining}
           >
             支払を記録する
           </Button>

@@ -196,7 +196,7 @@ export function OrderForm({
           documentId={editingId}
         />
 
-        <fieldset disabled={isLocked} className="space-y-4">
+        <fieldset disabled={isLocked} className="space-y-4 min-w-0">
           <OrderCompanyAndTermsFields
             companyName={companyName}
             setCompanyName={setCompanyName}

@@ -2,7 +2,7 @@ import { Context } from "hono";
 import { QuoteRepository } from "./quote.repository";
 import { QuotePayload } from "./quote.schema";
 import { RESOURCE_KEY } from "./quote-constants";
-import { buildQuoteItemInsertRow } from "./quote-item-mapper";
+import { buildQuoteItemInsertRow, QuoteItemInput } from "./quote-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
@@ -315,13 +315,11 @@ export class QuoteCrudService {
       updatedAt: new Date(),
     });
 
-    await tx.repo.deleteQuoteItems(id);
-    if (body.items && Array.isArray(body.items)) {
-      for (const [index, item] of body.items.entries()) {
-        await tx.repo.insertQuoteItem(
-          buildQuoteItemInsertRow(item, id, index),
-        );
-      }
+    // 明細IDを保ったまま、保存内容に合わせて明細を更新・追加・削除する(受注明細とのつながりを保つ。
+    // 受注から参照されている明細を削除しようとした場合は400で、commit() しないので何も書き込まれない)
+    const syncItems = Array.isArray(body.items) ? (body.items as Array<QuoteItemInput & { id?: string | null }>) : [];
+    for (const write of await tx.repo.buildItemSyncWrites(id, syncItems)) {
+      await write;
     }
 
     const existingAttachments = await this.repo.findQuoteAttachments(id);

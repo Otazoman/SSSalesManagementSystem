@@ -300,6 +300,16 @@ export class SalesOrderRepository {
   // ブロックする(または再インポート時は明細を保持する)ためのチェック。
   // 元は出荷指示/出庫のみを見ていたが、sales_invoice_items(売上計上済み明細)を見落としており
   // 実際にはそちらのFK制約でも同じ例外が発生していたため、あわせてチェックするよう拡張した
+  // CSV取込の明細ID(lineId)の検証用: その明細IDを持つ受注のID(無ければnull)
+  async findOrderIdOfItem(salesOrderItemId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ salesOrderId: schema.salesOrderItems.salesOrderId })
+      .from(schema.salesOrderItems)
+      .where(eq(schema.salesOrderItems.id, salesOrderItemId))
+      .limit(1);
+    return rows[0]?.salesOrderId ?? null;
+  }
+
   async hasDownstreamItemReferences(salesOrderItemIds: string[]): Promise<boolean> {
     if (salesOrderItemIds.length === 0) return false;
     const [shipmentRows, instructionRows, invoiceRows] = await Promise.all([
@@ -566,6 +576,24 @@ export class SalesOrderRepository {
       .from(schema.quoteItems)
       .where(eq(schema.quoteItems.quoteId, quoteId))
       .orderBy(asc(schema.quoteItems.sortOrder));
+  }
+
+  // BUG-059: 見積明細ごとの受注済み数量(その見積明細から作られた受注明細の数量の合計。受注の状態は問わない)
+  async getOrderedQuantitiesByQuoteItemIds(quoteItemIds: string[]): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (quoteItemIds.length === 0) return result;
+    const rows = await this.db
+      .select({
+        quoteItemId: schema.salesOrderItems.sourceQuoteItemId,
+        orderedQuantity: sum(schema.salesOrderItems.quantity),
+      })
+      .from(schema.salesOrderItems)
+      .where(inArray(schema.salesOrderItems.sourceQuoteItemId, quoteItemIds))
+      .groupBy(schema.salesOrderItems.sourceQuoteItemId);
+    for (const r of rows) {
+      if (r.quoteItemId) result.set(r.quoteItemId, Number(r.orderedQuantity || 0));
+    }
+    return result;
   }
 
   // Item7残課題2-5(#4): 在庫一覧でどの受注が引き当てているかのトレーサビリティ表示用。

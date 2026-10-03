@@ -177,12 +177,14 @@ beforeEach(async () => {
   await seedPartner("partner-1");
 });
 
-describe("見積の明細更新: 受注が既に作成済みの見積を編集してもFK制約違反にならない(2026-08-27回帰)", () => {
-  it("sales_order_items.sourceQuoteItemIdが参照する見積明細を持つ見積を更新しても200で成功し、参照はNULLへ退避される", async () => {
+// 2026-08-27回帰: 受注が既に作成済みの見積を編集してもFK制約違反にならないこと。
+// 以前は明細を全件入れ替えるため、受注明細からの参照(sourceQuoteItemId)をNULLへ退避していたが、
+// 見積の既受注数量(BUG-059)の計算に使うようになったため、明細IDを保ったまま更新し、参照を保つ方式に変えた
+describe("見積の明細更新: 受注が既に作成済みの見積を編集しても、受注明細とのつながりが保たれる", () => {
+  async function seedOrderFromQuote() {
     await seedQuote("Q-1", { status: "DRAFT" });
     await seedQuoteItem("Q-1");
-    const quoteItemId = "Q-1-item-1";
-
+    await seedQuoteItem("Q-1", { id: "Q-1-item-2", itemId: "ITEM-2", itemName: "未受注の品目", sortOrder: 1 });
     await db.insert(schema.salesOrders).values({
       id: "SO-1",
       partnerId: "partner-1",
@@ -197,7 +199,7 @@ describe("見積の明細更新: 受注が既に作成済みの見積を編集�
     await db.insert(schema.salesOrderItems).values({
       id: "SO-1-item-1",
       salesOrderId: "SO-1",
-      sourceQuoteItemId: quoteItemId,
+      sourceQuoteItemId: "Q-1-item-1",
       itemId: "ITEM-1",
       itemName: "テスト品目",
       quantity: 1,
@@ -205,28 +207,70 @@ describe("見積の明細更新: 受注が既に作成済みの見積を編集�
       amount: 10000,
       sortOrder: 0,
     });
-
-    const res = await callUpdateQuote("Q-1", "applicant-1", {
+  }
+  const update = (items: unknown[]) =>
+    callUpdateQuote("Q-1", "applicant-1", {
       quoteDate: "2026-01-01",
       partnerId: "partner-1",
       title: "受注作成後の見積編集",
-      items: [
-        {
-          itemId: "ITEM-1",
-          itemName: "テスト品目",
-          quantity: 2,
-          unitPrice: 10000,
-        },
-      ],
+      items,
     });
+  const quoteItemsOf = async () =>
+    (await db.select().from(schema.quoteItems).where(eq(schema.quoteItems.quoteId, "Q-1"))).sort((a, b) => a.sortOrder - b.sortOrder);
+  const orderItemSource = async () =>
+    (await db.select().from(schema.salesOrderItems).where(eq(schema.salesOrderItems.id, "SO-1-item-1")))[0]?.sourceQuoteItemId;
+
+  it("明細IDを付けて更新すると、明細IDが変わらずに内容が更新され、受注明細からの参照も保たれる。新しい明細は追加される", async () => {
+    await seedOrderFromQuote();
+
+    const res = await update([
+      { id: "Q-1-item-1", itemId: "ITEM-1", itemName: "テスト品目", quantity: 2, unitPrice: 10000 },
+      { id: "Q-1-item-2", itemId: "ITEM-2", itemName: "未受注の品目", quantity: 1, unitPrice: 500 },
+      { itemId: "ITEM-3", itemName: "追加の品目", quantity: 1, unitPrice: 300 },
+    ]);
 
     expect(res.status).toBe(200);
+    const items = await quoteItemsOf();
+    expect(items.map((i) => [i.itemId, i.quantity])).toEqual([["ITEM-1", 2], ["ITEM-2", 1], ["ITEM-3", 1]]);
+    expect(items[0].id).toBe("Q-1-item-1");
+    expect(items[1].unitPrice).toBe(500);
+    expect(await orderItemSource()).toBe("Q-1-item-1");
+  });
 
-    const orderItemRows = await db
-      .select()
-      .from(schema.salesOrderItems)
-      .where(eq(schema.salesOrderItems.id, "SO-1-item-1"));
-    expect(orderItemRows[0]?.sourceQuoteItemId).toBeNull();
+  it("受注から参照されていない明細は削除できる", async () => {
+    await seedOrderFromQuote();
+
+    const res = await update([{ id: "Q-1-item-1", itemId: "ITEM-1", itemName: "テスト品目", quantity: 1, unitPrice: 10000 }]);
+
+    expect(res.status).toBe(200);
+    expect((await quoteItemsOf()).map((i) => i.id)).toEqual(["Q-1-item-1"]);
+  });
+
+  it("受注から参照されている明細を削除しようとすると400で、見積は変わらない(明細IDを送らない更新も同じ)", async () => {
+    await seedOrderFromQuote();
+
+    const res = await update([{ itemId: "ITEM-1", itemName: "テスト品目", quantity: 5, unitPrice: 10000 }]);
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("SO-1");
+    expect((await quoteItemsOf()).map((i) => [i.id, i.quantity])).toEqual([["Q-1-item-1", 1], ["Q-1-item-2", 1]]);
+    expect(await orderItemSource()).toBe("Q-1-item-1");
+  });
+
+  it("別の見積の明細IDを送っても、その明細は書き換えず新しい明細として追加する", async () => {
+    await seedOrderFromQuote();
+    await seedQuote("Q-OTHER");
+    await seedQuoteItem("Q-OTHER", { id: "Q-OTHER-item-1", quantity: 9 });
+
+    const res = await update([
+      { id: "Q-1-item-1", itemId: "ITEM-1", itemName: "テスト品目", quantity: 1, unitPrice: 10000 },
+      { id: "Q-OTHER-item-1", itemId: "ITEM-9", itemName: "流用", quantity: 1, unitPrice: 1 },
+    ]);
+
+    expect(res.status).toBe(200);
+    const other = await db.select().from(schema.quoteItems).where(eq(schema.quoteItems.id, "Q-OTHER-item-1"));
+    expect(other[0].quantity).toBe(9);
+    expect((await quoteItemsOf()).map((i) => i.itemId)).toEqual(["ITEM-1", "ITEM-9"]);
   });
 });
 

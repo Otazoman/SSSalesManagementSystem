@@ -590,6 +590,56 @@ describe("承認確定(WorkflowTasksService.approveTask)によるquotes.adapter.
     expect(items[0].quantity).toBe(2);
   });
 
+  it("UPDATE申請の承認でも、明細IDを付けた明細は明細IDを保ったまま更新され、受注明細とのつながりが保たれる", async () => {
+    await enableQuoteApprovalWorkflow();
+    await seedRole("approver_role");
+    await seedUser("approver-1");
+    await seedUserRole("approver-1", "approver_role");
+    await seedApprovalFlow("flow-1", "sales_quotes", [{ order: 1, roleId: "approver_role" }]);
+    await seedQuote("Q-1", { status: "APPROVED" });
+    await seedQuoteItem("Q-1", { itemName: "受注済みの品目", quantity: 1, unitPrice: 100 });
+    await db.insert(schema.salesOrders).values({
+      id: "SO-1",
+      partnerId: "partner-1",
+      sourceQuoteId: "Q-1",
+      orderDate: new Date(),
+      status: "DRAFT",
+      createdBy: "applicant-1",
+      createdAt: new Date(),
+      updatedBy: "applicant-1",
+      updatedAt: new Date(),
+    });
+    await db.insert(schema.salesOrderItems).values({
+      id: "SO-1-item-1",
+      salesOrderId: "SO-1",
+      sourceQuoteItemId: "Q-1-item-1",
+      itemId: "ITEM-1",
+      itemName: "受注済みの品目",
+      quantity: 1,
+      unitPrice: 100,
+      amount: 100,
+      sortOrder: 0,
+    });
+
+    await callRequestUpdateApproval("applicant-1", {
+      targetId: "Q-1",
+      requestType: "UPDATE",
+      payload: {
+        header: { title: "数量変更", partnerId: "partner-1", quoteDate: "2026-02-01" },
+        items: [{ id: "Q-1-item-1", itemId: "ITEM-1", itemName: "受注済みの品目", quantity: 3, unitPrice: 100 }],
+      },
+    });
+    const requestId = (await findPendingRequestByTarget("Q-1"))[0].id;
+    const logs = await db.select().from(schema.workflowLogs).where(eq(schema.workflowLogs.targetId, "Q-1"));
+    const res = await callApproveTask({ logId: logs[0].id, requestId, userId: "approver-1" });
+    expect(res.status).toBe(200);
+
+    const items = await db.select().from(schema.quoteItems).where(eq(schema.quoteItems.quoteId, "Q-1"));
+    expect(items.map((i) => [i.id, i.quantity])).toEqual([["Q-1-item-1", 3]]);
+    const orderItem = await db.select().from(schema.salesOrderItems).where(eq(schema.salesOrderItems.id, "SO-1-item-1"));
+    expect(orderItem[0].sourceQuoteItemId).toBe("Q-1-item-1");
+  });
+
   it("DELETE申請が最終承認されると、見積が物理削除される", async () => {
     await enableQuoteApprovalWorkflow();
     await seedRole("approver_role");

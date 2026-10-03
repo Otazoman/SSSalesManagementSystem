@@ -101,6 +101,21 @@ export async function postCsv(url: string, csv: string, asJson: boolean) {
   return { status: res.status, body };
 }
 
+/** 取込後の確認用に、GETのAPIを呼ぶ(ステータスと応答の本文を返す。JSONでなければ文字列のまま) */
+export async function getApi(url: string) {
+  const ctx = createExecutionContext();
+  const res = await getApp().request(url, {}, env, ctx);
+  await waitOnExecutionContext(ctx);
+  const text = await res.text();
+  let body: any = text;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    /* JSONでない応答(CSVなど)はそのまま扱う */
+  }
+  return { status: res.status, body };
+}
+
 /**
  * sampledata/ のCSVを取り込む。取込に失敗した(200以外)場合や、一部の行が黙って読み飛ばされた場合は例外にする
  * (前提データの取込失敗に気付かないまま後続のテストが進むのを防ぐ)。

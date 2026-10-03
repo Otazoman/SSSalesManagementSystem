@@ -23,8 +23,9 @@ function baseProps(
 }
 
 describe("QuoteStatusAndActions", () => {
-  it("承認機能無効時はステータスを直接編集できるセレクトを表示する", () => {
-    render(<QuoteStatusAndActions {...baseProps()} />);
+  // BUG-058: 新規登録は必ず下書きで保存される(Backend)ため、ステータスを選べるのは編集時だけ
+  it("承認機能無効時、編集中の見積はステータスを直接編集できるセレクトを表示する", () => {
+    render(<QuoteStatusAndActions {...baseProps({ editingId: "Q-1" })} />);
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -158,5 +159,12 @@ describe("QuoteStatusAndActions", () => {
       />,
     );
     expect(screen.queryByText("申請部署")).not.toBeInTheDocument();
+  });
+
+  it("BUG-058: 新規登録時はステータスを選べず、下書きで保存されることを表示する(承認機能無効でも)", () => {
+    render(<QuoteStatusAndActions {...baseProps({ editingId: null })} />);
+
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByText(/新規登録は下書きで保存されます/)).toBeInTheDocument();
   });
 });

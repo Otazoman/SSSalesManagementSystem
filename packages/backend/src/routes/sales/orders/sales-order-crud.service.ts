@@ -857,6 +857,24 @@ export class SalesOrderCrudService {
     return this.repo.findOrderReservationsByItemId(itemId);
   }
 
+  // BUG-059: 見積から受注を作成する画面用。見積明細ごとの受注済み数量・残数量を返す
+  // (分割受注は認めるため、残数量を超える受注も妨げない。画面で二重受注に気づけるようにするための表示用)
+  async getQuoteOrderProgress(quoteId: string) {
+    const quote = await this.repo.findQuoteForOrderCreation(quoteId);
+    if (!quote) throw new NotFoundError("対象の見積が見つかりません");
+    const quoteItems = await this.repo.findQuoteItemsForOrderCreation(quoteId);
+    const ordered = await this.repo.getOrderedQuantitiesByQuoteItemIds(quoteItems.map((i) => i.id));
+    return quoteItems.map((item) => {
+      const orderedQuantity = ordered.get(item.id) ?? 0;
+      return {
+        quoteItemId: item.id,
+        quantity: item.quantity,
+        orderedQuantity,
+        remainingQuantity: Math.max(item.quantity - orderedQuantity, 0),
+      };
+    });
+  }
+
   async requestOrderDeletion(c: Context, id: string) {
     const order = await this.repo.findOrderById(id);
     if (!order) throw new NotFoundError("対象の受注が見つかりません");

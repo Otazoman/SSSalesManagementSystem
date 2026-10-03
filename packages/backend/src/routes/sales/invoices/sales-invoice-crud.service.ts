@@ -2,6 +2,7 @@ import { Context } from "hono";
 import { SalesInvoiceRepository } from "./sales-invoice.repository";
 import { SalesInvoicePayload } from "./sales-invoice.schema";
 import { RESOURCE_KEY } from "./sales-invoice-constants";
+import { assertSalesOrderPartnerMatches } from "./sales-invoice-source-partner";
 import {
   buildSalesInvoiceItemInsertRow,
   SalesInvoiceItemInput,
@@ -221,6 +222,12 @@ export class SalesInvoiceCrudService {
     const documentType = this.validateDocumentType(body);
     const items = (body.items || []) as SalesInvoiceItemInput[];
     await this.validateRemainingQuantities(c, documentType, items);
+    await assertSalesOrderPartnerMatches(
+      this.repo,
+      body.partnerId || (body as any).customerId || null,
+      body.salesOrderId,
+      items.map((item) => item.sourceOrderItemId),
+    );
 
     const opId = await this.repo.getFallbackOperatorId(c);
     let invoiceId = body.id;
@@ -353,6 +360,12 @@ export class SalesInvoiceCrudService {
     const documentType = this.validateDocumentType(body);
     const items = (body.items || []) as SalesInvoiceItemInput[];
     await this.validateRemainingQuantities(c, documentType, items);
+    await assertSalesOrderPartnerMatches(
+      this.repo,
+      body.partnerId || (body as any).customerId || null,
+      body.salesOrderId,
+      items.map((item) => item.sourceOrderItemId),
+    );
 
     const opId = await this.repo.getFallbackOperatorId(c);
     const targetPartnerId = body.partnerId || (body as any).customerId || null;

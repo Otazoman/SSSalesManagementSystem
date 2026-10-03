@@ -269,11 +269,14 @@ export function PurchaseOrderForm({
               <option value="" disabled>
                 -- 仕入先を選択 --
               </option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  [{s.id}] {s.name}
-                </option>
-              ))}
+              {/* BUG-063: 取引停止の仕入先は選択肢に出さない(既に選ばれている伝票では表示を残す) */}
+              {suppliers
+                .filter((s) => s.status !== "suspended" || s.id === partnerId)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    [{s.id}] {s.name}
+                  </option>
+                ))}
             </select>
           </FormField>
 

@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { PurchaseRecognitionRepository } from "./purchase-recognition.repository";
+import { assertPurchaseOrderPartnerMatches } from "./purchase-recognition-source-partner";
 import { RESOURCE_KEY } from "./purchase-recognition-constants";
 import { buildPurchaseRecognitionItemInsertRow } from "./purchase-recognition-item-mapper";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
@@ -152,6 +153,16 @@ export class PurchaseRecognitionCsvService {
         const trimmed = cols[idx].trim();
         return trimmed === "" ? null : trimmed;
       };
+
+      // BUG-050: 行ごとに、取引先と元の発注の仕入先が一致することを確認する
+      // (commit() より前に止めるため、1行でも異なれば1件も取り込まない)
+      await assertPurchaseOrderPartnerMatches(
+        this.repo,
+        partnerId,
+        getCellVal(idxOrderId),
+        [getCellVal(idxSourceOrderItemId)],
+        `CSVの仕入[${id}]: `,
+      );
 
       if (!clearedRecognitionIds.has(id)) {
         await tx.repo.deleteRecognitionItems(id);

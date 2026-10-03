@@ -179,3 +179,27 @@ describe("レスポンシブ対応の後戻り防止(件数の固定)", () => {
     expect(uses.length).toBeGreaterThan(1000);
   });
 });
+
+// BUG-055: <fieldset> は中身の最小幅(幅の広い明細表など)に合わせて広がるため、min-w-0 が無いと
+// 明細表の横スクロールが効かず、フォーム全体が画面・枠の外へはみ出す(見積・受注・売上・仕入で発生)。
+// min-w-0 の無い <fieldset> の件数を固定する(増やさない。min-w-0 を付けて減らしたら BASELINE を下げる)
+describe("BUG-055: min-w-0 の無い <fieldset> の件数の固定", () => {
+  const FIELDSET_BASELINE = 19;
+  const FIELDSET_RE = /<fieldset\b[^>]*>/g;
+
+  it("min-w-0 の無い <fieldset> を増やさない(明細表を入れる場合は必ず min-w-0 を付ける)", () => {
+    const hits: string[] = [];
+    for (const file of sourceFiles(APP_DIR)) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(FIELDSET_RE)) {
+        if (!m[0].includes("min-w-0")) hits.push(relative(APP_DIR, file).replace(/\\/g, "/"));
+      }
+    }
+    expect(
+      hits.length,
+      hits.length > FIELDSET_BASELINE
+        ? `min-w-0 の無い <fieldset> が増えました(${hits.length} > ${FIELDSET_BASELINE})。className に min-w-0 を付けてください\n${hits.join(", ")}`
+        : `min-w-0 の無い <fieldset> が減りました(${hits.length} < ${FIELDSET_BASELINE})。FIELDSET_BASELINE を ${hits.length} に更新してください`,
+    ).toBe(FIELDSET_BASELINE);
+  });
+});

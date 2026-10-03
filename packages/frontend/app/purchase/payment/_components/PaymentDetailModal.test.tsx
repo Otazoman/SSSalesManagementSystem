@@ -61,3 +61,34 @@ describe("PaymentDetailModal(編集キャンセル時の確認)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("PaymentDetailModal: BUG-051 支払額を超える支払", () => {
+  it("未消込額を超える金額では理由を表示し、支払を記録できない", () => {
+    render(
+      <PaymentDetailModal
+        detail={{ ...DETAIL, reconciledAmount: 1000 }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "10001" } });
+
+    expect(screen.getByText(/未消込額\(¥10,000\)を超える金額は記録できません/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeDisabled();
+  });
+
+  it("未消込額ちょうどなら記録できる", () => {
+    render(
+      <PaymentDetailModal
+        detail={{ ...DETAIL, reconciledAmount: 1000 }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "10000" } });
+
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeEnabled();
+  });
+});

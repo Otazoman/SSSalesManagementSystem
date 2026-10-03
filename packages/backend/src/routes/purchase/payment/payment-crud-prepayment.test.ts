@@ -341,6 +341,16 @@ describe("PaymentCrudService.createPayment: 発注前払との統合(K-5-2)", ()
       expect(byId.get("SR-CAND-3").isAdvancePrepaid).toBe(false);
     });
 
+    it("BUG-057: 赤伝(返品など)を画面で区別できるよう、伝票区分(documentType)を返す", async () => {
+      await seedRecognition("SR-CAND-P", { orderId: null });
+      await seedRecognition("SR-CAND-R", { orderId: null, documentType: "RETURN" });
+
+      const candidates = await withContext((c) => getService(c).listCandidateRecognitions(c, "P-1"));
+      const byId = new Map(candidates.map((r: any) => [r.id, r]));
+      expect(byId.get("SR-CAND-P").documentType).toBe("PURCHASE");
+      expect(byId.get("SR-CAND-R").documentType).toBe("RETURN");
+    });
+
     it("取引先未指定の場合は空配列を返す", async () => {
       const candidates = await withContext((c) => getService(c).listCandidateRecognitions(c, ""));
       expect(candidates).toEqual([]);

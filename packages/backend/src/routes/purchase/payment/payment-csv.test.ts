@@ -291,4 +291,14 @@ describe("支払消込CSVインポート: 二重インポート・不正な行�
     await expect(attempt).rejects.toThrow("がCSV内で重複しています");
     expect(await rowsOf()).toHaveLength(0);
   });
+
+  it("BUG-051: 既存の支払消込とCSVの合計が支払額を超えると、行番号つきでエラーにし、1件も登録しない", async () => {
+    await seedHeader();
+    await run(csv('"PM-DUP-1","2026-09-20","6000","BANK_TRANSFER","1回目"'));
+
+    const attempt = run(csv('"PM-DUP-1","2026-09-25","5000","BANK_TRANSFER","2回目"'));
+
+    await expect(attempt).rejects.toThrow("2行目: 支払[PM-DUP-1]の支払消込の合計");
+    expect(await rowsOf()).toHaveLength(1);
+  });
 });

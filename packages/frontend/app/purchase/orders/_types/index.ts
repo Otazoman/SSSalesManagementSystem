@@ -102,6 +102,8 @@ export interface PartnerLookup {
   id: string;
   name: string;
   type?: string;
+  // BUG-063: "suspended"(取引停止)は新規の選択肢に出さない
+  status?: string;
 }
 
 // J-2-a: 発注の個別メール送信を見積(useQuoteForm.tsのPartnerContactOption)と同じ仕様に揃えるための型

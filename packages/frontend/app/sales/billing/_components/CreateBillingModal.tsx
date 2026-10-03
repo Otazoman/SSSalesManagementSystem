@@ -43,6 +43,10 @@ interface CreateBillingModalProps {
 
 // Item8 Phase4: 未請求(APPROVED・billingStatus=UNBILLED)の売上一覧から対象を選び請求を作成する導線。
 // K-4-3: 「売上から選択」に加え、売上計上を介さない「明細を直接入力」タブを追加した
+// BUG-057: 伝票区分がSALE以外(RETURN/DISCOUNT/CORRECTION)の売上は赤伝
+const isRedSlipInvoice = (inv: { documentType?: string }) =>
+  !!inv.documentType && inv.documentType !== "SALE";
+
 export function CreateBillingModal({
   isOpen,
   partners,
@@ -71,7 +75,8 @@ export function CreateBillingModal({
   const selectedTotal =
     candidateInvoices
       .filter((inv) => createForm.salesInvoiceIds.includes(inv.id))
-      .reduce((s, inv) => s + inv.totalAmount, 0) + manualTotal;
+      // BUG-057: 赤伝(返品・値引・訂正)は差し引く(Backendの請求額の計算と同じ)
+      .reduce((s, inv) => s + (isRedSlipInvoice(inv) ? -inv.totalAmount : inv.totalAmount), 0) + manualTotal;
 
   const totalLineCount =
     createForm.salesInvoiceIds.length + createForm.manualItems.length;
@@ -248,7 +253,7 @@ export function CreateBillingModal({
                         </span>
                       </span>
                       <span className="font-mono font-bold text-slate-800">
-                        ¥{inv.totalAmount.toLocaleString()}
+                        {isRedSlipInvoice(inv) ? "△" : ""}¥{inv.totalAmount.toLocaleString()}
                       </span>
                     </label>
                   ))

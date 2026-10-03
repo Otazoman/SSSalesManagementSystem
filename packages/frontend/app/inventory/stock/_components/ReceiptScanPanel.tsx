@@ -147,9 +147,9 @@ export function ReceiptScanPanel({
             className="w-full text-sm border border-slate-300 rounded px-2 py-2 bg-white text-slate-900 font-bold"
           >
             <option value="">指定しない</option>
-            {form.orders.map((o) => (
+            {form.orderOptions.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.id}
+                {o.label}
               </option>
             ))}
           </select>

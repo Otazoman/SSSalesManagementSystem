@@ -21,35 +21,35 @@ const DEFAULT_SETTINGS: UpdateCompanySettingsInput = {
   company_fax: "",
   company_invoice_registration_no: "",
   is_audit_log_enabled: true,
-  is_partner_approval_enabled: true,
-  is_partner_contact_approval_enabled: true,
-  is_product_approval_enabled: true,
-  is_product_price_approval_enabled: true,
-  is_item_structure_approval_enabled: true,
-  is_unit_approval_enabled: true,
-  is_account_approval_enabled: true,
-  is_warehouse_approval_enabled: true,
-  is_location_approval_enabled: true,
-  is_business_location_approval_enabled: true,
-  is_tax_category_approval_enabled: true,
-  is_quote_approval_enabled: true,
-  is_sales_order_approval_enabled: true,
-  is_purchase_requisition_approval_enabled: true,
-  is_purchase_order_approval_enabled: true,
-  is_sales_approval_enabled: true,
-  is_purchase_approval_enabled: true,
+  is_partner_approval_enabled: false,
+  is_partner_contact_approval_enabled: false,
+  is_product_approval_enabled: false,
+  is_product_price_approval_enabled: false,
+  is_item_structure_approval_enabled: false,
+  is_unit_approval_enabled: false,
+  is_account_approval_enabled: false,
+  is_warehouse_approval_enabled: false,
+  is_location_approval_enabled: false,
+  is_business_location_approval_enabled: false,
+  is_tax_category_approval_enabled: false,
+  is_quote_approval_enabled: false,
+  is_sales_order_approval_enabled: false,
+  is_purchase_requisition_approval_enabled: false,
+  is_purchase_order_approval_enabled: false,
+  is_sales_approval_enabled: false,
+  is_purchase_approval_enabled: false,
   is_sales_invoice_requires_shipment: false,
   is_purchase_recognition_requires_receipt: false,
-  is_receiving_approval_enabled: true,
-  is_shipping_approval_enabled: true,
-  is_inventory_approval_enabled: true,
-  is_shipping_instruction_approval_enabled: true,
-  is_shipping_result_approval_enabled: true,
-  is_receiving_instruction_approval_enabled: true,
-  is_receiving_result_approval_enabled: true,
-  is_disposal_approval_enabled: true,
-  is_damage_approval_enabled: true,
-  is_return_approval_enabled: true,
+  is_receiving_approval_enabled: false,
+  is_shipping_approval_enabled: false,
+  is_inventory_approval_enabled: false,
+  is_shipping_instruction_approval_enabled: false,
+  is_shipping_result_approval_enabled: false,
+  is_receiving_instruction_approval_enabled: false,
+  is_receiving_result_approval_enabled: false,
+  is_disposal_approval_enabled: false,
+  is_damage_approval_enabled: false,
+  is_return_approval_enabled: false,
   is_pagination_enabled: false,
   tax_rounding_mode: "floor",
   smtp_host: "smtp.gmail.com",
@@ -97,43 +97,19 @@ export class CompanySettingsService {
 
     const parsedData = JSON.parse(kvData);
 
-    const isPartnerApproval =
-      parsedData.is_partner_approval_enabled !== undefined
-        ? parsedData.is_partner_approval_enabled
-        : (parsedData.is_approval_enabled ?? true);
-
-    // Item4-e: 旧is_document_approval_enabled(単一グローバルフラグ)を伝票種別ごとに置き換えた。
-    // 既存KVデータに新フィールドが無い場合は、旧フラグ(さらに古いis_approval_enabled)から
-    // 一括で引き継ぐことで、移行前の動作(全伝票一律で承認要否を判定)を保つ。
-    const legacyDocumentApproval =
-      parsedData.is_document_approval_enabled ??
-      parsedData.is_approval_enabled ??
-      true;
-    const perDocumentApprovalFields = [
-      "is_quote_approval_enabled",
-      "is_sales_order_approval_enabled",
-      "is_purchase_requisition_approval_enabled",
-      "is_purchase_order_approval_enabled",
-      "is_sales_approval_enabled",
-      "is_purchase_approval_enabled",
-      "is_receiving_approval_enabled",
-      "is_shipping_approval_enabled",
-      "is_inventory_approval_enabled",
-    ] as const;
-    const perDocumentApprovalDefaults = Object.fromEntries(
-      perDocumentApprovalFields.map((field) => [
-        field,
-        parsedData[field] !== undefined
-          ? parsedData[field]
-          : legacyDocumentApproval,
-      ]),
+    // BUG-052: 承認機能のON/OFFは、実際の判定(workflow-engine/settings.ts)と同じく、保存値が true(文字列の
+    // "true" を含む)の時だけONとする。保存されていない項目はOFF(以前はデフォルトON・旧フラグからの引き継ぎで
+    // ONと表示していたが、実際の判定はOFFのため、承認なしで確定されているのに画面ではONに見えていた)
+    const approvalFlags = Object.fromEntries(
+      Object.keys(DEFAULT_SETTINGS)
+        .filter((key) => key.endsWith("_approval_enabled"))
+        .map((key) => [key, parsedData[key] === true || parsedData[key] === "true"]),
     );
 
     return {
       ...DEFAULT_SETTINGS,
       ...parsedData,
-      is_partner_approval_enabled: isPartnerApproval,
-      ...perDocumentApprovalDefaults,
+      ...approvalFlags,
     };
   }
 

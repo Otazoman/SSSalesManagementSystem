@@ -396,3 +396,47 @@ describe("同一受注内にEXTERNAL明細とINTERNAL明細が両方ある場合
     expect(shipmentHeaders).toHaveLength(1);
   });
 });
+
+describe("BUG-056: サービス品目(isService)の明細", () => {
+  it("在庫を持たないサービス品目は、要手動対応に出さない(在庫品目の明細だけが対象になる)", async () => {
+    await db.insert(schema.items).values({
+      id: "ITEM-SVC",
+      name: "設置作業",
+      baseUnitCode: "PCS",
+      accountCode: "ACC1",
+      isService: true,
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    await seedOrder("SO-SVC");
+    await seedOrderItem("SOI-STOCK", "SO-SVC", 5);
+    await seedOrderItem("SOI-SVC", "SO-SVC", 1, "ITEM-SVC");
+
+    const { results } = (await (await callPlan(["SO-SVC"])).json()) as { results: PlanResult[] };
+
+    expect(results[0].manualItems.map((m) => m.salesOrderItemId)).toEqual(["SOI-STOCK"]);
+  });
+
+  it("サービス品目の明細だけの受注は、出荷の対象が無いためスキップされる", async () => {
+    await db.insert(schema.items).values({
+      id: "ITEM-SVC",
+      name: "設置作業",
+      baseUnitCode: "PCS",
+      accountCode: "ACC1",
+      isService: true,
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    await seedOrder("SO-SVC2");
+    await seedOrderItem("SOI-SVC2", "SO-SVC2", 1, "ITEM-SVC");
+
+    const { results } = (await (await callPlan(["SO-SVC2"])).json()) as { results: PlanResult[] };
+
+    expect(results[0].skipped).toBe(true);
+    expect(results[0].manualItems).toHaveLength(0);
+  });
+});

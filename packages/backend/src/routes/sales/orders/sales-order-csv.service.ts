@@ -1,4 +1,5 @@
 import { Context } from "hono";
+import { createLineIdChecker } from "../../../platform/csv/line-id";
 import { SalesOrderRepository } from "./sales-order.repository";
 import { RESOURCE_KEY } from "./sales-order-constants";
 import { buildSalesOrderItemInsertRow } from "./sales-order-item-mapper";
@@ -42,6 +43,8 @@ export class SalesOrderCsvService {
       "terms",
       "updatedBy",
       "inputPersonEmployeeNumber",
+      // 明細ID。売上のCSV(sourceOrderItemId)から受注明細を指すために使う。取り込み直しても同じIDになる
+      "lineId",
       "itemId",
       "itemName",
       "sourceQuoteItemId",
@@ -77,6 +80,7 @@ export class SalesOrderCsvService {
         csvField(o.terms),
         csvField(employeeNoVal),
         csvField(inputPersonVal),
+        csvField(item?.id),
         csvField(`${itemIdVal}`),
         csvField(item?.itemName),
         csvField(item?.sourceQuoteItemId),
@@ -118,6 +122,7 @@ export class SalesOrderCsvService {
     const idxTerms = getIdx(["terms"]);
     const idxUpdatedBy = getIdx(["updatedby", "updated_by"]);
     const idxInputPerson = getIdx(["inputpersonemployeenumber", "input_person_employee_number"]);
+    const idxLineId = getIdx(["lineid", "line_id"]);
     const idxItemId = getIdx(["itemid", "item_id"]);
     const idxItemName = getIdx(["itemname", "item_name"]);
     const idxSourceQuoteItemId = getIdx(["sourcequoteitemid", "source_quote_item_id"]);
@@ -130,6 +135,7 @@ export class SalesOrderCsvService {
 
     let count = 0;
     const clearedOrderIds = new Set<string>();
+    const checkLineId = createLineIdChecker("受注", (lineId) => this.repo.findOrderIdOfItem(lineId));
     const orderSortOrders = new Map<string, number>();
     // Item7残課題2-5フォローアップ: CSVで直接status=APPROVEDを指定した受注は、通常の
     // 承認申請フロー(submitForApproval)を経由しないため、そのままでは在庫引当が一切行われず
@@ -204,6 +210,8 @@ export class SalesOrderCsvService {
 
       const itemId = getCellVal(idxItemId);
       if (itemId && !itemsLockedOrderIds.has(id)) {
+        const lineId = getCellVal(idxLineId);
+        await checkLineId(lineId, id);
         const currentSortOrder = orderSortOrders.get(id) || 0;
         const rawQty = getCellVal(idxQuantity);
         const rawPrice = getCellVal(idxUnitPrice);
@@ -219,6 +227,7 @@ export class SalesOrderCsvService {
         await tx.repo.insertOrderItem(
           buildSalesOrderItemInsertRow(
             {
+              lineId,
               itemId,
               itemName: getCellVal(idxItemName),
               inputType: normalizedInputType,

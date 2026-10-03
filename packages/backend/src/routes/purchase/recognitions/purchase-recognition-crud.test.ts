@@ -387,6 +387,83 @@ describe("PurchaseRecognitionCrudService: 発注明細単位の残数量検証",
   });
 });
 
+describe("PurchaseRecognitionCrudService: BUG-050 発注の仕入先との一致", () => {
+  beforeEach(async () => {
+    await db.insert(schema.partners).values({
+      id: "P-2",
+      name: "取引先2",
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+  });
+
+  const makeBody = (partnerId: string, orderItemId: string, orderId: string | null = "PO-P1") => ({
+    partnerId,
+    orderId,
+    recognitionDate: now.toISOString(),
+    totalAmount: 1100,
+    taxAmount: 100,
+    items: [
+      {
+        itemId: "ITEM-1",
+        itemName: "品目A",
+        sourceOrderItemId: orderItemId,
+        quantity: 1,
+        unitPrice: 1000,
+        taxCategoryCode: "TAX_10",
+      },
+    ],
+  });
+
+  it("発注の仕入先と異なる取引先で仕入を登録するとBadRequestErrorで、仕入は作られない", async () => {
+    const orderItemId = await seedOrder("PO-P1", 10);
+    const body = makeBody("P-2", orderItemId);
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(body));
+
+    await expect(
+      withContext((c) => getService(c).createRecognition(c, formData, body as any)),
+    ).rejects.toThrow(/仕入先/);
+    expect(await db.select().from(schema.purchaseRecognitions)).toHaveLength(0);
+  });
+
+  it("発注番号を指定せず、明細だけ別の仕入先の発注明細を指定した場合もBadRequestError", async () => {
+    const orderItemId = await seedOrder("PO-P1", 10);
+    const body = makeBody("P-2", orderItemId, null);
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(body));
+
+    await expect(
+      withContext((c) => getService(c).createRecognition(c, formData, body as any)),
+    ).rejects.toThrow(/仕入先/);
+  });
+
+  it("発注の仕入先と同じ取引先なら仕入を登録できる", async () => {
+    const orderItemId = await seedOrder("PO-P1", 10);
+    const body = makeBody("P-1", orderItemId);
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(body));
+
+    const created = await withContext((c) => getService(c).createRecognition(c, formData, body as any));
+    expect(created.success).toBe(true);
+  });
+
+  it("更新で取引先を発注の仕入先と異なるものに変えるとBadRequestError", async () => {
+    const orderItemId = await seedOrder("PO-P1", 10);
+    const body = makeBody("P-1", orderItemId);
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(body));
+    const created = await withContext((c) => getService(c).createRecognition(c, formData, body as any));
+    const id = (created as any).id as string;
+
+    await expect(
+      withContext((c) => getService(c).updateRecognition(c, id, new FormData(), makeBody("P-2", orderItemId) as any)),
+    ).rejects.toThrow(/仕入先/);
+  });
+});
+
 describe("PurchaseRecognitionCrudService: L-1-b 対象検収の紐づけ", () => {
   async function seedReceipt(id: string, partnerId: string | null = "P-1") {
     await db.insert(schema.itemReceiptHeaders).values({

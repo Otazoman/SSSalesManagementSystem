@@ -213,13 +213,14 @@ describe("PaymentReconciliationService.recordDisbursement: 消込ロジック", 
     const result = await withContext((c) =>
       getService(c).recordDisbursement(c, paymentId, {
         paidDate: now.toISOString(),
-        amount: 5000,
+        // BUG-051: 合計金額(税込 10,000)を超える分は記録しない(請求は前受金へ回す)ため、累計がちょうど合計になる金額にする
+        amount: 4000,
         method: "CASH",
         memo: "残額支払",
       }),
     );
 
-    expect(result.reconciledAmount).toBe(11000);
+    expect(result.reconciledAmount).toBe(10000);
     expect(result.reconciliationStatus).toBe("RECONCILED");
   });
 
@@ -234,5 +235,22 @@ describe("PaymentReconciliationService.recordDisbursement: 消込ロジック", 
         }),
       ),
     ).rejects.toThrow("見つかりません");
+  });
+
+  it("BUG-051: 支払額の未消込額を超える支払はBadRequestErrorで、記録されない", async () => {
+    const paymentId = await createTestPayment();
+    const [header] = await db.select().from(schema.paymentHeaders).where(eq(schema.paymentHeaders.id, paymentId));
+
+    await expect(
+      withContext((c) =>
+        getService(c).recordDisbursement(c, paymentId, {
+          paidDate: now.toISOString(),
+          amount: header.totalAmount + 1,
+          method: "BANK_TRANSFER",
+          memo: null,
+        }),
+      ),
+    ).rejects.toThrow(/未消込額/);
+    expect(await db.select().from(schema.paymentDisbursements)).toHaveLength(0);
   });
 });

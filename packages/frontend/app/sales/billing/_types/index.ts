@@ -80,6 +80,8 @@ export interface UnbilledSalesInvoice {
   invoiceDate: string;
   status: string;
   billingStatus: string;
+  // BUG-057: SALE以外(RETURN/DISCOUNT/CORRECTION)は赤伝。選択合計から差し引く
+  documentType?: string;
   totalAmount: number;
   taxAmount: number;
 }

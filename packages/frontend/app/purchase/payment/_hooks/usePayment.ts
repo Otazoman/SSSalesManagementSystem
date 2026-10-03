@@ -142,7 +142,8 @@ export function usePayment({ canRead, permsLoading }: UsePaymentProps) {
     }
   };
 
-  const handleImportCSV = async (file: File) => {
+  // BUG-060: 入金消込・支払消込のCSV取込にも使うため、取込先を指定できるようにする(省略時は従来の取込先)
+  const handleImportCSV = async (file: File, url = "/api/purchase-payments/bulk-register") => {
     setIsSubmitting(true);
     setError("");
     setMessage("");
@@ -151,7 +152,7 @@ export function usePayment({ canRead, permsLoading }: UsePaymentProps) {
     formData.append("file", file);
 
     try {
-      const data = await apiFetch<{ message?: string }>("/api/purchase-payments/bulk-register", {
+      const data = await apiFetch<{ message?: string }>(url, {
         method: "POST",
         body: formData,
         defaultErrorMessage: "インポートに失敗しました",

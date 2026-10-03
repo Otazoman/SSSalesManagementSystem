@@ -15,6 +15,13 @@ export interface ReconRow {
 
 const MAX_REPORTED_ERRORS = 20;
 
+/** BUG-051: 請求・支払ごとの上限(合計金額・既存の消込額)と、記録できない理由(未発行など。無ければ省略) */
+export interface ReconLimit {
+  totalAmount: number;
+  reconciledAmount: number;
+  blockedReason?: string;
+}
+
 // 「請求/支払 + 日付 + 金額 + 方法 + メモ」が同じなら同一の消込記録とみなす
 // (同日・同額の別々の記録は、メモを変えれば登録できる)
 export function reconKey(r: { headerId: string; date: Date; amount: number; method: string; memo: string | null }): string {
@@ -51,9 +58,11 @@ export function assertReconRowsAreNew(
   existingKeys: Set<string>,
   label: string,
   headerLabel: string,
+  limits?: Map<string, ReconLimit>,
 ): void {
   const errors = [...parseErrors];
   const seen = new Map<string, number>();
+  const runningTotals = new Map<string, number>();
   for (const row of rows) {
     if (!existingHeaderIds.has(row.headerId)) {
       errors.push(`${row.line}行目: ${headerLabel}[${row.headerId}]が見つかりません`);
@@ -69,6 +78,21 @@ export function assertReconRowsAreNew(
     if (existingKeys.has(key)) {
       errors.push(
         `${row.line}行目: ${headerLabel}[${row.headerId}]に、同じ${label}(日付・金額・方法・メモが同一)が既に登録されています。二重にインポートしている可能性があります`,
+      );
+      continue;
+    }
+    // BUG-051: 記録できない状態(未発行など)と、既存の消込 + CSV の金額の合計が合計金額を超えないかを確認する
+    const limit = limits?.get(row.headerId);
+    if (!limit) continue;
+    if (limit.blockedReason) {
+      errors.push(`${row.line}行目: ${headerLabel}[${row.headerId}]は${limit.blockedReason}`);
+      continue;
+    }
+    const total = (runningTotals.get(row.headerId) ?? limit.reconciledAmount) + row.amount;
+    runningTotals.set(row.headerId, total);
+    if (total > limit.totalAmount) {
+      errors.push(
+        `${row.line}行目: ${headerLabel}[${row.headerId}]の${label}の合計(¥${total.toLocaleString()})が${headerLabel}額(¥${limit.totalAmount.toLocaleString()})を超えています`,
       );
     }
   }

@@ -296,6 +296,23 @@ salesOrdersRouter.post(
 // Item7残課題6: 受注→出荷指示/出庫の消込連携(受注明細ごとの出荷済/残数量・倉庫別引当内訳)
 // ==========================================
 salesOrdersRouter.get(
+  "/quote-progress/:quoteId",
+  describeApiRoute({
+    summary: "見積明細ごとの受注済み数量・残数量を取得(見積から受注を作成する画面用。BUG-059)",
+    tags: ["sales-orders"],
+    responses: {
+      200: { description: "取得成功" },
+      404: { description: "対象の見積が見つからない" },
+    },
+  }),
+  async (c) => {
+    const quoteId = c.req.param("quoteId");
+    const result = await getService(c).getQuoteOrderProgress(quoteId);
+    return c.json(result);
+  },
+);
+
+salesOrdersRouter.get(
   "/:id/shipment-progress",
   describeApiRoute({
     summary: "受注明細ごとの出荷済/残数量・倉庫別引当内訳を取得(出荷指示/出庫の作成導線用)",

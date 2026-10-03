@@ -7,10 +7,7 @@
  */
 import { QuoteRepository } from "../../routes/sales/quotes/quote.repository";
 import { QuoteService } from "../../routes/sales/quotes/quote.service";
-import {
-  buildQuoteItemInsertRow,
-  QuoteItemInput,
-} from "../../routes/sales/quotes/quote-item-mapper";
+import { QuoteItemInput } from "../../routes/sales/quotes/quote-item-mapper";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { NotFoundError } from "../../platform/http/http-error";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
@@ -150,11 +147,10 @@ async function applyApproved({
     updatedAt: now,
   };
 
-  const itemRows = Array.isArray(snapshot.items)
-    ? snapshot.items.map((item, index) => buildQuoteItemInsertRow(item as QuoteItemInput, reqParent.targetId, index))
-    : null;
+  // 明細は明細IDを保ったまま更新する(受注明細とのつながりを保つ。repo.buildItemSyncWrites)
+  const items = Array.isArray(snapshot.items) ? (snapshot.items as Array<QuoteItemInput & { id?: string | null }>) : null;
 
-  await repo.applyApprovedUpdate(reqParent.targetId, headerData, itemRows, {
+  await repo.applyApprovedUpdate(reqParent.targetId, headerData, items, {
     id: crypto.randomUUID(),
     quoteId: reqParent.targetId,
     version: 1,

@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { sql, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import * as schema from "../../db/schema";
 
 /**
@@ -16,6 +16,21 @@ export class StockReservationRepository {
 
   constructor(d1: D1Database) {
     this.db = drizzle(d1, { schema });
+  }
+
+  // BUG-056: 品目マスタでサービス(isService)の品目id。在庫を持たないため、引当・不足確認の対象外にする。
+  // D1は1文100変数までのため、90件ずつ問い合わせる
+  async findServiceItemIds(itemIds: Array<string | null | undefined>): Promise<Set<string>> {
+    const ids = [...new Set(itemIds.filter((id): id is string => !!id))];
+    const result = new Set<string>();
+    for (let i = 0; i < ids.length; i += 90) {
+      const rows = await this.db
+        .select({ id: schema.items.id })
+        .from(schema.items)
+        .where(and(inArray(schema.items.id, ids.slice(i, i + 90)), eq(schema.items.isService, true)));
+      for (const r of rows) result.add(r.id);
+    }
+    return result;
   }
 
   static fromDb(db: ReturnType<typeof drizzle<typeof schema>>): StockReservationRepository {
@@ -101,8 +116,10 @@ export async function reserveOrderItemsOrRollback(
   now: Date,
 ): Promise<{ success: boolean; failedItemId?: string }> {
   const totals = new Map<string, number>();
+  // BUG-056: サービス品目(isService)は在庫を持たないため対象外
+  const serviceItemIds = await repo.findServiceItemIds(items.map((item) => item.itemId));
   for (const item of items) {
-    if (!isReservableLine(item)) continue;
+    if (!isReservableLine(item) || serviceItemIds.has(item.itemId)) continue;
     totals.set(item.itemId, (totals.get(item.itemId) || 0) + item.quantity);
   }
 
@@ -127,8 +144,10 @@ export async function releaseOrderItems(
   now: Date,
 ): Promise<void> {
   const totals = new Map<string, number>();
+  // BUG-056: サービス品目(isService)は在庫を持たないため対象外
+  const serviceItemIds = await repo.findServiceItemIds(items.map((item) => item.itemId));
   for (const item of items) {
-    if (!isReservableLine(item)) continue;
+    if (!isReservableLine(item) || serviceItemIds.has(item.itemId)) continue;
     totals.set(item.itemId, (totals.get(item.itemId) || 0) + item.quantity);
   }
   for (const [itemId, quantity] of totals) {

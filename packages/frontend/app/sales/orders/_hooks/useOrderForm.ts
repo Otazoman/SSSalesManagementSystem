@@ -423,49 +423,61 @@ export function useOrderForm({
         return item;
       }),
     );
-    setItems(updatedItems);
+    // BUG-054: 単価の取得中に明細が変わっていても上書きしない(取得した時点と品目・数量が同じ明細にだけ単価を反映する)
+    setItems((prev) =>
+      prev.map((item, i) => {
+        const priced = updatedItems[i];
+        return priced &&
+          item.inputType === priced.inputType &&
+          item.itemId === priced.itemId &&
+          item.quantity === priced.quantity
+          ? { ...item, unitPrice: priced.unitPrice }
+          : item;
+      }),
+    );
   };
 
+  // BUG-054: 入力した品目・数量はその場で反映し(単価の取得を待たない)、単価の取得結果は、応答が返った時点で
+  // その明細の品目・数量が変わっていない場合だけ反映する。以前は単価の取得を待ってから入力前の明細一覧を元に
+  // 上書きしていたため、続けて入力すると、後から返った古い入力への応答で数量が戻ることがあった
   const handleItemChange = async (index: number, field: keyof OrderItem, value: any) => {
-    const updated = [...items];
-    const currentItem = { ...updated[index], [field]: value };
-
-    if (currentItem.inputType === "MASTER" && (field === "itemId" || field === "quantity")) {
-      const targetItemId = field === "itemId" ? value : currentItem.itemId;
-      const targetQuantity = field === "quantity" ? Number(value) : currentItem.quantity;
-
-      if (targetItemId) {
-        let priceToApply = 0;
-        const specialPriceVal = await fetchSpecialPrice(partnerId, targetItemId, targetQuantity);
-
-        if (specialPriceVal !== null) {
-          priceToApply = specialPriceVal;
-        } else {
-          const originalProd = products.find((p) => p.id === targetItemId);
-          if (originalProd) priceToApply = originalProd.price ?? 0;
-        }
-
-        updated[index] = {
-          ...currentItem,
-          itemId: targetItemId,
-          quantity: targetQuantity,
-          unitPrice: priceToApply,
-        };
-        if (field === "itemId") {
-          const prod = products.find((p) => p.id === value);
-          if (prod) {
-            updated[index].itemName = prod.name;
-            updated[index].unitCode = prod.baseUnitCode || "";
-            updated[index].taxCategoryCode = prod.taxCategoryCode || "";
-          }
-        }
-        setItems(updated);
-        return;
+    const currentItem = { ...items[index], [field]: value };
+    const needsPrice =
+      currentItem.inputType === "MASTER" && (field === "itemId" || field === "quantity");
+    if (needsPrice && field === "quantity") currentItem.quantity = Number(value);
+    if (needsPrice && field === "itemId") {
+      const prod = products.find((p) => p.id === value);
+      if (prod) {
+        currentItem.itemName = prod.name;
+        currentItem.unitCode = prod.baseUnitCode || "";
+        currentItem.taxCategoryCode = prod.taxCategoryCode || "";
       }
     }
+    setItems((prev) => prev.map((item, i) => (i === index ? currentItem : item)));
 
-    updated[index] = { ...updated[index], [field]: value };
-    setItems(updated);
+    const targetItemId = currentItem.itemId;
+    if (!needsPrice || !targetItemId) return;
+    const targetQuantity = currentItem.quantity;
+
+    let priceToApply = 0;
+    const specialPriceVal = await fetchSpecialPrice(partnerId, targetItemId, targetQuantity);
+    if (specialPriceVal !== null) {
+      priceToApply = specialPriceVal;
+    } else {
+      const originalProd = products.find((p) => p.id === targetItemId);
+      if (originalProd) priceToApply = originalProd.price ?? 0;
+    }
+
+    setItems((prev) =>
+      prev.map((item, i) =>
+        i === index &&
+        item.inputType === "MASTER" &&
+        item.itemId === targetItemId &&
+        item.quantity === targetQuantity
+          ? { ...item, unitPrice: priceToApply }
+          : item,
+      ),
+    );
   };
 
   const handleItemTypeChange = (index: number, type: "MASTER" | "DIRECT") => {

@@ -3,7 +3,7 @@ import { BillingRepository } from "./billing.repository";
 import { RESOURCE_KEY } from "./billing-constants";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { parseCsv } from "../../../platform/csv/csv-parser";
-import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconRow } from "../../../platform/csv/reconciliation-rows";
+import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconLimit, type ReconRow } from "../../../platform/csv/reconciliation-rows";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 
 // Item8 Phase4: quote-csv.service.tsと同じ方針。billing_headers+billing_items(1行1明細の
@@ -266,16 +266,24 @@ export class BillingCsvService {
 
     const existingHeaderIds = new Set<string>();
     const existingKeys = new Set<string>();
+    const limits = new Map<string, ReconLimit>();
     for (const id of new Set(rows.map((r) => r.headerId))) {
-      if (!(await this.repo.findHeaderById(id))) continue;
+      const header = await this.repo.findHeaderById(id);
+      if (!header) continue;
       existingHeaderIds.add(id);
-      for (const r of await this.repo.findPaymentReceiptsByHeaderId(id)) {
+      const existing = await this.repo.findPaymentReceiptsByHeaderId(id);
+      limits.set(id, {
+        totalAmount: header.totalAmount,
+        reconciledAmount: existing.reduce((sum, r) => sum + r.amount, 0),
+        blockedReason: header.status === "DRAFT" ? "未発行(下書き)のため入金を記録できません。請求書を発行してから取り込んでください" : undefined,
+      });
+      for (const r of existing) {
         existingKeys.add(
           reconKey({ headerId: id, date: new Date(r.receivedDate), amount: r.amount, method: r.method, memo: r.memo ?? null }),
         );
       }
     }
-    assertReconRowsAreNew(rows, parseErrors, existingHeaderIds, existingKeys, "入金", "請求");
+    assertReconRowsAreNew(rows, parseErrors, existingHeaderIds, existingKeys, "入金", "請求", limits);
 
     let count = 0;
     const affectedHeaderIds = new Set<string>();

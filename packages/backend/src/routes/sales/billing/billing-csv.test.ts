@@ -130,7 +130,8 @@ describe("BillingCsvService: 入金消込データのエクスポート・イン
       partnerId: "P-1",
       billingDate: now,
       mode: "PER_TRANSACTION",
-      status: "DRAFT",
+      // BUG-051: 未発行(下書き)の請求には入金を取り込めないため、発行済みにする
+      status: "ISSUED",
       totalAmount: 10000,
       taxAmount: 1000,
       reconciledAmount: 0,
@@ -283,6 +284,26 @@ describe("入金消込CSVインポート: 二重インポート・不正な行�
     );
 
     await expect(attempt).rejects.toThrow("がCSV内で重複しています");
+    expect(await rowsOf()).toHaveLength(0);
+  });
+
+  it("BUG-051: 既存の入金とCSVの入金の合計が請求額を超えると、行番号つきでエラーにし、1件も登録しない", async () => {
+    await seedHeader();
+    await run(csv('"BL-DUP-1","2026-09-20","6000","BANK_TRANSFER","内金"'));
+
+    const attempt = run(
+      csv('"BL-DUP-1","2026-09-25","3000","BANK_TRANSFER","2回目"', '"BL-DUP-1","2026-09-26","2000","BANK_TRANSFER","3回目"'),
+    );
+
+    await expect(attempt).rejects.toThrow("3行目: 請求[BL-DUP-1]の入金の合計");
+    expect(await rowsOf()).toHaveLength(1);
+  });
+
+  it("BUG-051: 未発行(下書き)の請求への入金は、行番号つきでエラーにする", async () => {
+    await seedHeader();
+    await db.update(schema.billingHeaders).set({ status: "DRAFT" }).where(eq(schema.billingHeaders.id, "BL-DUP-1"));
+
+    await expect(run(csv('"BL-DUP-1","2026-09-25","1000","BANK_TRANSFER",""'))).rejects.toThrow("2行目: 請求[BL-DUP-1]は未発行");
     expect(await rowsOf()).toHaveLength(0);
   });
 });

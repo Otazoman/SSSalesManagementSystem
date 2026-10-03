@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
-import { generateDocumentPDF, PDFInvoiceData } from "./pdfGenerator";
+import { generateDocumentPDF, PDFInvoiceData, resolveMemoBoxTopY } from "./pdfGenerator";
 
 /**
  * 画面構成再編: 納品書PDFのレンダラーを注文請書と同じgenerateDocumentPDF(pdfGenerator.ts)へ
@@ -153,5 +153,40 @@ describe("generateDocumentPDF", () => {
     const pdf = await generateDocumentPDF(data, { fontBuffer });
     expect(isValidPdf(pdf)).toBe(true);
     expect(pdf.length).toBeGreaterThan(1000);
+  });
+});
+
+describe("BUG-053: 備考欄の位置", () => {
+  it("税率別内訳が無い時、備考欄の上端は明細表の下端より下になる(合計欄の有無に関わらず同じ)", () => {
+    const tableBottomY = 500;
+
+    const top = resolveMemoBoxTopY(tableBottomY, null);
+
+    expect(top).toBeLessThan(tableBottomY);
+    expect(top).toBe(tableBottomY - 15);
+  });
+
+  it("税率別内訳がある時は、内訳の下端の下に備考欄を置く", () => {
+    expect(resolveMemoBoxTopY(500, 420)).toBe(410);
+  });
+
+  it("DELIVERY(合計欄なし)で備考ありの納品書を、明細が多くページ末尾に近い場合も例外なく生成できる", async () => {
+    const data: PDFInvoiceData = {
+      templateType: "DELIVERY",
+      code: "SH-0001",
+      date: "2026-08-31",
+      customCompanyName: "テスト株式会社",
+      customCompanyAddress: "東京都",
+      customCompanyTel: "03-0000-0000",
+      customCompanyFax: "03-0000-0001",
+      customerName: "得意先株式会社",
+      totalAmount: 0,
+      taxAmount: 0,
+      memo: "得意先Aへの出荷",
+      items: Array.from({ length: 25 }, (_, i) => ({ itemName: `品目${i + 1}`, quantity: 1, unitPrice: null })),
+    } as PDFInvoiceData;
+
+    const pdf = await generateDocumentPDF(data, { fontBuffer });
+    expect(isValidPdf(pdf)).toBe(true);
   });
 });
