@@ -22,6 +22,7 @@ import {
   TaxCategoryLookup,
   AccountLookup,
 } from "../_types";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 const CATEGORY_OPTIONS: {
   value: PurchaseRequisitionCategory;
@@ -288,7 +289,7 @@ export function PurchaseRequisitionForm({
                   <option value="" disabled>
                     -- 仕入先を選択 --
                   </option>
-                  {suppliers.map((s) => (
+                  {selectablePartners(suppliers, partnerId).map((s) => (
                     <option key={s.id} value={s.id}>
                       [{s.id}] {s.name}
                     </option>

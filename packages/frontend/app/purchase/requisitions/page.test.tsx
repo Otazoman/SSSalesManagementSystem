@@ -39,6 +39,8 @@ function mockAllFetches(
     const u = url.toString();
     if (u.includes("/api/products")) return jsonResponse([]);
     if (u.includes("/api/projects")) return jsonResponse([]);
+    // BUG-067: 仕入先(SUPPLIER)と兼用(BOTH)を別々に取得する。このモックの仕入先は SUPPLIER として返す
+    if (u.includes("/api/partners?type=BOTH")) return jsonResponse([]);
     if (u.includes("/api/partners")) return jsonResponse(opts.suppliers ?? []);
     if (u.includes("/api/departments")) return jsonResponse([]);
     if (u.includes("/api/users")) return jsonResponse([]);

@@ -25,6 +25,7 @@ import { SortQuery } from "../../../platform/http/sort";
 import { DEFAULT_TAX_ROUNDING_MODE, type TaxRoundingMode } from "../../../platform/tax/compute-tax-amounts";
 import { getTaxRoundingMode } from "../../../platform/tax/get-tax-rounding-mode";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 // purchase-requisition-crud.service.tsと同じ方針(検索・詳細取得・CRUD・承認申請/削除申請の状態遷移)。
 // ファイル構成はsales-order-crud.service.tsをテンプレートにしつつ、発注に存在しない概念
@@ -166,6 +167,7 @@ export class PurchaseOrderCrudService {
   }
 
   async createOrder(c: Context, formData: FormData, body: PurchaseOrderPayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId);
     const opId = await this.repo.getFallbackOperatorId(c);
 
     await this.validateRequestReference(c, body);

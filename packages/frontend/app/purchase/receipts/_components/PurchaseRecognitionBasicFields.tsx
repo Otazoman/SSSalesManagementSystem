@@ -5,6 +5,7 @@ import {
   PurchaseRecognitionDocumentType,
   ProjectLookup,
 } from "../_types";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 interface PurchaseRecognitionBasicFieldsProps {
   recognitionId: string;
@@ -127,7 +128,7 @@ export function PurchaseRecognitionBasicFields({
           <option value="" disabled>
             -- 仕入先を選択 --
           </option>
-          {partners.map((p) => (
+          {selectablePartners(partners, partnerId).map((p) => (
             <option key={p.id} value={p.id}>
               [{p.id}] {p.name}
             </option>

@@ -4,6 +4,7 @@ import {
   formFieldLabelClass,
 } from "../../../_shared/ui/FormField";
 import { PartnerMaster, UserOption, ProjectLookup } from "../_types";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 interface QuoteBasicFieldsProps {
   quoteId: string;
@@ -91,7 +92,7 @@ export function QuoteBasicFields({
           <option value="" disabled>
             -- 得意先を選択 --
           </option>
-          {partners.map((cust) => (
+          {selectablePartners(partners, customerId).map((cust) => (
             <option key={cust.id} value={cust.id}>
               [{cust.id}] {cust.name}
             </option>

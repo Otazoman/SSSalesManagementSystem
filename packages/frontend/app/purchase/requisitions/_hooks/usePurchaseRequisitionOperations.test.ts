@@ -36,6 +36,8 @@ function mockInitialFetches(
     const u = url.toString();
     if (u.includes("/api/products")) return jsonResponse(data.items ?? []);
     if (u.includes("/api/projects")) return jsonResponse(data.projects ?? []);
+    // BUG-067: 仕入先(SUPPLIER)と兼用(BOTH)を別々に取得する。このモックの仕入先は SUPPLIER として返す
+    if (u.includes("/api/partners?type=BOTH")) return jsonResponse([]);
     if (u.includes("/api/partners")) return jsonResponse(data.suppliers ?? []);
     if (u.includes("/api/departments")) return jsonResponse(data.departments ?? []);
     if (u.includes("/api/users")) return jsonResponse([]);
@@ -400,6 +402,7 @@ describe("usePurchaseRequisitionOperations", () => {
       // 新規追加のユーザー取得を既存の品目/勘定科目/部署と同じグループにまとめてしまい、
       // ユーザー取得の失敗が他の3つまで巻き添えにしていた不具合)
       if (u.includes("/api/users")) return jsonResponse({ error: "internal error" }, 500);
+      if (u.includes("/api/partners?type=BOTH")) return jsonResponse([]);
       if (u.includes("/api/partners")) return jsonResponse([{ id: "PARTNER-1", name: "仕入先A" }]);
       if (u.includes("/api/units")) return jsonResponse([{ code: "PCS", name: "個" }]);
       if (u.includes("/api/tax-categories")) return jsonResponse([{ code: "TAX_10", name: "10%", taxType: "STANDARD", taxRate: 0.1 }]);

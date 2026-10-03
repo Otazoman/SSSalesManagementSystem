@@ -1,6 +1,7 @@
 import React from "react";
 import { PartnerMaster, UserOption, ProjectLookup } from "../_types";
 import { SourceQuoteViewer } from "./SourceQuoteViewer";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 interface OrderBasicFieldsProps {
   orderId: string;
@@ -91,7 +92,7 @@ export function OrderBasicFields({
           <option value="" disabled>
             -- 得意先を選択 --
           </option>
-          {partners.map((p) => (
+          {selectablePartners(partners, partnerId).map((p) => (
             <option key={p.id} value={p.id}>
               [{p.id}] {p.name}
             </option>

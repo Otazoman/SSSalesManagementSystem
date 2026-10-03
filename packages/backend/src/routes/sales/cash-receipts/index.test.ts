@@ -191,3 +191,17 @@ describe("BUG-051: 単体入金の紐づけ(未発行の請求・未消込額の
     expect(await db.select().from(schema.paymentReceipts)).toHaveLength(0);
   });
 });
+
+describe("BUG-066: 取引停止の取引先", () => {
+  it("取引停止の取引先への単体入金の登録は400", async () => {
+    await db.insert(schema.partners).values({ id: "P-STOP", name: "停止先", type: "CUSTOMER", status: "suspended", ...audit });
+    const res = await call("/register", "POST", {
+      partnerId: "P-STOP",
+      receiptDate: "2026-09-10",
+      amount: 5000,
+      method: "BANK_TRANSFER",
+    });
+    expect(res.status).toBe(400);
+    expect(await db.select().from(schema.cashReceipts)).toHaveLength(0);
+  });
+});

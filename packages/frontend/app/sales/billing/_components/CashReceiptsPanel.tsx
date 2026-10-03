@@ -8,6 +8,7 @@ import { MessageBanner } from "../../../_shared/ui/MessageBanner";
 import { Modal } from "../../../_shared/ui/Modal";
 import { FormActions } from "../../../_shared/ui/FormActions";
 import { buttonClass } from "../../../_shared/ui/Button";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 const INPUT_CLASS =
   "border border-slate-400 rounded px-2 py-1.5 bg-white text-slate-900 placeholder-slate-500 text-base sm:text-xs";
@@ -240,7 +241,7 @@ export function CashReceiptsPanel({
               className={`${INPUT_CLASS} w-full`}
             >
               <option value="">選択してください</option>
-              {c.partners.map((p) => (
+              {selectablePartners(c.partners, c.registerForm.partnerId).map((p) => (
                 <option key={p.id} value={p.id}>
                   [{p.id}] {p.name}
                 </option>

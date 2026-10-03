@@ -13,6 +13,7 @@ import {
   ProjectLookup,
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
+import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
 
 interface RawUserRelation {
   departmentId?: string;
@@ -78,8 +79,9 @@ export function usePurchaseRecognitions({ canRead, permsLoading }: UsePurchaseRe
 
   const fetchPartners = useCallback(async () => {
     try {
-      const data = await apiFetch<PartnerMaster[]>("/api/partners?type=SUPPLIER");
-      setPartners(data.filter((p) => !p.type || p.type === "SUPPLIER"));
+      // BUG-067: 兼用(BOTH)の取引先も選べるようにする
+      const data = await fetchPartnersOfTypes<PartnerMaster>(["SUPPLIER", "BOTH"]);
+      setPartners(data.filter((p) => !p.type || p.type === "SUPPLIER" || p.type === "BOTH"));
     } catch (err) {
       console.error("仕入先マスタの取得に失敗しました", err);
       setPartners([]);

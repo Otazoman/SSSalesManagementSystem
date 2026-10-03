@@ -252,6 +252,42 @@ describe("Item7残課題6: 受注明細への消込連携(出荷指示、単独�
     expect(header[0].salesOrderId).toBeNull();
   });
 
+  it("BUG-065: サービス品目(役務)の受注明細を指定した出荷指示は400でブロックされる", async () => {
+    await seedSalesOrder(5);
+    const now = new Date();
+    await db.insert(schema.items).values({
+      id: "ITEM-SVC",
+      name: "設置作業",
+      baseUnitCode: "PCS",
+      accountCode: "ACC1",
+      isService: true,
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    await db.insert(schema.salesOrderItems).values({
+      id: "SOI-SVC",
+      salesOrderId: "SO-1",
+      itemId: "ITEM-SVC",
+      inputType: "MASTER",
+      quantity: 1,
+      unitPrice: 100,
+      amount: 100,
+      sortOrder: 1,
+    });
+
+    const res = await postInstruction({
+      partnerId: "PARTNER1",
+      warehouseId: "WH2",
+      instructedShipDate: "2026-08-25",
+      items: [{ itemId: "ITEM-SVC", instructedQuantity: 1, salesOrderItemId: "SOI-SVC" }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("サービス");
+  });
+
   it("受注明細の残数量を超える指示数量を指定すると400でブロックされる", async () => {
     await seedSalesOrder(5);
 

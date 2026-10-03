@@ -30,7 +30,10 @@ export class SalesOrderShipmentService {
     const order = await this.repo.findOrderById(orderId);
     if (!order) throw new NotFoundError("対象の受注が見つかりません");
 
-    const items = await this.repo.findOrderItems(orderId);
+    // BUG-065: サービス品目(役務)は在庫を持たず出荷しないため、出荷の残数量(出荷指示・出庫の作成用)に含めない
+    const allItems = await this.repo.findOrderItems(orderId);
+    const serviceItemIds = await this.repo.findServiceItemIds(allItems.map((i: any) => i.itemId));
+    const items = allItems.filter((i: any) => !serviceItemIds.has(i.itemId));
     const itemIds = items.map((i: any) => i.id);
 
     const warehouseReservationRepo = new WarehouseStockReservationRepository(d1);
@@ -89,6 +92,10 @@ export class SalesOrderShipmentService {
     if (!orderItem) {
       throw new NotFoundError(`受注明細が見つかりません: ${salesOrderItemId}`);
     }
+    // BUG-065: サービス品目(役務)は出荷の対象外
+    if ((await this.repo.findServiceItemIds([orderItem.itemId])).size > 0) {
+      throw new BadRequestError(`受注明細[${salesOrderItemId}]はサービス品目(役務)のため、出荷の対象外です`);
+    }
     const shippedRows = await this.repo.getShippedQuantitiesByOrderItemIds([salesOrderItemId]);
     const shippedQuantity = shippedRows[0]?.shippedQuantity || 0;
     const remaining = orderItem.quantity - shippedQuantity;
@@ -101,7 +108,10 @@ export class SalesOrderShipmentService {
 
   // 全明細の受注数量合計と出荷済数量合計を比較し、sales_orders.shipment_statusを更新する
   async recalculateShipmentStatus(orderId: string): Promise<void> {
-    const items = await this.repo.findOrderItems(orderId);
+    // BUG-065: サービス品目(役務)は出荷しないため、出荷状況の判定に含めない
+    const allItems = await this.repo.findOrderItems(orderId);
+    const serviceItemIds = await this.repo.findServiceItemIds(allItems.map((i: any) => i.itemId));
+    const items = allItems.filter((i: any) => !serviceItemIds.has(i.itemId));
     const itemIds = items.map((i: any) => i.id);
     const shippedRows = await this.repo.getShippedQuantitiesByOrderItemIds(itemIds);
     const shippedByItemId = new Map(shippedRows.map((r) => [r.salesOrderItemId, r.shippedQuantity]));

@@ -20,6 +20,7 @@ import {
   BusinessLocationLookup,
   WarehouseLookup,
 } from "../_types";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 interface PurchaseOrderFormProps {
   editingId: string | null;
@@ -270,9 +271,7 @@ export function PurchaseOrderForm({
                 -- 仕入先を選択 --
               </option>
               {/* BUG-063: 取引停止の仕入先は選択肢に出さない(既に選ばれている伝票では表示を残す) */}
-              {suppliers
-                .filter((s) => s.status !== "suspended" || s.id === partnerId)
-                .map((s) => (
+              {selectablePartners(suppliers, partnerId).map((s) => (
                   <option key={s.id} value={s.id}>
                     [{s.id}] {s.name}
                   </option>

@@ -12,6 +12,7 @@ import {
   ProjectLookup,
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
+import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
 
 const DUMMY_PRODUCTS: ProductMaster[] = [
   { id: "PROD-001", name: "スタンダードサーバープラン", price: 50000 },
@@ -85,13 +86,10 @@ export function useQuotes({ canRead, permsLoading }: UseQuotesProps) {
 
   const fetchPartners = useCallback(async () => {
     try {
-      // 得意先に加え、見込み客(商談管理の対象)宛にも見積を作れる
-      const [partnerList, prospectList] = await Promise.all([
-        apiFetch<PartnerMaster[]>("/api/partners?type=CUSTOMER"),
-        apiFetch<PartnerMaster[]>("/api/partners?type=PROSPECT"),
-      ]);
-      const filtered = [...partnerList, ...prospectList].filter(
-        (c) => !c.type || c.type === "CUSTOMER" || c.type === "PROSPECT",
+      // 得意先・兼用に加え、見込み客(商談管理の対象)宛にも見積を作れる(BUG-067: 兼用を含める)
+      const partnerList = await fetchPartnersOfTypes<PartnerMaster>(["CUSTOMER", "BOTH", "PROSPECT"]);
+      const filtered = partnerList.filter(
+        (c) => !c.type || c.type === "CUSTOMER" || c.type === "BOTH" || c.type === "PROSPECT",
       );
       setPartners(filtered);
     } catch (err) {

@@ -22,6 +22,7 @@ import { SortQuery } from "../../../platform/http/sort";
 import { DEFAULT_TAX_ROUNDING_MODE, type TaxRoundingMode } from "../../../platform/tax/compute-tax-amounts";
 import { getTaxRoundingMode } from "../../../platform/tax/get-tax-rounding-mode";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 // Phase3フォローアップ: 見積との項目整合。quote-pdf.service.ts/resolve-quote-placeholders.tsと
 // 同じcomputeQuoteAmountBreakdown()を使い、明細のtaxCategoryCode別に消費税を算出する
@@ -126,6 +127,7 @@ export class PurchaseRequisitionCrudService {
   }
 
   async createRequisition(c: Context, formData: FormData, body: PurchaseRequisitionPayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId);
     const opId = await this.repo.getFallbackOperatorId(c);
     let requisitionId = body.id;
 

@@ -4,6 +4,7 @@ import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-sett
 import { ApiListResponse } from "../../../_shared/api/response-types";
 import { PaymentRecord, PartnerMaster } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
+import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
 
 interface UsePaymentProps {
   canRead: boolean;
@@ -44,8 +45,9 @@ export function usePayment({ canRead, permsLoading }: UsePaymentProps) {
 
   const fetchPartners = useCallback(async () => {
     try {
-      const data = await apiFetch<PartnerMaster[]>("/api/partners?type=SUPPLIER");
-      setPartners(data.filter((p) => !p.type || p.type === "SUPPLIER"));
+      // BUG-067: 兼用(BOTH)の取引先も選べるようにする
+      const data = await fetchPartnersOfTypes<PartnerMaster>(["SUPPLIER", "BOTH"]);
+      setPartners(data.filter((p) => !p.type || p.type === "SUPPLIER" || p.type === "BOTH"));
     } catch (err) {
       console.error("取引先マスタの取得に失敗しました", err);
       setPartners([]);

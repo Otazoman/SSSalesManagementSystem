@@ -22,6 +22,7 @@ import { roundTaxAmount } from "../../../_shared/tax-amounts";
 import { useTaxRoundingMode } from "../../../_shared/hooks/use-tax-rounding-mode";
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
 
 interface UsePurchaseRequisitionOperationsProps {
   canRead: boolean;
@@ -153,7 +154,8 @@ export function usePurchaseRequisitionOperations({
         apiFetch<ProjectLookup[]>("/api/projects?status=active"),
         apiFetch<DepartmentOption[]>("/api/departments?status=active"),
         apiFetch<UserOption[]>("/api/users"),
-        apiFetch<PartnerLookup[]>("/api/partners?type=SUPPLIER"),
+        // BUG-067: 兼用(BOTH)の取引先も仕入先に選べるようにする
+        fetchPartnersOfTypes<PartnerLookup>(["SUPPLIER", "BOTH"]),
         apiFetch<UnitLookup[]>("/api/units"),
         apiFetch<TaxCategoryLookup[]>("/api/tax-categories"),
         apiFetch<AccountLookup[]>("/api/accounts"),

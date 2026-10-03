@@ -211,3 +211,47 @@ describe("発注紐付け入庫の残数量ブロック", () => {
     expect(res3.status).toBe(400);
   });
 });
+
+describe("BUG-065: サービス品目(isService)は入荷の対象外", () => {
+  const SERVICE_ORDER_ITEM_ID = "PO-SVC-LINE";
+  beforeEach(async () => {
+    await db.insert(schema.items).values({
+      id: "ITEM-SVC",
+      name: "保守サービス",
+      baseUnitCode: "PCS",
+      accountCode: "ACC1",
+      isService: true,
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    await db.insert(schema.orderItems).values({
+      id: SERVICE_ORDER_ITEM_ID,
+      orderId: ORDER_ID,
+      itemId: "ITEM-SVC",
+      itemName: "保守サービス",
+      inputType: "MASTER",
+      quantity: 1,
+      unitPrice: 5000,
+      sortOrder: 1,
+    });
+  });
+
+  it("入荷の残数量(入荷・入庫の画面用)に、サービス品目の明細を含めない", async () => {
+    const body = (await (await getReceiptProgress(ORDER_ID)).json()) as Array<{ orderItemId: string }>;
+
+    expect(body.map((b) => b.orderItemId)).toEqual([ORDER_ITEM_ID]);
+  });
+
+  it("サービス品目の発注明細を入庫しようとすると400になる", async () => {
+    const res = await postReceipt({
+      receivedDate: now.toISOString().slice(0, 10),
+      orderId: ORDER_ID,
+      items: [{ itemId: "ITEM-SVC", warehouseId: "WH1", locationId: "LOC1", quantity: 1, orderItemId: SERVICE_ORDER_ITEM_ID }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("サービス");
+  });
+});

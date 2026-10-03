@@ -361,3 +361,85 @@ describe("Item7残課題6: GET /:id/shipment-progress(受注明細ごとの出�
     expect(res.status).toBe(404);
   });
 });
+
+describe("BUG-065: サービス品目(isService)は出荷の対象外", () => {
+  async function seedServiceItem(itemId: string) {
+    await db.insert(schema.items).values({
+      id: itemId,
+      name: `サービス${itemId}`,
+      baseUnitCode: "PCS",
+      accountCode: "ACC1",
+      isService: true,
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+  }
+  async function callGetShipmentProgress(id: string) {
+    const ctx = createExecutionContext();
+    const res = await salesOrdersRouter.request(
+      `/${id}/shipment-progress`,
+      { method: "GET", headers: { Cookie: await buildSessionCookieHeader("applicant-1") } },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+  async function postShipment(body: unknown) {
+    const ctx = createExecutionContext();
+    const res = await stockShipmentsRouter.request(
+      "/register",
+      {
+        method: "POST",
+        headers: { Cookie: await buildSessionCookieHeader("applicant-1"), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+  async function seedOrderWithService() {
+    await seedItemMasterAndStock("ITEM-1", 100);
+    await seedServiceItem("ITEM-SVC");
+    await seedOrder("O-1", { status: "DRAFT" });
+    await seedOrderItem("O-1", { id: "SOI-1", itemId: "ITEM-1", quantity: 10, inputType: "MASTER" });
+    await seedOrderItem("O-1", { id: "SOI-SVC", itemId: "ITEM-SVC", quantity: 2, inputType: "MASTER", sortOrder: 1 });
+    await callSubmitForApproval("O-1", "applicant-1");
+  }
+
+  it("出荷の残数量(出荷指示・出庫の作成画面用)に、サービス品目の明細を含めない", async () => {
+    await seedOrderWithService();
+
+    const body = (await (await callGetShipmentProgress("O-1")).json()) as Array<{ salesOrderItemId: string }>;
+
+    expect(body.map((b) => b.salesOrderItemId)).toEqual(["SOI-1"]);
+  });
+
+  // 出庫は在庫(ロケーション)の確認で先に止まる(サービス品目に在庫は無い)。出荷指示は shipment-instructions の reconciliation.test.ts で確認
+  it("サービス品目の受注明細は出庫できない", async () => {
+    await seedOrderWithService();
+
+    const res = await postShipment({
+      shippedDate: "2026-08-20",
+      items: [{ locationId: "LOC1", itemId: "ITEM-SVC", quantity: 1, salesOrderItemId: "SOI-SVC" }],
+    });
+
+    expect(res.ok).toBe(false);
+  });
+
+  it("在庫品目をすべて出荷すれば、サービス品目の明細があっても受注の出荷状況は「出荷済み」になる", async () => {
+    await seedOrderWithService();
+
+    const res = await postShipment({
+      shippedDate: "2026-08-20",
+      items: [{ locationId: "LOC1", itemId: "ITEM-1", quantity: 10, salesOrderItemId: "SOI-1" }],
+    });
+
+    expect(res.status).toBe(200);
+    expect((await findOrder("O-1"))?.shipmentStatus).toBe("SHIPPED");
+  });
+});

@@ -27,6 +27,7 @@ import { ORIGINAL_REQUIRED_DOCUMENT_TYPES } from "../../../platform/documents/re
 import { recalculateDocumentTotals } from "../../../platform/tax/recalculate-document-totals";
 import { allocateDocumentTaxToLines, DEFAULT_TAX_ROUNDING_MODE, type TaxRoundingMode } from "../../../platform/tax/compute-tax-amounts";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 const NON_PURCHASE_DOCUMENT_TYPES = ["RETURN", "DISCOUNT", "CORRECTION"];
 const DEFAULT_TAX_RATE = 0.1;
@@ -128,8 +129,11 @@ export class PurchaseRecognitionCrudService {
       receivedRows.map((r) => [r.orderItemId, r.receivedQuantity]),
     );
 
+    // BUG-065: サービス品目(役務)は入荷しないため、設定に関わらず発注数量を基準にする
+    const serviceItemIds = await this.repo.findServiceItemIds(items.map((item: any) => item.itemId));
     return items.map((item: any) => {
-      const basisQuantity = requiresReceipt
+      const usesFulfilled = requiresReceipt && !serviceItemIds.has(item.itemId);
+      const basisQuantity = usesFulfilled
         ? receivedByOrderItem.get(item.id) || 0
         : item.quantity;
       const recognizedQuantity = recognizedByOrderItem.get(item.id) || 0;
@@ -146,7 +150,7 @@ export class PurchaseRecognitionCrudService {
         basisQuantity,
         recognizedQuantity,
         remainingQuantity: Math.max(basisQuantity - recognizedQuantity, 0),
-        basis: requiresReceipt ? "RECEIVED" : "ORDERED",
+        basis: usesFulfilled ? "RECEIVED" : "ORDERED",
       };
     });
   }
@@ -217,14 +221,16 @@ export class PurchaseRecognitionCrudService {
         throw new NotFoundError(`発注明細が見つかりません: ${orderItemId}`);
       }
 
-      const basisQuantity = requiresReceipt
+      // BUG-065: サービス品目(役務)は設定に関わらず発注数量を基準にする
+      const usesFulfilled = requiresReceipt && !(await this.repo.findServiceItemIds([orderItem.itemId])).has(orderItem.itemId ?? "");
+      const basisQuantity = usesFulfilled
         ? receivedByOrderItem.get(orderItemId) || 0
         : orderItem.quantity;
       const alreadyRecognized = recognizedByOrderItem.get(orderItemId) || 0;
       const remaining = basisQuantity - alreadyRecognized;
 
       if (item.quantity > remaining) {
-        const basisLabel = requiresReceipt ? "入荷済数量" : "発注数量";
+        const basisLabel = usesFulfilled ? "入荷済数量" : "発注数量";
         throw new BadRequestError(
           `発注明細[${orderItemId}]の残数量(${remaining}、基準: ${basisLabel})を超えています(指定数量: ${item.quantity})`,
         );
@@ -258,6 +264,7 @@ export class PurchaseRecognitionCrudService {
   }
 
   async createRecognition(c: Context, formData: FormData, body: PurchaseRecognitionPayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId || (body as any).supplierId || null);
     // BUG-042: 保存する合計・消費税は、明細から計算し直す(会社設定の端数処理。画面の計算は表示用)
     body = await recalculateDocumentTotals(c.env.COMPANY_SETTINGS, body, await this.repo.findTaxCategoryRates());
     const documentType = this.validateDocumentType(body);

@@ -8,6 +8,7 @@ import { resolveConfiguredDocumentId } from "../../../platform/id/resolve-docume
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { BadRequestError, NotFoundError } from "../../../platform/http/http-error";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 export const RESOURCE_KEY = "sales_cash_receipts";
 
@@ -36,6 +37,7 @@ export class CashReceiptsService {
     if (!(await this.repo.partnerExists(body.partnerId))) {
       throw new BadRequestError(`取引先[${body.partnerId}]が見つかりません`);
     }
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId);
     const receiptDate = new Date(body.receiptDate);
     if (Number.isNaN(receiptDate.getTime())) throw new BadRequestError("入金日が不正です");
 

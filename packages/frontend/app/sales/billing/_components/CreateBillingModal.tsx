@@ -8,6 +8,7 @@ import {
   UnbilledSalesInvoice,
 } from "../_types";
 import { ManualBillingItemForm } from "../_hooks/useBillingActions";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 interface CreateBillingForm {
   partnerId: string;
@@ -105,7 +106,7 @@ export function CreateBillingModal({
             onChange={(e) => onPartnerChange(e.target.value)}
           >
             <option value="">選択してください</option>
-            {partners.map((p) => (
+            {selectablePartners(partners, createForm.partnerId).map((p) => (
               <option key={p.id} value={p.id}>
                 [{p.id}] {p.name}
               </option>

@@ -13,6 +13,7 @@ import {
   ProjectLookup,
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
+import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
 
 const DUMMY_PRODUCTS: ProductMaster[] = [
   { id: "PROD-001", name: "スタンダードサーバープラン", price: 50000 },
@@ -89,7 +90,8 @@ export function useOrders({ canRead, permsLoading }: UseOrdersProps) {
 
   const fetchPartners = useCallback(async () => {
     try {
-      const data = await apiFetch<PartnerMaster[]>("/api/partners?type=CUSTOMER");
+      // BUG-067: 兼用(BOTH)の取引先も受注の得意先に選べるようにする
+      const data = await fetchPartnersOfTypes<PartnerMaster>(["CUSTOMER", "BOTH"]);
       const filtered = data.filter((c) => !c.type || c.type === "CUSTOMER" || c.type === "BOTH");
       setPartners(filtered);
     } catch (err) {

@@ -463,6 +463,61 @@ describe("SalesInvoiceCrudService: BUG-050 受注の得意先との一致", () =
   });
 });
 
+describe("SalesInvoiceCrudService: BUG-065 サービス品目は「出荷済み数量まで」の設定でも受注数量まで計上できる", () => {
+  beforeEach(async () => {
+    await env.COMPANY_SETTINGS.put("config", JSON.stringify({ is_sales_invoice_requires_shipment: true }));
+    await db.insert(schema.items).values({
+      id: "ITEM-SVC",
+      name: "設置作業",
+      baseUnitCode: "EA",
+      isService: true,
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+  });
+
+  const body = (orderItemId: string, itemId: string) => ({
+    partnerId: "P-1",
+    salesOrderId: "SO-SVC",
+    invoiceDate: now.toISOString(),
+    totalAmount: 1100,
+    taxAmount: 100,
+    items: [{ itemId, itemName: "明細", sourceOrderItemId: orderItemId, quantity: 2, unitPrice: 500, taxCategoryCode: "TAX_10" }],
+  });
+
+  it("出荷済み数量が0でも、サービス品目の明細は受注数量まで計上できる", async () => {
+    const stockLineId = await seedSalesOrder("SO-SVC", 10);
+    await db.update(schema.salesOrderItems).set({ itemId: "ITEM-SVC" }).where(eq(schema.salesOrderItems.id, stockLineId));
+    const b = body(stockLineId, "ITEM-SVC");
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(b));
+
+    const created = await withContext((c) => getService(c).createInvoice(c, formData, b as any));
+
+    expect(created.success).toBe(true);
+  });
+
+  it("在庫品目の明細は、これまでどおり出荷済み数量を超えると計上できない", async () => {
+    const stockLineId = await seedSalesOrder("SO-SVC", 10);
+    const b = body(stockLineId, "ITEM-1");
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(b));
+
+    await expect(withContext((c) => getService(c).createInvoice(c, formData, b as any))).rejects.toThrow(/残数量/);
+  });
+
+  it("「受注から選択」用の残数量でも、サービス品目は受注数量を基準にする", async () => {
+    const stockLineId = await seedSalesOrder("SO-SVC", 10);
+    await db.update(schema.salesOrderItems).set({ itemId: "ITEM-SVC" }).where(eq(schema.salesOrderItems.id, stockLineId));
+
+    const progress = await withContext((c) => getService(c).getOrderInvoiceProgress(c, "SO-SVC"));
+
+    expect(progress[0]).toMatchObject({ remainingQuantity: 10, basis: "ORDERED" });
+  });
+});
+
 describe("SalesInvoiceCrudService: 削除", () => {
   it("DRAFT状態の売上は直接削除できる", async () => {
     const formData = new FormData();

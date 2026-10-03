@@ -38,6 +38,7 @@ import {
 import { deleteFromPair } from "../../../platform/r2/bucket-with-fallback";
 import { recalculateDocumentTotals } from "../../../platform/tax/recalculate-document-totals";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 // Item7: quote-crud.service.tsと同じ分割方針(検索・詳細取得・CRUD・承認申請/削除申請の状態遷移)。
 // 受注固有の差分は「見積からの明細組み立て」(createOrder)と「与信確認」(下書き保存・確定の両方)の2点
@@ -197,6 +198,7 @@ export class SalesOrderCrudService {
   }
 
   async createOrder(c: Context, formData: FormData, body: SalesOrderPayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId);
     // BUG-042: 保存する合計・消費税は、明細から計算し直す(会社設定の端数処理。画面の計算は表示用)
     body = await recalculateDocumentTotals(c.env.COMPANY_SETTINGS, body, await this.repo.findTaxCategoryRates());
     const opId = await this.repo.getFallbackOperatorId(c);

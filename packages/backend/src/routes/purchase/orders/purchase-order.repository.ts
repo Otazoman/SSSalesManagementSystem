@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
+import { selectServiceItemIds } from "../../../platform/inventory/service-items";
 import { sql, eq, and, asc, desc, inArray } from "drizzle-orm";
 import { count as sqlCount } from "drizzle-orm";
 import { Context } from "hono";
@@ -29,6 +30,11 @@ export class PurchaseOrderRepository {
 
   constructor(d1: D1Database) {
     this.db = drizzle(d1, { schema });
+  }
+
+  // BUG-056・BUG-065: 品目マスタでサービス(isService)の品目id(在庫・出荷・入荷の対象外。platform/inventory/service-items.ts)
+  async findServiceItemIds(itemIds: Array<string | null | undefined>): Promise<Set<string>> {
+    return selectServiceItemIds(this.db, itemIds);
   }
 
   static fromDb(db: ReturnType<typeof drizzle<typeof schema>>): PurchaseOrderRepository {

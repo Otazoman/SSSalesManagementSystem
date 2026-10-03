@@ -24,7 +24,10 @@ export class PurchaseOrderReceiptService {
     const order = await this.repo.findOrderById(orderId);
     if (!order) throw new NotFoundError("対象の発注が見つかりません");
 
-    const items = await this.repo.findOrderItems(orderId);
+    // BUG-065: サービス品目(役務)は入荷しないため、入荷の残数量(入荷指示・入庫の作成用)に含めない
+    const allItems = await this.repo.findOrderItems(orderId);
+    const serviceItemIds = await this.repo.findServiceItemIds(allItems.map((i: any) => i.itemId));
+    const items = allItems.filter((i: any) => !serviceItemIds.has(i.itemId));
     const itemIds = items.map((i: any) => i.id);
 
     const receivedRows = await this.receiptsRepo.getReceivedQuantitiesByOrderItemIds(itemIds);
@@ -50,6 +53,10 @@ export class PurchaseOrderReceiptService {
     const orderItems = await this.repo.findOrderItemById(orderItemId);
     if (!orderItems) {
       throw new NotFoundError(`発注明細が見つかりません: ${orderItemId}`);
+    }
+    // BUG-065: サービス品目(役務)は入荷の対象外
+    if ((await this.repo.findServiceItemIds([orderItems.itemId])).size > 0) {
+      throw new BadRequestError(`発注明細[${orderItemId}]はサービス品目(役務)のため、入荷の対象外です`);
     }
     const receivedRows = await this.receiptsRepo.getReceivedQuantitiesByOrderItemIds([orderItemId]);
     const receivedQuantity = receivedRows[0]?.receivedQuantity || 0;

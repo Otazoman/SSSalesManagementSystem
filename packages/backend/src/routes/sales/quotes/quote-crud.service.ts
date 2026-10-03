@@ -20,6 +20,7 @@ import { SearchQuotesQuery } from "./quote.schema";
 import { SortQuery } from "../../../platform/http/sort";
 import { recalculateDocumentTotals } from "../../../platform/tax/recalculate-document-totals";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 // Item4-f: quote.service.tsから分割。検索・詳細取得・CRUD・承認申請/削除申請の状態遷移を担当
 export class QuoteCrudService {
@@ -102,6 +103,7 @@ export class QuoteCrudService {
 
   // 5. 新規登録
   async createQuote(c: Context, formData: FormData, body: QuotePayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId || (body as any).customerId || null);
     // BUG-042: 保存する合計・消費税は、明細から計算し直す(会社設定の端数処理。画面の計算は表示用)
     body = await recalculateDocumentTotals(c.env.COMPANY_SETTINGS, body, await this.repo.findTaxCategoryRates());
     const opId = await this.repo.getFallbackOperatorId(c);

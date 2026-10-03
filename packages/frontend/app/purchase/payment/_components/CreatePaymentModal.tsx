@@ -11,6 +11,7 @@ import {
   ItemReceiptSelectionForm,
   ManualPaymentItemForm,
 } from "../_hooks/usePaymentActions";
+import { selectablePartners } from "../../../_shared/partner-options";
 
 interface CreatePaymentForm {
   partnerId: string;
@@ -146,9 +147,7 @@ export function CreatePaymentModal({
           >
             <option value="">選択してください</option>
             {/* BUG-063: 取引停止の仕入先は選択肢に出さない(選択中の場合は表示を残す) */}
-            {partners
-              .filter((p) => p.status !== "suspended" || p.id === createForm.partnerId)
-              .map((p) => (
+            {selectablePartners(partners, createForm.partnerId).map((p) => (
                 <option key={p.id} value={p.id}>
                   [{p.id}] {p.name}
                 </option>

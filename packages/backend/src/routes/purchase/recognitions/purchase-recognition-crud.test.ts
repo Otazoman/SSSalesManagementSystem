@@ -464,6 +464,61 @@ describe("PurchaseRecognitionCrudService: BUG-050 発注の仕入先との一致
   });
 });
 
+describe("PurchaseRecognitionCrudService: BUG-065 サービス品目は「入荷済み数量まで」の設定でも発注数量まで計上できる", () => {
+  beforeEach(async () => {
+    await env.COMPANY_SETTINGS.put("config", JSON.stringify({ is_purchase_recognition_requires_receipt: true }));
+    await db.insert(schema.items).values({
+      id: "ITEM-SVC",
+      name: "設置作業",
+      baseUnitCode: "EA",
+      isService: true,
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+  });
+
+  const body = (orderItemId: string, itemId: string) => ({
+    partnerId: "P-1",
+    orderId: "PO-SVC",
+    recognitionDate: now.toISOString(),
+    totalAmount: 1100,
+    taxAmount: 100,
+    items: [{ itemId, itemName: "明細", sourceOrderItemId: orderItemId, quantity: 2, unitPrice: 500, taxCategoryCode: "TAX_10" }],
+  });
+
+  it("入荷済み数量が0でも、サービス品目の明細は発注数量まで計上できる", async () => {
+    const stockLineId = await seedOrder("PO-SVC", 10);
+    await db.update(schema.orderItems).set({ itemId: "ITEM-SVC" }).where(eq(schema.orderItems.id, stockLineId));
+    const b = body(stockLineId, "ITEM-SVC");
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(b));
+
+    const created = await withContext((c) => getService(c).createRecognition(c, formData, b as any));
+
+    expect(created.success).toBe(true);
+  });
+
+  it("在庫品目の明細は、これまでどおり入荷済み数量を超えると計上できない", async () => {
+    const stockLineId = await seedOrder("PO-SVC", 10);
+    const b = body(stockLineId, "ITEM-1");
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(b));
+
+    await expect(withContext((c) => getService(c).createRecognition(c, formData, b as any))).rejects.toThrow(/残数量/);
+  });
+
+  it("「発注から選択」用の残数量でも、サービス品目は発注数量を基準にする", async () => {
+    const stockLineId = await seedOrder("PO-SVC", 10);
+    await db.update(schema.orderItems).set({ itemId: "ITEM-SVC" }).where(eq(schema.orderItems.id, stockLineId));
+
+    const progress = await withContext((c) => getService(c).getOrderRecognitionProgress(c, "PO-SVC"));
+
+    expect(progress[0]).toMatchObject({ remainingQuantity: 10, basis: "ORDERED" });
+  });
+});
+
 describe("PurchaseRecognitionCrudService: L-1-b 対象検収の紐づけ", () => {
   async function seedReceipt(id: string, partnerId: string | null = "P-1") {
     await db.insert(schema.itemReceiptHeaders).values({

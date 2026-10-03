@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
+import { selectServiceItemIds } from "./service-items";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import * as schema from "../../db/schema";
 
@@ -20,19 +21,9 @@ export class WarehouseStockReservationRepository {
     this.db = drizzle(d1, { schema });
   }
 
-  // BUG-056: 品目マスタでサービス(isService)の品目id。在庫を持たないため、引当・不足確認の対象外にする。
-  // D1は1文100変数までのため、90件ずつ問い合わせる
+  // BUG-056・BUG-065: 品目マスタでサービス(isService)の品目id(在庫・出荷・入荷の対象外。platform/inventory/service-items.ts)
   async findServiceItemIds(itemIds: Array<string | null | undefined>): Promise<Set<string>> {
-    const ids = [...new Set(itemIds.filter((id): id is string => !!id))];
-    const result = new Set<string>();
-    for (let i = 0; i < ids.length; i += 90) {
-      const rows = await this.db
-        .select({ id: schema.items.id })
-        .from(schema.items)
-        .where(and(inArray(schema.items.id, ids.slice(i, i + 90)), eq(schema.items.isService, true)));
-      for (const r of rows) result.add(r.id);
-    }
-    return result;
+    return selectServiceItemIds(this.db, itemIds);
   }
 
   static fromDb(

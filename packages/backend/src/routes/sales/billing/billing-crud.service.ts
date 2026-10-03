@@ -16,6 +16,7 @@ import { roundTaxAmount } from "../../../platform/tax/compute-tax-amounts";
 import { getTaxRoundingMode } from "../../../platform/tax/get-tax-rounding-mode";
 import { buildBillingTaxLines } from "./billing-tax-lines";
 import * as schema from "../../../db/schema";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 // Item8 Phase4: 既にAPPROVED確定済みのsales_invoicesを束ねて請求(billing_headers)を作成する。
 // quote-crud.service.ts等と異なり承認ワークフローは持たない(束ねる対象自体が承認済みのため)
@@ -108,6 +109,7 @@ export class BillingCrudService {
   }
 
   async createBilling(c: Context, body: CreateBillingPayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId);
     // 直接service層を呼ぶテスト等でvalibotのデフォルト値([])を経由しないケースに備える
     const manualItems = body.manualItems ?? [];
     this.validateCreatePayload(body, manualItems);

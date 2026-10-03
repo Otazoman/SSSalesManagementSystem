@@ -15,6 +15,7 @@ import { SortQuery } from "../../../platform/http/sort";
 import { signedAmount } from "../../../platform/documents/red-slip";
 import type { TaxRoundingMode } from "../../../platform/tax/compute-tax-amounts";
 import { getTaxRoundingMode } from "../../../platform/tax/get-tax-rounding-mode";
+import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
 
 // Item10 Phase5: 既にAPPROVED確定済みのpurchase_recognitionsを束ねて支払(payment_headers)を
 // 確定する。billing-crud.service.tsと対称。承認ワークフローは持たない(束ねる対象自体が承認済みのため)
@@ -167,6 +168,7 @@ export class PaymentCrudService {
   }
 
   async createPayment(c: Context, body: CreatePaymentPayload) {
+    await assertPartnerNotSuspended(c.env.DB, body.partnerId);
     const itemReceiptSelections = body.itemReceipts ?? [];
     const manualItems = body.manualItems ?? [];
     this.validateCreatePayload(body, itemReceiptSelections, manualItems);
