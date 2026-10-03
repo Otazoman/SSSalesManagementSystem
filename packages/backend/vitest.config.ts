@@ -86,6 +86,7 @@ export default defineConfig(async () => {
             BILLING_BUCKET: "test-billing-bucket",
             PURCHASE_RECOGNITIONS_BUCKET: "test-purchase-recognitions-bucket",
             ACCEPTANCE_INSPECTIONS_BUCKET: "test-acceptance-inspections-bucket",
+            DELIVERY_NOTES_BUCKET: "test-delivery-notes-bucket",
             // 追加要望M-1: 商談の添付ファイル専用
             DEALS_BUCKET: "test-deals-bucket",
           },

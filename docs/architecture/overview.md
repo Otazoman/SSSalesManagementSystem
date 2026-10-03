@@ -90,6 +90,7 @@ D1(データベース) / R2(ファイル) / KV(設定・キャッシュ) / Secre
 | `PURCHASE_ORDERS_BUCKET` | `my-erp-purchase-orders-attachments` | 発注書PDF・添付 |
 | `PURCHASE_RECOGNITIONS_BUCKET` | `my-erp-purchase-recognitions-attachments` | 仕入の添付・仕入計上書PDF |
 | `ACCEPTANCE_INSPECTIONS_BUCKET` | `my-erp-acceptance-inspections-attachments` | 検収書PDF |
+| `DELIVERY_NOTES_BUCKET` | `my-erp-delivery-notes-attachments` | 納品書PDF |
 | `SHIPMENT_INSTRUCTIONS_BUCKET` | `my-erp-shipment-instructions-attachments` | 出荷指示書PDF(外部倉庫向け) |
 | `RECEIPT_INSTRUCTIONS_BUCKET` | `my-erp-receipt-instructions-attachments` | 入荷指示書PDF(外部倉庫向け) |
 | `PRODUCTS_BUCKET` | `my-erp-products-attachments` | 商品マスタの添付 |

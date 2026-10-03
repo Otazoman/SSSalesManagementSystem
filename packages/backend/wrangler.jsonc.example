@@ -146,6 +146,11 @@
       "binding": "ACCEPTANCE_INSPECTIONS_BUCKET",
       "bucket_name": "my-erp-acceptance-inspections-attachments",
     },
+    {
+      // 納品書PDF(旧: SYSTEM_BUCKET。既存ファイルはSYSTEM_BUCKETにフォールバック)
+      "binding": "DELIVERY_NOTES_BUCKET",
+      "bucket_name": "my-erp-delivery-notes-attachments",
+    },
   ],
   "kv_namespaces": [
     {
@@ -287,6 +292,10 @@
         {
           "binding": "ACCEPTANCE_INSPECTIONS_BUCKET",
           "bucket_name": "my-erp-acceptance-inspections-attachments-staging",
+        },
+        {
+          "binding": "DELIVERY_NOTES_BUCKET",
+          "bucket_name": "my-erp-delivery-notes-attachments-staging",
         },
       ],
       "kv_namespaces": [

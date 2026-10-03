@@ -28,6 +28,7 @@ locals {
     BILLING_BUCKET                = "my-erp-billing-attachments"
     PURCHASE_RECOGNITIONS_BUCKET  = "my-erp-purchase-recognitions-attachments"
     ACCEPTANCE_INSPECTIONS_BUCKET = "my-erp-acceptance-inspections-attachments"
+    DELIVERY_NOTES_BUCKET         = "my-erp-delivery-notes-attachments"
     DEALS_BUCKET                  = "my-erp-deals-attachments"
   }
 

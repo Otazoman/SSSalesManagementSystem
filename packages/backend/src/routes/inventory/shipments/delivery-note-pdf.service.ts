@@ -21,6 +21,8 @@ const REPORT_TEMPLATE_CATEGORY = "sales_invoice";
 // 同じcreateShipment()を通るため、トリガー箇所はcreateShipment/resubmitShipmentの即時確定分岐と
 // inventory-stock.adapter.tsのapplyApproved(ワークフロー確定時)の2箇所のみで足りる。
 // R2保存先は専用バケットを新設せず、既存SYSTEM_BUCKETを新規キープレフィックスで流用する。
+// → 追加要望L-3-aの分離に合わせ、新規保存は専用のDELIVERY_NOTES_BUCKETへ変更。既存ファイルはSYSTEM_BUCKETに
+//   残し、読み取りは「新バケット→SYSTEM_BUCKET」のフォールバック(platform/r2/bucket-with-fallback.ts)。
 // Item7残課題7: 得意先へのOTPダウンロード配布に対応(得意先が自ら/delivery-note-downloadで
 // メールアドレスを入力してOTPを取得する自己申告方式)。得意先への案内メール送信自体は
 // 見積・受注・発注と同じ「選択して送信(方式A)」に統一しており、生成完了時の自動送信は
@@ -177,7 +179,7 @@ export class DeliveryNotePdfService {
       `inventory-documents/delivery-notes/${shipmentHeaderId}`,
       "delivery_note.pdf",
     );
-    await c.env.SYSTEM_BUCKET.put(r2Path, pdfBinary, {
+    await c.env.DELIVERY_NOTES_BUCKET.put(r2Path, pdfBinary, {
       httpMetadata: { contentType: "application/pdf" },
     });
     await this.repo.updateDeliveryNotePath(shipmentHeaderId, r2Path);

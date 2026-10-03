@@ -37,6 +37,7 @@ export type Env = {
   BILLING_BUCKET: R2Bucket; // 請求書PDF(旧: QUATES_BUCKET)
   PURCHASE_RECOGNITIONS_BUCKET: R2Bucket; // 仕入計上の添付・仕入計上書PDF(旧: QUATES_BUCKET)
   ACCEPTANCE_INSPECTIONS_BUCKET: R2Bucket; // 検収書PDF(旧: SYSTEM_BUCKET)
+  DELIVERY_NOTES_BUCKET: R2Bucket; // 納品書PDF(旧: SYSTEM_BUCKET)
   DEALS_BUCKET: R2Bucket; // 追加要望M-1: 商談の添付ファイル(専用バケット)
   // 今後新しい環境変数（KV_PERMISSIONS など）が増えたらここに1行足すだけ！
   [key: string]: any; // 👈 予期せぬ個別の環境変数の差分でエラーにならないための保険

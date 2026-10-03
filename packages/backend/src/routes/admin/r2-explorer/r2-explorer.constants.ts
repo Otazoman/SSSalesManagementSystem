@@ -44,6 +44,7 @@ export const R2_BUCKET_REGISTRY: R2BucketDescriptor[] = [
     label: "検収書",
     getBucket: (env) => env.ACCEPTANCE_INSPECTIONS_BUCKET,
   },
+  { key: "deliveryNotes", label: "納品書", getBucket: (env) => env.DELIVERY_NOTES_BUCKET },
   { key: "deals", label: "商談添付", getBucket: (env) => env.DEALS_BUCKET },
 ];
 

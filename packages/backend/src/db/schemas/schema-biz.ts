@@ -908,7 +908,7 @@ export const itemShipmentHeaders = sqliteTable("item_shipment_headers", {
   currentApprovalLayer: integer("current_approval_layer").notNull().default(1),
   approvalFlowId: text("approval_flow_id").references(() => approvalFlows.id),
   memo: text("memo"),
-  // Item6 Phase6-4: 自動生成された納品書PDFのR2キー(SYSTEM_BUCKET)。partnerId設定済みの
+  // Item6 Phase6-4: 自動生成された納品書PDFのR2キー(DELIVERY_NOTES_BUCKET、旧: SYSTEM_BUCKET)。partnerId設定済みの
   // 出庫が確定(APPROVED)したタイミングで自動生成される。null=未生成(partnerId未設定等)
   deliveryNoteR2Path: text("delivery_note_r2_path"),
   createdBy: text("created_by").notNull(), // Item1: employeeNumberを保存(FK制約は意図的に外している)

@@ -24,6 +24,7 @@ import {
   SingleSendDeliveryNoteEmailSchema,
 } from "./shipments.schema";
 import { resolveDocumentFileName } from "../../../platform/documents/document-file-name";
+import { getWithFallback } from "../../../platform/r2/bucket-with-fallback";
 
 const stockShipmentsRouter = new Hono<{ Bindings: Env }>();
 
@@ -194,7 +195,10 @@ stockShipmentsRouter.get(
     if (!header || !header.deliveryNoteR2Path) {
       return c.json({ success: false, message: "対象の納品書PDFが見つかりません" }, 404);
     }
-    const fileObject = await c.env.SYSTEM_BUCKET.get(header.deliveryNoteR2Path);
+    const fileObject = await getWithFallback(
+      { primary: c.env.DELIVERY_NOTES_BUCKET, legacy: c.env.SYSTEM_BUCKET },
+      header.deliveryNoteR2Path,
+    );
     if (!fileObject) {
       return c.json({ success: false, message: "R2ストレージ上に実体ファイルが存在しません" }, 404);
     }
@@ -320,7 +324,7 @@ stockShipmentsRouter.post(
         parsed.output.otp,
       );
 
-      const fileObject = await c.env.SYSTEM_BUCKET.get(r2Path);
+      const fileObject = await getWithFallback({ primary: c.env.DELIVERY_NOTES_BUCKET, legacy: c.env.SYSTEM_BUCKET }, r2Path);
       if (!fileObject) {
         return c.json({ success: false, message: "R2ストレージ上に実体ファイルが存在しません" }, 404);
       }

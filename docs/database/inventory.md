@@ -360,7 +360,7 @@ erDiagram
 | `current_approval_layer` | 整数 | ○ | `1` |  | 承認中の段(何段目の承認待ちか) |
 | `approval_flow_id` | 文字列 |  |  | [approval_flows](workflow.md#approval_flows).id | 使用中の承認フロー |
 | `memo` | 文字列 |  |  |  | 備考 |
-| `delivery_note_r2_path` | 文字列 |  |  |  | 自動生成された納品書PDFのR2キー(SYSTEM_BUCKET)。partnerId設定済みの 出庫が確定(APPROVED)したタイミングで自動生成される。 |
+| `delivery_note_r2_path` | 文字列 |  |  |  | 自動生成された納品書PDFのR2キー(DELIVERY_NOTES_BUCKET、旧: SYSTEM_BUCKET)。partnerId設定済みの 出庫が確定(APPROVED)したタイミングで自動生成される。 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 
