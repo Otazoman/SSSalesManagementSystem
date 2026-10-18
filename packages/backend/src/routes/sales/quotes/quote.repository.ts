@@ -347,6 +347,16 @@ export class QuoteRepository {
   }
 
   // 添付ファイルの物理削除用クリア
+  // 2026-10-18(BUG-068): 保存で既存の添付の行(ID・種類・登録者)を保ったまま更新・削除するため(platform/r2/sync-attachments.ts)
+  async updateQuoteAttachment(attachmentId: string, data: Partial<typeof schema.quoteAttachments.$inferInsert>) {
+    await this.db.update(schema.quoteAttachments).set(data).where(eq(schema.quoteAttachments.id, attachmentId));
+  }
+
+  async deleteQuoteAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.quoteAttachments).where(inArray(schema.quoteAttachments.id, attachmentIds));
+  }
+
   async deleteQuoteAttachments(quoteId: string) {
     await this.db
       .delete(schema.quoteAttachments)

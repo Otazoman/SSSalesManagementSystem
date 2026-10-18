@@ -635,6 +635,8 @@ export function usePurchaseRequisitionOperations({
     taxAmount,
     memo: memo.trim() === "" ? null : memo,
     items: items.map((it) => ({
+      // 2026-10-18(BUG-069): 明細ID。サーバー側で明細IDを保ったまま更新し、発注とのつながりを保つ(新しい明細は無視される)
+      id: it.id ?? null,
       itemId: it.itemId,
       itemName: it.itemName || null,
       inputType: it.inputType || "MASTER",
@@ -643,8 +645,13 @@ export function usePurchaseRequisitionOperations({
       unitCode: it.unitCode || null,
       taxCategoryCode: it.taxCategoryCode || null,
       memo: it.memo || null,
+      // 2026-10-18(BUG-069の関連修正): 受注明細とのつながりを送っていなかったため、受注欠品から作った
+      // 購買申請を保存するとつながりが失われていた(発注の回答納期を受注へ反映するのに必要)
+      salesOrderItemId: it.salesOrderItemId || null,
     })),
     attachments: attachments.map((att) => ({
+      // 2026-10-18(BUG-068): 既存の添付のID。サーバー側で行(ID・登録者・登録日時)を保ったまま更新させる
+      id: att.id ?? null,
       fileName: att.fileName,
       storageType: att.storageType,
       attachmentR2Path: att.attachmentR2Path || null,
@@ -702,6 +709,8 @@ export function usePurchaseRequisitionOperations({
                 memo: memo.trim() === "" ? null : memo,
               },
               items: items.map((it) => ({
+                // 2026-10-18(BUG-069): 承認確定時に明細IDを保ったまま更新するため、明細IDと受注とのつながりも送る
+                id: it.id ?? null,
                 itemId: it.itemId,
                 itemName: it.itemName || null,
                 inputType: it.inputType || "MASTER",
@@ -710,6 +719,7 @@ export function usePurchaseRequisitionOperations({
                 unitCode: it.unitCode || null,
                 taxCategoryCode: it.taxCategoryCode || null,
                 memo: it.memo || null,
+                salesOrderItemId: it.salesOrderItemId || null,
               })),
             },
             applicantDepartmentSurrogateId,
@@ -744,6 +754,19 @@ export function usePurchaseRequisitionOperations({
       if (!editingId && data.id) {
         setEditingId(data.id);
         setEditingStatus("DRAFT");
+      }
+      // 2026-10-18(BUG-069): 追加した行の明細IDはサーバー側で採番されるため、続けて保存しても
+      // 同じ明細として更新されるよう、保存後の明細(ID込み)を取り直す
+      const savedId = editingId || data.id;
+      if (savedId) {
+        try {
+          const saved = await apiFetch<{ items?: PurchaseRequisitionItemRecord[] }>(
+            `/api/purchase-requisitions/${savedId}`,
+          );
+          if (saved.items) setItems(saved.items);
+        } catch {
+          // 取り直しに失敗しても保存自体は完了しているため、画面はそのままにする
+        }
       }
       void syncRequisitions(filterStatus);
     } catch (err) {

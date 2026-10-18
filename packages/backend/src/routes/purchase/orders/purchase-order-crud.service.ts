@@ -12,6 +12,7 @@ import {
   buildPurchaseOrderItemsFromRequisition,
 } from "./purchase-order-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
@@ -361,90 +362,23 @@ export class PurchaseOrderCrudService {
 
     const existingAttachments = await this.repo.findOrderAttachments(id);
 
-    // 2026-10-18: 添付も既存の行を保ったまま保存する。以前は全件削除して入れ直していたため、保存のたびに
-    // 添付IDが変わり(取引先へメールしたダウンロードリンクが無効になる)、画面が種類を送らないため発注書PDFの
-    // 種類(PDF)が「その他」に変わり、登録者・登録日時・明細とのつながり(orderItemId)も失われていた。
-    // 保存内容の添付は id → R2のパス → 共有リンク/ファイル名 の順で既存の行と対応付け、対応した行はIDなどを
-    // 保ったまま名前・リンク(新しいファイルを選んだ場合はファイル)だけ更新、対応しない行は追加、
-    // 保存内容に無い既存の行は削除する。attachments が送られない場合は添付を変えない
-    // 保存後に残る添付のR2パス(下の不要ファイル削除の判定に使う)
-    const keptR2Paths: Array<string | null> = [];
+    // 2026-10-18: 添付は全件削除して入れ直さず、既存の行(ID・種類・登録者・明細とのつながり)を保ったまま保存内容に合わせる
+    // (保存のたびに添付IDが変わり取引先へ送ったダウンロードリンクが無効になる、画面が種類を送らないため発注書PDFの
+    // 種類が「その他」に変わる、などの問題があった。platform/r2/sync-attachments.ts 参照)
+    let keptR2Paths: Array<string | null> = [];
     if (body.attachments && Array.isArray(body.attachments)) {
-      const unmatched = new Map(existingAttachments.map((ea) => [ea.id, ea]));
-      const takeMatch = (predicate: (ea: (typeof existingAttachments)[number]) => boolean) => {
-        for (const ea of unmatched.values()) {
-          if (predicate(ea)) {
-            unmatched.delete(ea.id);
-            return ea;
-          }
-        }
-        return null;
-      };
-
-      for (const att of body.attachments as Array<(typeof body.attachments)[number] & { id?: string | null }>) {
-        const storageType = att.storageType || "R2";
-        const existing =
-          (att.id ? takeMatch((ea) => ea.id === att.id) : null) ??
-          (storageType === "R2" && att.attachmentR2Path
-            ? takeMatch((ea) => ea.storageType === "R2" && ea.attachmentR2Path === att.attachmentR2Path)
-            : null) ??
-          (storageType !== "R2"
-            ? takeMatch(
-                (ea) =>
-                  ea.storageType === storageType &&
-                  ea.externalUrl === (att.externalUrl || null) &&
-                  ea.fileName === att.fileName,
-              )
-            : null) ??
-          (storageType === "R2" && !att.attachmentR2Path
-            ? takeMatch((ea) => ea.storageType === "R2" && ea.fileName === att.fileName)
-            : null);
-
-        let r2Path = existing?.attachmentR2Path ?? att.attachmentR2Path ?? null;
-        let extUrl: string | null = null;
-        let isNewUpload = false;
-
-        if (storageType === "R2") {
-          const fileObj = formData.get(`files[${att.fileName}]`) as File;
-          if (fileObj) {
-            r2Path = generateAttachmentKey(`purchase-orders/${id}`, fileObj.name);
-            await c.env.PURCHASE_ORDERS_BUCKET.put(r2Path, fileObj.stream(), {
-              httpMetadata: { contentType: fileObj.type },
-            });
-            isNewUpload = true;
-          }
-        } else {
-          extUrl = att.externalUrl || null;
-        }
-
-        if (storageType === "R2" && (existing || r2Path)) keptR2Paths.push(r2Path);
-        if (existing) {
-          await tx.repo.updateOrderAttachment(existing.id, {
-            fileName: att.fileName,
-            attachmentR2Path: storageType === "R2" ? r2Path : null,
-            externalUrl: extUrl,
-            fileType: att.fileType || existing.fileType,
-            ...(isNewUpload ? { uploadedById: opId, uploadedAt: new Date() } : {}),
-          });
-        } else if (r2Path || extUrl) {
-          await tx.repo.insertOrderAttachment({
-            id: crypto.randomUUID(),
-            orderId: id,
-            orderItemId: null,
-            fileName: att.fileName,
-            storageType,
-            attachmentR2Path: r2Path,
-            externalUrl: extUrl,
-            fileType: att.fileType || "OTHER",
-            uploadedById: opId,
-            uploadedAt: new Date(),
-          });
-        }
-      }
-
-      if (unmatched.size > 0) {
-        await tx.repo.deleteOrderAttachmentsByIds([...unmatched.keys()]);
-      }
+      ({ keptR2Paths } = await syncAttachments({
+        existing: existingAttachments,
+        incoming: body.attachments,
+        formData,
+        bucket: c.env.PURCHASE_ORDERS_BUCKET,
+        keyPrefix: `purchase-orders/${id}`,
+        operatorId: opId,
+        hasFileType: true,
+        update: (attachmentId, data) => tx.repo.updateOrderAttachment(attachmentId, data),
+        insert: (data) => tx.repo.insertOrderAttachment({ ...data, orderId: id, orderItemId: null }),
+        deleteByIds: (attachmentIds) => tx.repo.deleteOrderAttachmentsByIds(attachmentIds),
+      }));
     }
     await tx.commit();
 

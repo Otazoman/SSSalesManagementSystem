@@ -485,3 +485,56 @@ describe("DELETE /:id のステータスガード", () => {
     expect(await findOrder("O-1")).not.toBeNull();
   });
 });
+
+// 2026-10-18(BUG-068): 受注の保存で添付の行(ID・種類・登録者)を保つ(取引先へ送ったダウンロードリンクを無効にしない)
+describe("PUT /:id 添付の行を保ったままの更新", () => {
+  it("IDを送った添付は行が保たれ、新しい添付は追加、送られなかった添付は削除される", async () => {
+    await seedOrder("O-1", { status: "DRAFT" });
+    const uploadedAt = new Date("2026-10-01T00:00:00Z");
+    await db.insert(schema.salesOrderAttachments).values([
+      {
+        id: "OA-PDF",
+        salesOrderId: "O-1",
+        fileName: "注文請書.pdf",
+        storageType: "R2",
+        attachmentR2Path: "orders/O-1/o.pdf",
+        fileType: "PDF",
+        uploadedById: "system",
+        uploadedAt,
+      },
+      {
+        id: "OA-OLD",
+        salesOrderId: "O-1",
+        fileName: "古い資料",
+        storageType: "GOOGLE_DRIVE",
+        externalUrl: "https://example.com/old",
+        fileType: "OTHER",
+        uploadedById: "system",
+        uploadedAt,
+      },
+    ]);
+
+    const res = await callUpdateOrder("O-1", "applicant-1", {
+      orderDate: "2026-01-01",
+      partnerId: "partner-1",
+      title: "添付の更新",
+      items: [],
+      attachments: [
+        { id: "OA-PDF", fileName: "注文請書.pdf", storageType: "R2", attachmentR2Path: "orders/O-1/o.pdf", fileType: "PDF" },
+        { fileName: "新しい資料", storageType: "GOOGLE_DRIVE", externalUrl: "https://example.com/new" },
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const atts = await db
+      .select()
+      .from(schema.salesOrderAttachments)
+      .where(eq(schema.salesOrderAttachments.salesOrderId, "O-1"));
+    expect(atts).toHaveLength(2);
+    const kept = atts.find((a) => a.id === "OA-PDF");
+    expect(kept).toMatchObject({ fileType: "PDF", uploadedById: "system" });
+    expect(kept?.uploadedAt).toEqual(uploadedAt);
+    expect(atts.find((a) => a.fileName === "新しい資料")).toMatchObject({ salesOrderId: "O-1", fileType: "OTHER" });
+    expect(atts.some((a) => a.id === "OA-OLD")).toBe(false);
+  });
+});

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
@@ -1017,5 +1017,179 @@ describe("添付ファイル(R2/共有リンク)", () => {
       .where(eq(schema.purchaseRequestAttachments.requestId, "PR-ATTACH-URL-2"));
     expect(attachments).toHaveLength(1);
     expect(attachments[0].externalUrl).toBe("https://drive.google.com/after");
+  });
+});
+
+// 2026-10-18(BUG-069・BUG-068): 購買申請の保存で、明細ID(発注とのつながり)と添付の行を保つ
+describe("購買申請の明細ID・添付の行を保ったままの更新", () => {
+  async function seedRequisitionItem(id: string, requestId: string, overrides: Partial<typeof schema.purchaseRequestItems.$inferInsert> = {}) {
+    await db.insert(schema.purchaseRequestItems).values({
+      id,
+      requestId,
+      itemId: "ITEM-1",
+      itemName: "品目1",
+      inputType: "DIRECT",
+      quantity: 1,
+      estimatedUnitPrice: 1000,
+      sortOrder: 0,
+      ...overrides,
+    });
+  }
+
+  // 購買申請明細を参照する発注を作る
+  async function seedLinkedPurchaseOrder(purchaseRequestItemId: string, requestId: string) {
+    await db.insert(schema.orders).values({
+      id: "PO-LINK",
+      requestId,
+      orderDate: now,
+      status: "DRAFT",
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+    await db.insert(schema.orderItems).values({
+      id: "POI-LINK",
+      orderId: "PO-LINK",
+      itemId: "ITEM-1",
+      quantity: 1,
+      unitPrice: 1000,
+      purchaseRequestItemId,
+    });
+  }
+
+  async function findItems(requestId: string) {
+    return (
+      await db.select().from(schema.purchaseRequestItems).where(eq(schema.purchaseRequestItems.requestId, requestId))
+    ).sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  const payload = (items: unknown[], attachments: unknown[] = []) => ({
+    title: "変更後",
+    departmentSurrogateId: "dept-a",
+    requestType: "ONE_TIME",
+    items,
+    attachments,
+  });
+
+  afterEach(async () => {
+    await db.delete(schema.orderItems);
+    await db.delete(schema.orders);
+  });
+
+  it("BUG-069: 発注とつながった購買申請(承認機能OFFで承認済み)を編集しても、明細IDと発注とのつながりが保たれる", async () => {
+    await seedRequisition("PR-1", { status: "APPROVED" });
+    await seedRequisitionItem("PRI-1", "PR-1");
+    await seedLinkedPurchaseOrder("PRI-1", "PR-1");
+
+    const res = await callUpdateRequisition(
+      "PR-1",
+      "applicant-1",
+      payload([
+        { id: "PRI-1", itemId: "ITEM-1", itemName: "品目1", inputType: "DIRECT", quantity: 3, estimatedUnitPrice: 1000 },
+        { itemId: "ITEM-2", itemName: "追加品目", inputType: "DIRECT", quantity: 1, estimatedUnitPrice: 500 },
+      ]),
+    );
+    expect(res.status).toBe(200);
+
+    const items = await findItems("PR-1");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ id: "PRI-1", quantity: 3 });
+    expect(items[1].id).not.toBe("PRI-1");
+    const poItems = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, "POI-LINK"));
+    expect(poItems[0].purchaseRequestItemId).toBe("PRI-1");
+  });
+
+  it("BUG-069: 発注から参照されている明細を削除しようとすると400で止まり、何も変わらない", async () => {
+    await seedRequisition("PR-1", { status: "APPROVED" });
+    await seedRequisitionItem("PRI-1", "PR-1");
+    await seedLinkedPurchaseOrder("PRI-1", "PR-1");
+
+    const res = await callUpdateRequisition(
+      "PR-1",
+      "applicant-1",
+      payload([{ itemId: "ITEM-2", itemName: "別品目", inputType: "DIRECT", quantity: 1, estimatedUnitPrice: 500 }]),
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("発注");
+    expect((await findItems("PR-1")).map((i) => i.id)).toEqual(["PRI-1"]);
+    expect((await findRequisition("PR-1"))?.title).toBe("購買申請PR-1");
+  });
+
+  it("BUG-069: 承認機能ON、変更申請が承認確定しても明細IDと発注とのつながり・受注とのつながりが保たれる", async () => {
+    await enablePurchaseRequisitionApprovalWorkflow();
+    await seedRole("approver_role");
+    await seedUser("approver-1");
+    await seedUserRole("approver-1", "approver_role");
+    await seedApprovalFlow("flow-1", "purchase_requisitions", [{ order: 1, roleId: "approver_role" }]);
+    await seedRequisition("PR-1", { status: "APPROVED" });
+    await seedRequisitionItem("PRI-1", "PR-1");
+    await seedLinkedPurchaseOrder("PRI-1", "PR-1");
+
+    const submitRes = await callRequestUpdateApproval("applicant-1", {
+      targetId: "PR-1",
+      requestType: "UPDATE",
+      payload: {
+        header: { title: "新タイトル", departmentSurrogateId: "dept-a", requestType: "ONE_TIME", totalAmount: 5000 },
+        items: [{ id: "PRI-1", itemId: "ITEM-1", itemName: "品目1", inputType: "DIRECT", quantity: 5, estimatedUnitPrice: 1000 }],
+      },
+    });
+    expect(submitRes.status).toBe(200);
+
+    const requests = await findPendingRequestByTarget("PR-1");
+    const logs = await db.select().from(schema.workflowLogs).where(eq(schema.workflowLogs.targetId, "PR-1"));
+    const res = await callApproveTask({ logId: logs[0].id, requestId: requests[0].id, userId: "approver-1" });
+    expect(res.status).toBe(200);
+
+    const items = await findItems("PR-1");
+    expect(items.map((i) => i.id)).toEqual(["PRI-1"]);
+    expect(items[0].quantity).toBe(5);
+    const poItems = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, "POI-LINK"));
+    expect(poItems[0].purchaseRequestItemId).toBe("PRI-1");
+  });
+
+  it("BUG-068: 保存で添付の行(ID・登録者・登録日時)が保たれ、送られなかった添付だけ削除される", async () => {
+    await seedRequisition("PR-1", { status: "DRAFT" });
+    const uploadedAt = new Date("2026-10-01T00:00:00Z");
+    await db.insert(schema.purchaseRequestAttachments).values([
+      {
+        id: "ATT-1",
+        requestId: "PR-1",
+        fileName: "見積依頼",
+        storageType: "GOOGLE_DRIVE",
+        externalUrl: "https://example.com/a",
+        uploadedById: "system",
+        uploadedAt,
+      },
+      {
+        id: "ATT-2",
+        requestId: "PR-1",
+        fileName: "不要",
+        storageType: "GOOGLE_DRIVE",
+        externalUrl: "https://example.com/b",
+        uploadedById: "system",
+        uploadedAt,
+      },
+    ]);
+
+    const res = await callUpdateRequisition(
+      "PR-1",
+      "applicant-1",
+      payload([], [{ id: "ATT-1", fileName: "見積依頼(改)", storageType: "GOOGLE_DRIVE", externalUrl: "https://example.com/a2" }]),
+    );
+    expect(res.status).toBe(200);
+
+    const atts = await db
+      .select()
+      .from(schema.purchaseRequestAttachments)
+      .where(eq(schema.purchaseRequestAttachments.requestId, "PR-1"));
+    expect(atts).toHaveLength(1);
+    expect(atts[0]).toMatchObject({
+      id: "ATT-1",
+      fileName: "見積依頼(改)",
+      externalUrl: "https://example.com/a2",
+      uploadedById: "system",
+    });
+    expect(atts[0].uploadedAt).toEqual(uploadedAt);
   });
 });

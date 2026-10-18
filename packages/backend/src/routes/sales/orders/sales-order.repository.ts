@@ -531,6 +531,16 @@ export class SalesOrderRepository {
     await this.db.insert(schema.salesOrderAttachments).values(data);
   }
 
+  // 2026-10-18(BUG-068): 保存で既存の添付の行(ID・種類・登録者)を保ったまま更新・削除するため(platform/r2/sync-attachments.ts)
+  async updateOrderAttachment(attachmentId: string, data: Partial<typeof schema.salesOrderAttachments.$inferInsert>) {
+    await this.db.update(schema.salesOrderAttachments).set(data).where(eq(schema.salesOrderAttachments.id, attachmentId));
+  }
+
+  async deleteOrderAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.salesOrderAttachments).where(inArray(schema.salesOrderAttachments.id, attachmentIds));
+  }
+
   async deleteOrderAttachments(salesOrderId: string) {
     await this.db
       .delete(schema.salesOrderAttachments)

@@ -8,7 +8,6 @@
 import { PurchaseRequisitionRepository } from "../../routes/purchase/requisitions/purchase-requisition.repository";
 import { PurchaseRequisitionService } from "../../routes/purchase/requisitions/purchase-requisition.service";
 import {
-  buildPurchaseRequisitionItemInsertRow,
   PurchaseRequisitionItemInput,
 } from "../../routes/purchase/requisitions/purchase-requisition-item-mapper";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
@@ -136,8 +135,13 @@ async function applyApproved({
     updatedAt: now,
   };
 
+  // 2026-10-18(BUG-069): 申請内容の明細のうち、この購買申請に既にある明細ID(item.id)を持つものはそのIDのまま更新する
+  // (発注とのつながりを保つ。以前は全件を新しいIDで入れ直していた)
   const itemRows = Array.isArray(snapshot.items)
-    ? snapshot.items.map((item, index) => buildPurchaseRequisitionItemInsertRow( item as PurchaseRequisitionItemInput, reqParent.targetId, index, ))
+    ? await repo.buildSyncedItemRows(
+        reqParent.targetId,
+        snapshot.items as Array<PurchaseRequisitionItemInput & { id?: string | null }>,
+      )
     : null;
 
   await repo.applyApprovedUpdate(reqParent.targetId, headerData, itemRows);
