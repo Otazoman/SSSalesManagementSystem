@@ -20,6 +20,9 @@ export interface PurchaseOrderItemInput {
   // Item9: purchaseRequestItemId経由では辿れないケース(承認OFF時、購買申請を経由せず
   // 発注が直接受注に紐付けて起票される場合)のために独立して持たせる
   salesOrderItemId?: string | null;
+  // 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期(YYYY-MM-DD)
+  requestedDeliveryDate?: string | null;
+  answeredDeliveryDate?: string | null;
 }
 
 export function buildPurchaseOrderItemInsertRow(
@@ -42,6 +45,8 @@ export function buildPurchaseOrderItemInsertRow(
     taxCategoryCode: item.taxCategoryCode || null,
     accountCode: item.accountCode || null,
     sortOrder,
+    requestedDeliveryDate: item.requestedDeliveryDate || null,
+    answeredDeliveryDate: item.answeredDeliveryDate || null,
   };
 }
 

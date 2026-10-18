@@ -90,6 +90,7 @@ export class SalesOrderPdfService {
         itemName: i.itemName || DEFAULT_ITEM_NAME,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
+        deliveryDate: i.deliveryDate,
       })),
       discountTotal,
       taxBreakdown,

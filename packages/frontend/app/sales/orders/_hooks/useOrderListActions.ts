@@ -3,6 +3,7 @@ import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { OrderRecord, OrderPrefillData } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { todayJst } from "../../../_shared/jst-date";
 
 interface UseOrderListActionsProps {
   canDelete: boolean;
@@ -98,6 +99,48 @@ export function useOrderListActions({
     setOrderId("");
     setShowQuotePicker(false);
     setViewMode("FORM");
+  };
+
+  // 新規要望(2026-10-18): 過去の受注を複写して新規作成フォームを開く(見積からの受注作成と同じく、
+  // この時点ではDBに書き込まず保存時に新しい受注番号で登録される)。番号・ステータス・承認情報・添付・
+  // 前受・明細ID・見積とのつながり・倉庫の引当指定・明細の納期は引き継がない(入力担当者はuseOrderForm側で
+  // ログインユーザーを既定値にする)
+  const handleCopyToNewForm = async (id: string) => {
+    try {
+      setError("");
+      setMessage("");
+      const data = await apiFetch<OrderRecord>(`/api/sales-orders/${id}`, {
+        defaultErrorMessage: "複写元の受注の取得に失敗しました",
+      });
+      // APIの明細はOrderItemの型に無いid/salesOrderIdも含むため、それらも明示的に外す
+      const copied: OrderRecord = {
+        ...data,
+        id: "",
+        title: `${data.title || ""}(コピー)`,
+        status: "DRAFT",
+        orderDate: todayJst(),
+        sourceQuoteId: null,
+        isPrepaid: false,
+        prepaidAt: null,
+        attachments: [],
+        items: (data.items || []).map((item) => ({
+          ...item,
+          id: undefined,
+          salesOrderId: undefined,
+          sourceQuoteItemId: null,
+          warehouseAllocationRequest: null,
+          backorderedQuantity: undefined,
+          deliveryDate: null,
+        })),
+      };
+      setEditingId(null);
+      setOrderId("");
+      setInitialFormData(copied);
+      setViewMode("FORM");
+      setMessage(`受注[${id}]を複写しました。内容を確認して保存してください`);
+    } catch (err) {
+      if (err instanceof Error) setError(err.message);
+    }
   };
 
   const handleOpenEditForm = async (id: string) => {
@@ -243,6 +286,7 @@ export function useOrderListActions({
     handleClearSearch,
     handleOpenNewForm,
     handlePrefillFromQuote,
+    handleCopyToNewForm,
     handleOpenEditForm,
     handleOpenPreview,
     handleCSVImportChange,

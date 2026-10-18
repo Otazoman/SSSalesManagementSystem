@@ -3,6 +3,16 @@ import * as v from "valibot";
 // Helper: null, undefined, 空文字を安全に受容して文字列を返す(quote.schema.tsと同じ方針)
 const optionalString = v.optional(v.nullable(v.string()));
 
+// 新規要望(2026-10-18): 明細行の納期用。null/undefined/空文字、またはYYYY-MM-DD形式のみ受け付ける
+const optionalDate = v.optional(
+  v.nullable(
+    v.pipe(
+      v.string(),
+      v.regex(/^(\d{4}-\d{2}-\d{2})?$/, "納期はYYYY-MM-DD形式で入力してください"),
+    ),
+  ),
+);
+
 // Helper: 数値、または数値に変換可能な文字列/null/undefinedを安全に受容
 const optionalNumber = v.optional(
   v.nullable(
@@ -67,10 +77,38 @@ export const PurchaseOrderItemSchema = v.looseObject({
   memo: optionalString,
   // どの購買申請明細に由来するか(購買申請から発注を起票した場合のみ設定、表示用トレーサビリティ)
   purchaseRequestItemId: optionalString,
+  // 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期(YYYY-MM-DD)
+  requestedDeliveryDate: optionalDate,
+  answeredDeliveryDate: optionalDate,
 });
+
+// 新規要望(2026-10-18): 回答納期→受注明細納期への反映方法。
+// NONE=反映しない、SAME=回答納期そのまま、ADD_DAYS=回答納期+addDays日(暦日)
+export const DeliveryDateReflectionSchema = v.object({
+  mode: v.picklist(["NONE", "SAME", "ADD_DAYS"]),
+  addDays: v.optional(
+    v.pipe(v.number(), v.integer("加算日数は整数で入力してください"), v.minValue(0), v.maxValue(365)),
+  ),
+});
+export type DeliveryDateReflection = v.InferOutput<typeof DeliveryDateReflectionSchema>;
+
+// 新規要望(2026-10-18): 承認状態に関わらず(変更申請なしで)明細の希望納期・回答納期のみを更新する
+export const UpdateDeliveryDatesSchema = v.object({
+  items: v.array(
+    v.object({
+      id: v.string(),
+      requestedDeliveryDate: optionalDate,
+      answeredDeliveryDate: optionalDate,
+    }),
+  ),
+  deliveryDateReflection: v.optional(v.nullable(DeliveryDateReflectionSchema)),
+});
+export type UpdateDeliveryDatesInput = v.InferOutput<typeof UpdateDeliveryDatesSchema>;
 
 // 添付ファイルの型。quote_attachments/purchase_request_attachmentsと同じR2/外部URL(共有リンク)両対応
 export const PurchaseOrderAttachmentInputSchema = v.looseObject({
+  // 2026-10-18: 既存の添付のID(保存時に行を保ったまま更新するため。新しい添付は無し)
+  id: optionalString,
   fileName: v.string(),
   storageType: v.optional(v.picklist(["R2", "GOOGLE_DRIVE"]), "R2"),
   attachmentR2Path: optionalString,
@@ -109,6 +147,8 @@ export const PurchaseOrderPayloadSchema = v.looseObject({
   isPaid: v.optional(v.boolean()),
   paidAt: optionalString,
   historyComment: optionalString,
+  // 新規要望(2026-10-18): 回答納期を紐づく受注明細の納期へ反映するか(保存時の一時指定、DBには保存しない)
+  deliveryDateReflection: v.optional(v.nullable(DeliveryDateReflectionSchema)),
   items: v.optional(v.array(PurchaseOrderItemSchema)),
   attachments: v.optional(v.array(PurchaseOrderAttachmentInputSchema)),
   // 購買申請から発注を作成する際、itemsを送らずこちらだけ送ると、サーバー側が購買申請明細から

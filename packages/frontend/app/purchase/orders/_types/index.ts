@@ -35,6 +35,16 @@ export interface PurchaseOrderItemRecord {
   // どの購買申請明細に由来するか(購買申請から発注を起票した場合のみ設定、表示用トレーサビリティ)
   purchaseRequestItemId?: string | null;
   salesOrderItemId?: string | null;
+  // 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期(YYYY-MM-DD)
+  requestedDeliveryDate?: string | null;
+  answeredDeliveryDate?: string | null;
+}
+
+// 新規要望(2026-10-18): 回答納期を紐づく受注明細の納期へ反映する方法(保存時の一時指定、DBには保存しない)。
+// NONE=反映しない、SAME=回答納期そのまま、ADD_DAYS=回答納期+addDays日(暦日)
+export interface DeliveryDateReflection {
+  mode: "NONE" | "SAME" | "ADD_DAYS";
+  addDays: number;
 }
 
 export interface PurchaseOrderRecord {

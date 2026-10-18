@@ -190,3 +190,34 @@ describe("BUG-053: 備考欄の位置", () => {
     expect(isValidPdf(pdf)).toBe(true);
   });
 });
+
+// 新規要望(2026-10-18): 明細行ごとの納期がある場合は品目名列の右に「納期」列を設ける
+describe("generateDocumentPDF 明細の納期列", () => {
+  it("納期のある明細(長い品目名を含む)を持つ注文請書・発注書を例外なく生成できる", async () => {
+    for (const templateType of ["ORDER_ACKNOWLEDGMENT", "ORDER"] as const) {
+      const data: PDFInvoiceData = {
+        templateType,
+        code: "SO-0002",
+        date: "2026-10-18",
+        customCompanyName: "テスト株式会社",
+        customCompanyAddress: "東京都",
+        customCompanyTel: "03-0000-0000",
+        customCompanyFax: "03-0000-0001",
+        customerName: "得意先株式会社",
+        totalAmount: 3300,
+        taxAmount: 300,
+        items: [
+          {
+            itemName: "とても長い品目名の製品X(標準型・特別仕様・追加オプション付き・長期保証)",
+            quantity: 1,
+            unitPrice: 1000,
+            deliveryDate: "2026-11-10",
+          },
+          { itemName: "納期未定の品目", quantity: 2, unitPrice: 1000, deliveryDate: null },
+        ],
+      };
+      const pdf = await generateDocumentPDF(data, { fontBuffer });
+      expect(isValidPdf(pdf)).toBe(true);
+    }
+  });
+});

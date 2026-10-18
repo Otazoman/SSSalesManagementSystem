@@ -454,3 +454,42 @@ describe("useQuoteForm: BUG-054 数量の入力と単価の取得の順序", () 
     expect(result.current.items[0]).toMatchObject({ itemId: "PROD-1", quantity: 15, unitPrice: 900 });
   });
 });
+
+// 新規要望(2026-10-18): 過去の見積からの複写(editingId=nullのままinitialDataを渡す)
+describe("useQuoteForm 複写(editingId:null + initialData)", () => {
+  it("複写元の内容を引き継ぎ、見積日・有効期限・ステータス・入力担当者は新規作成時の既定値にする", async () => {
+    mockFetch();
+    const today = new Date().toISOString().split("T")[0];
+    const props = baseProps({
+      editingId: null,
+      quoteId: "",
+      currentUserEmployeeNumber: "E999",
+      initialData: {
+        id: "",
+        title: "既存見積(コピー)",
+        customerId: "CUST-1",
+        quoteDate: "2025-01-01T00:00:00.000Z",
+        validUntil: "2025-02-01T00:00:00.000Z",
+        status: "DRAFT",
+        memo: "メモ",
+        salesPersonEmployeeNumber: "E001",
+        inputPersonEmployeeNumber: "E002",
+        items: [{ ...DEFAULT_ITEM, itemId: "PROD-1", itemName: "品目A", quantity: 3, unitPrice: 900 }],
+        attachments: [],
+      },
+    });
+    const { result } = renderHook((p: Parameters<typeof useQuoteForm>[0]) => useQuoteForm(p), {
+      initialProps: props,
+    });
+
+    await waitFor(() => expect(result.current.quoteTitle).toBe("既存見積(コピー)"));
+    expect(result.current.customerId).toBe("CUST-1");
+    expect(result.current.quoteDate).toBe(today);
+    expect(result.current.validUntil).not.toBe("2025-02-01");
+    expect(result.current.status).toBe("DRAFT");
+    expect(result.current.salesPersonEmployeeNumber).toBe("E001");
+    expect(result.current.inputPersonEmployeeNumber).toBe("E999");
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.items[0]).toMatchObject({ itemId: "PROD-1", quantity: 3, unitPrice: 900 });
+  });
+});

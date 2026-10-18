@@ -1,6 +1,11 @@
 import { Context } from "hono";
 import { PurchaseOrderRepository } from "./purchase-order.repository";
-import { SearchOrdersQuery, PurchaseOrderPayload, BulkSendEmailInput } from "./purchase-order.schema";
+import {
+  SearchOrdersQuery,
+  PurchaseOrderPayload,
+  BulkSendEmailInput,
+  UpdateDeliveryDatesInput,
+} from "./purchase-order.schema";
 import { PaginationParams } from "../../../platform/http/pagination";
 import { PurchaseOrderCrudService } from "./purchase-order-crud.service";
 import { PurchaseOrderCsvService } from "./purchase-order-csv.service";
@@ -58,6 +63,10 @@ export class PurchaseOrderService {
 
   updateOrder(c: Context, id: string, formData: FormData, body: PurchaseOrderPayload) {
     return this.crud.updateOrder(c, id, formData, body);
+  }
+
+  updateDeliveryDates(c: Context, id: string, body: UpdateDeliveryDatesInput) {
+    return this.crud.updateDeliveryDates(c, id, body);
   }
 
   deleteOrder(c: Context, id: string) {

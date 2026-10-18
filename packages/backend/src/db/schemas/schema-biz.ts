@@ -197,6 +197,9 @@ export const salesOrderItems = sqliteTable("sales_order_items", {
   // Item7残課題2-5: 倉庫単位の引当で確保しきれなかった残数量(バックオーダー)。承認自体は
   // ブロックしない(与信警告と同じ非ブロッキング方針)。解消は在庫一覧/受注画面からの手動再引当のみ
   backorderedQuantity: real("backordered_quantity").notNull().default(0),
+  // 新規要望(2026-10-18): 明細行ごとの納期(YYYY-MM-DD)。在庫が無く納期回答する場合の納期管理用。
+  // ヘッダーのdeliveryDate(帳票印字用の自由文言)とは別概念。紐づく発注の回答納期から反映できる
+  deliveryDate: text("delivery_date"),
 });
 
 // Item7残課題2-5: 受注明細×倉庫の引当実績ledger(トレーサビリティ用)。
@@ -780,6 +783,11 @@ export const orderItems = sqliteTable("order_items", {
   // K-2-b: 明細単位で個別セットする勘定科目(未設定なら品目マスタのaccountCodeを使う)
   accountCode: text("account_code").references(() => accounts.code),
   sortOrder: integer("sort_order").notNull().default(0),
+  // 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期(YYYY-MM-DD)。ヘッダーのdeliveryDate
+  // (帳票印字用の自由文言)とは別概念。承認済みでも変更申請なしで更新できる(専用API)。
+  // 受注に紐づく明細は、回答納期を受注明細の納期(sales_order_items.delivery_date)へ反映できる
+  requestedDeliveryDate: text("requested_delivery_date"),
+  answeredDeliveryDate: text("answered_delivery_date"),
 });
 
 export const orderAttachments = sqliteTable("order_attachments", {

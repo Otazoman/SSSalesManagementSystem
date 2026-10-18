@@ -268,7 +268,8 @@ beforeEach(async () => {
 });
 
 describe("承認機能ON時の廃棄ライフサイクル", () => {
-  it("申請→最終承認で在庫が減算される", async () => {
+  // ファイル最初のテストで承認処理一式を動的importするため、読み込み時間で既定の5秒を超えることがある(2026-10-18)
+  it("申請→最終承認で在庫が減算される", { timeout: 15000 }, async () => {
     const createRes = await postDisposal("applicant-1", {
       itemId: "ITEM1",
       warehouseId: "WH1",

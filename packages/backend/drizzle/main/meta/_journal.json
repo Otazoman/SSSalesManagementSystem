@@ -666,6 +666,13 @@
       "when": 1790570373557,
       "tag": "0094_amazing_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "6",
+      "when": 1792308195461,
+      "tag": "0095_true_black_tarantula",
+      "breakpoints": true
     }
   ]
 }

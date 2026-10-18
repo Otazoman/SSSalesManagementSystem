@@ -28,6 +28,8 @@ export interface OrderAttachment {
 }
 
 export interface OrderItem {
+  // 明細ID(保存済みの明細のみ)。保存時に送ると、サーバー側で明細IDを保ったまま更新する(2026-10-18)
+  id?: string;
   itemId: string;
   itemName?: string;
   inputType: "MASTER" | "DIRECT";
@@ -45,6 +47,8 @@ export interface OrderItem {
   warehouseAllocationRequest?: string | null;
   // Item7残課題2-5: 引当できなかった残数量(バックオーダー、サーバー側で計算・保存される読み取り専用値)
   backorderedQuantity?: number;
+  // 新規要望(2026-10-18): 明細行ごとの納期(YYYY-MM-DD)。紐づく発注の回答納期から反映されることもある
+  deliveryDate?: string | null;
 }
 
 export interface WarehouseAllocationLine {

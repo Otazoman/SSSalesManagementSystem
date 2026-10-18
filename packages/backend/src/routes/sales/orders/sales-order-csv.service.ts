@@ -5,6 +5,7 @@ import { RESOURCE_KEY } from "./sales-order-constants";
 import { buildSalesOrderItemInsertRow } from "./sales-order-item-mapper";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { parseCsv } from "../../../platform/csv/csv-parser";
+import { normalizeCsvDate } from "../../../platform/csv/csv-date";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import {
   WarehouseStockReservationRepository,
@@ -54,6 +55,8 @@ export class SalesOrderCsvService {
       "unitCode",
       "taxCategoryCode",
       "itemMemo",
+      // 新規要望(2026-10-18): 明細行ごとの納期(YYYY-MM-DD)
+      "itemDeliveryDate",
     ];
 
     const rows = rawData.map((row) => {
@@ -90,6 +93,7 @@ export class SalesOrderCsvService {
         csvField(item?.unitCode),
         csvField(item?.taxCategoryCode),
         csvField(item?.memo),
+        csvField(item?.deliveryDate),
       ].join(",");
     });
 
@@ -132,6 +136,7 @@ export class SalesOrderCsvService {
     const idxUnitCode = getIdx(["unitcode", "unit_code"]);
     const idxTaxCategoryCode = getIdx(["taxcategorycode", "tax_category_code"]);
     const idxItemMemo = getIdx(["itemmemo", "item_memo"]);
+    const idxItemDeliveryDate = getIdx(["itemdeliverydate", "item_delivery_date"]);
 
     let count = 0;
     const clearedOrderIds = new Set<string>();
@@ -238,6 +243,7 @@ export class SalesOrderCsvService {
               unitCode: getCellVal(idxUnitCode),
               taxCategoryCode: getCellVal(idxTaxCategoryCode),
               sourceQuoteItemId: getCellVal(idxSourceQuoteItemId),
+              deliveryDate: normalizeCsvDate(getCellVal(idxItemDeliveryDate), "itemDeliveryDate"),
             },
             id,
             currentSortOrder,

@@ -3,6 +3,7 @@ import { SalesOrderRepository } from "./sales-order.repository";
 import { SalesOrderPayload } from "./sales-order.schema";
 import { RESOURCE_KEY } from "./sales-order-constants";
 import {
+  SalesOrderItemInput,
   buildSalesOrderItemInsertRow,
   buildSalesOrderItemsFromQuote,
 } from "./sales-order-item-mapper";
@@ -397,13 +398,16 @@ export class SalesOrderCrudService {
       updatedAt: new Date(),
     });
 
-    await tx.repo.deleteOrderItems(id);
-    if (body.items && Array.isArray(body.items)) {
-      for (const [index, item] of body.items.entries()) {
-        await tx.repo.insertOrderItem(
-          buildSalesOrderItemInsertRow(item as any, id, index),
-        );
-      }
+    // 2026-10-18: 明細IDを保ったまま、保存内容に合わせて明細を更新・追加・削除する(以前は全件削除して入れ直して
+    // いたため、発注・出荷・売上などから参照されている受注を保存するとFK制約違反になっていた)。既存の倉庫単位の
+    // 引当は従来のdeleteOrderItemsと同じく解放し、下のAPPROVED時の再引当でやり直す。参照されている明細を
+    // 削除しようとした場合は400で、commit() しないので何も書き込まれない
+    const syncedRows = await this.repo.buildSyncedItemRows(
+      id,
+      Array.isArray(body.items) ? (body.items as Array<SalesOrderItemInput & { id?: string | null }>) : [],
+    );
+    for (const write of await tx.repo.buildItemSyncWrites(id, syncedRows, { releaseReservations: true })) {
+      await write;
     }
 
     const existingAttachments = await this.repo.findOrderAttachments(id);
@@ -487,7 +491,7 @@ export class SalesOrderCrudService {
     const creditWarning = await this.buildCreditWarning(body.partnerId, body.totalAmount || 0, id);
 
     // Item7残課題2-5フォローアップ2: 更新後もAPPROVEDのままの場合(承認機能OFF時の直接編集)は
-    // 明細差し替え後の実際の数量で在庫を再引当する(既存の引当はdeleteOrderItems内で解放済み)。
+    // 明細更新後の実際の数量で在庫を再引当する(既存の引当はbuildItemSyncWritesで解放済み)。
     // それ以外(DRAFT等、まだ実引当を行わない状態)は与信警告と同じ非破壊のプレビューに留める
     let stockWarning: string | undefined;
     if (resolvedStatus === "APPROVED") {

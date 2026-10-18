@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
@@ -1449,5 +1449,157 @@ describe("BUG-056: サービス品目(isService)は在庫の引当・不足確�
     ]);
 
     expect(shortages.map((s) => s.itemId)).toEqual(["ITEM-1"]);
+  });
+});
+
+// 2026-10-18: 受注の明細は、保存(直接編集)・変更申請の承認確定のどちらでも明細IDを保ったまま更新する。
+// 以前は全件削除して入れ直していたため、発注などから参照されている受注を保存するとFK制約違反(500)になっていた
+describe("受注の明細IDを保ったままの更新", () => {
+  async function seedLinkedPurchaseOrder(salesOrderItemId: string) {
+    await db.insert(schema.orders).values({
+      id: "PO-LINK",
+      orderDate: now,
+      status: "DRAFT",
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+    await db.insert(schema.orderItems).values({
+      id: "POI-LINK",
+      orderId: "PO-LINK",
+      itemId: "ITEM-1",
+      quantity: 1,
+      unitPrice: 100,
+      salesOrderItemId,
+    });
+  }
+
+  async function findItems(salesOrderId: string) {
+    return await db
+      .select()
+      .from(schema.salesOrderItems)
+      .where(eq(schema.salesOrderItems.salesOrderId, salesOrderId));
+  }
+
+  async function findLedgerTotal(salesOrderItemId: string) {
+    const rows = await db
+      .select()
+      .from(schema.salesOrderItemReservations)
+      .where(eq(schema.salesOrderItemReservations.salesOrderItemId, salesOrderItemId));
+    return rows.reduce((sum, r) => sum + r.reservedQuantity, 0);
+  }
+
+  // 承認機能OFFで確定(=引当済み)にした受注を作り、その明細IDを返す
+  async function approveOrderDirectly(quantity: number) {
+    await seedItemMasterAndStock("ITEM-1", 30);
+    await seedOrder("O-1", { status: "DRAFT" });
+    await seedOrderItem("O-1", { id: "SOI-1", itemId: "ITEM-1", quantity, inputType: "MASTER" });
+    expect((await callSubmitForApproval("O-1", "applicant-1")).status).toBe(200);
+  }
+
+  const updatePayload = (items: unknown[]) => ({
+    orderDate: "2026-10-18",
+    partnerId: "partner-1",
+    status: "APPROVED",
+    items,
+  });
+
+  afterEach(async () => {
+    await db.delete(schema.orderItems);
+    await db.delete(schema.orders);
+  });
+
+  it("発注に紐づいた承認済み受注(承認機能OFF)を編集しても、明細IDと発注とのつながりが保たれ、引当は二重にならない", async () => {
+    await approveOrderDirectly(20);
+    await seedLinkedPurchaseOrder("SOI-1");
+    expect(await findReservedQuantity("ITEM-1")).toBe(20);
+
+    const res = await callUpdateOrder(
+      "O-1",
+      "applicant-1",
+      updatePayload([{ id: "SOI-1", itemId: "ITEM-1", quantity: 25, unitPrice: 100, inputType: "MASTER" }]),
+    );
+    expect(res.status).toBe(200);
+
+    const items = await findItems("O-1");
+    expect(items.map((i) => i.id)).toEqual(["SOI-1"]);
+    expect(items[0].quantity).toBe(25);
+    expect(await findReservedQuantity("ITEM-1")).toBe(25);
+    expect(await findLedgerTotal("SOI-1")).toBe(25);
+    const poItems = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, "POI-LINK"));
+    expect(poItems[0].salesOrderItemId).toBe("SOI-1");
+  });
+
+  it("発注から参照されている明細を削除しようとすると400で止まり、明細・引当は変わらない", async () => {
+    await approveOrderDirectly(20);
+    await seedLinkedPurchaseOrder("SOI-1");
+
+    const res = await callUpdateOrder(
+      "O-1",
+      "applicant-1",
+      updatePayload([{ itemId: "ITEM-1", quantity: 5, unitPrice: 100, inputType: "MASTER" }]),
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("発注");
+
+    const items = await findItems("O-1");
+    expect(items.map((i) => i.id)).toEqual(["SOI-1"]);
+    expect(items[0].quantity).toBe(20);
+    expect(await findReservedQuantity("ITEM-1")).toBe(20);
+  });
+
+  it("既存の明細を残したまま行を追加すると、既存はIDそのまま・追加分は新しいIDになる", async () => {
+    await approveOrderDirectly(10);
+
+    const res = await callUpdateOrder(
+      "O-1",
+      "applicant-1",
+      updatePayload([
+        { id: "SOI-1", itemId: "ITEM-1", quantity: 10, unitPrice: 100, inputType: "MASTER" },
+        { itemId: "ITEM-1", quantity: 5, unitPrice: 100, inputType: "MASTER" },
+      ]),
+    );
+    expect(res.status).toBe(200);
+
+    const items = (await findItems("O-1")).sort((a, b) => a.sortOrder - b.sortOrder);
+    expect(items).toHaveLength(2);
+    expect(items[0].id).toBe("SOI-1");
+    expect(items[1].id).not.toBe("SOI-1");
+    expect(await findReservedQuantity("ITEM-1")).toBe(15);
+    expect(await findLedgerTotal("SOI-1")).toBe(10);
+    expect(await findLedgerTotal(items[1].id)).toBe(5);
+  });
+
+  it("承認機能ON: 変更申請が承認確定しても明細IDと発注とのつながりが保たれ、引当の記録は新しい数量の分だけになる", async () => {
+    await approveOrderDirectly(20);
+    await seedLinkedPurchaseOrder("SOI-1");
+    await enableSalesOrderApprovalWorkflow();
+    await seedRole("approver_role");
+    await seedUser("approver-1");
+    await seedUserRole("approver-1", "approver_role");
+    await seedApprovalFlow("flow-update", "sales_orders", [{ order: 1, roleId: "approver_role" }]);
+
+    const submitRes = await callSubmitUpdateForApproval("O-1", "applicant-1", {
+      header: { title: "変更後", partnerId: "partner-1", orderDate: "2026-10-18", totalAmount: 2500 },
+      items: [{ id: "SOI-1", itemId: "ITEM-1", quantity: 25, unitPrice: 100, inputType: "MASTER", deliveryDate: "2026-11-30" }],
+      comment: "数量・納期変更",
+    });
+    expect(submitRes.status).toBe(200);
+    expect(await findReservedQuantity("ITEM-1")).toBe(25);
+
+    const requests = await findPendingRequestByTarget("O-1");
+    const logs = await db.select().from(schema.workflowLogs).where(eq(schema.workflowLogs.targetId, "O-1"));
+    const approveRes = await callApproveTask({ logId: logs[0].id, requestId: requests[0].id, userId: "approver-1" });
+    expect(approveRes.status).toBe(200);
+
+    const items = await findItems("O-1");
+    expect(items.map((i) => i.id)).toEqual(["SOI-1"]);
+    expect(items[0].quantity).toBe(25);
+    expect(items[0].deliveryDate).toBe("2026-11-30");
+    expect(await findReservedQuantity("ITEM-1")).toBe(25);
+    expect(await findLedgerTotal("SOI-1")).toBe(25);
+    const poItems = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, "POI-LINK"));
+    expect(poItems[0].salesOrderItemId).toBe("SOI-1");
   });
 });

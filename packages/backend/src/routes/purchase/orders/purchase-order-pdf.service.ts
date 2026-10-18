@@ -96,6 +96,8 @@ export class PurchaseOrderPdfService {
         itemName: i.itemName || DEFAULT_ITEM_NAME,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
+        // 新規要望(2026-10-18): 回答納期があればそれを、無ければ希望納期を印字する
+        deliveryDate: i.answeredDeliveryDate || i.requestedDeliveryDate,
       })),
       discountTotal,
       taxBreakdown,

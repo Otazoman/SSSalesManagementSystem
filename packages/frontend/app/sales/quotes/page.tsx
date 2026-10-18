@@ -116,6 +116,7 @@ export default function QuotesPage() {
     setFilters,
     handleClearSearch,
     handleOpenNewForm,
+    handleCopyToNewForm,
     handleOpenEditForm,
     handleOpenPreview,
     handleCSVImportChange,
@@ -299,6 +300,8 @@ export default function QuotesPage() {
             onOpenEditForm={handleOpenEditForm}
             onDeleteQuote={handleDeleteAction}
             onOpenPreview={handleOpenPreview}
+            onCopyQuote={handleCopyToNewForm}
+            canCreate={canCreate}
             canUpdate={canUpdate}
             canDelete={canDelete}
             sortBy={sortBy}

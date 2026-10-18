@@ -232,6 +232,8 @@ erDiagram
 | `tax_category_code` | 文字列 |  |  | [tax_categories](master.md#tax_categories).code | 消費税区分 |
 | `account_code` | 文字列 |  |  | [accounts](master.md#accounts).code | 勘定科目 |
 | `sort_order` | 整数 | ○ | `0` |  | 表示順 |
+| `requested_delivery_date` | 文字列 |  |  |  | 明細行ごとの希望納期・回答納期(YYYY-MM-DD)。ヘッダーのdeliveryDate (帳票印字用の自由文言)とは別概念。 |
+| `answered_delivery_date` | 文字列 |  |  |  |  |
 
 <a id="orders"></a>
 

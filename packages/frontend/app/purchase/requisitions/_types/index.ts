@@ -133,6 +133,8 @@ export interface SourceSalesOrderItem {
   // Phase6: 欠品自動提案①(受注紐付け方式)。受注横断の集約モードでのみ設定される
   salesOrderId?: string;
   salesOrderTitle?: string | null;
+  // 新規要望(2026-10-18): 受注明細の納期(欠品から発注を作成する際の希望納期の初期値)
+  deliveryDate?: string | null;
 }
 
 // Phase4: 起票トリガー③(発注紐付けの再発注)。PurchaseOrderPickerModal用の選択元一覧・明細

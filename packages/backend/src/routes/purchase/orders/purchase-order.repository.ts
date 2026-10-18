@@ -12,6 +12,10 @@ import { combineConditions } from "../../../platform/repository/search-condition
 import { PaginationParams, toOffset } from "../../../platform/http/pagination";
 import { buildOrderBy, SortQuery } from "../../../platform/http/sort";
 import { containsText } from "../../../platform/repository/text-search";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { buildPurchaseOrderItemInsertRow, PurchaseOrderItemInput } from "./purchase-order-item-mapper";
+
+type PurchaseOrderItemRow = ReturnType<typeof buildPurchaseOrderItemInsertRow>;
 
 // ヘッダクリックソート(追加要望D)の許可カラム
 const PURCHASE_ORDERS_SORT_COLUMNS = {
@@ -222,6 +226,25 @@ export class PurchaseOrderRepository {
     return rows[0]?.orderId ?? null;
   }
 
+  // CSV取込の紐付け列(salesOrderItemId/purchaseRequestItemId)の検証用: 実在する明細IDだけを返す
+  async findExistingSalesOrderItemIds(ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.db
+      .select({ id: schema.salesOrderItems.id })
+      .from(schema.salesOrderItems)
+      .where(inArray(schema.salesOrderItems.id, ids));
+    return new Set(rows.map((r) => r.id));
+  }
+
+  async findExistingPurchaseRequestItemIds(ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.db
+      .select({ id: schema.purchaseRequestItems.id })
+      .from(schema.purchaseRequestItems)
+      .where(inArray(schema.purchaseRequestItems.id, ids));
+    return new Set(rows.map((r) => r.id));
+  }
+
   // CSV取込の再取込用: 発注明細が仕入・入庫・発注の添付から参照されているか。参照されている明細を消すと
   // FK制約で取込全体が失敗するため、参照されていれば明細を入れ替えない(受注のCSV取込と同じ方針)
   async hasDownstreamItemReferences(orderItemIds: string[]): Promise<boolean> {
@@ -250,23 +273,107 @@ export class PurchaseOrderRepository {
     await this.db.delete(schema.orderItems).where(eq(schema.orderItems.orderId, orderId));
   }
 
+  // 2026-10-18: 保存内容の明細から明細行を組み立てる。この発注に既にある明細ID(item.id)を持つ明細はそのIDを使い
+  // (=既存明細の更新)、それ以外は新しいIDで追加する(受注・見積と同じ方針)
+  async buildSyncedItemRows(
+    orderId: string,
+    items: Array<PurchaseOrderItemInput & { id?: string | null }>,
+  ): Promise<PurchaseOrderItemRow[]> {
+    const existingIds = new Set((await this.findOrderItems(orderId)).map((row) => row.id));
+    return items.map((item, index) => {
+      const isKept = !!item.id && existingIds.has(item.id);
+      return buildPurchaseOrderItemInsertRow({ ...item, lineId: isKept ? item.id : null }, orderId, index);
+    });
+  }
+
+  // 削除しようとしている発注明細を参照している伝票の種類(参照が無ければ空配列)
+  async findItemReferencesForRemoval(orderItemIds: string[]): Promise<string[]> {
+    if (orderItemIds.length === 0) return [];
+    const exists = async (table: any, column: any) =>
+      (await this.db.select({ id: table.id }).from(table).where(inArray(column, orderItemIds)).limit(1)).length > 0;
+    const checks: Array<[string, Promise<boolean>]> = [
+      ["入庫", exists(schema.itemReceiptItems, schema.itemReceiptItems.orderItemId)],
+      ["仕入", exists(schema.purchaseRecognitionItems, schema.purchaseRecognitionItems.sourceOrderItemId)],
+      ["発注の添付", exists(schema.orderAttachments, schema.orderAttachments.orderItemId)],
+    ];
+    const results = await Promise.all(checks.map(([, p]) => p));
+    return checks.filter((_, i) => results[i]).map(([label]) => label);
+  }
+
+  // 2026-10-18: 明細IDを保ったまま、発注の明細を保存内容(rows)に合わせる書き込みを組み立てる(まだ実行しない)。
+  // 以前は明細を全件削除して新しいIDで入れ直していたため、入庫・仕入から参照されている発注を保存すると
+  // FK制約違反(500)になっていた。保存内容に無い明細は削除し、参照されている明細の削除は400で止める
+  async buildItemSyncWrites(orderId: string, rows: PurchaseOrderItemRow[]): Promise<any[]> {
+    const existingIds = (await this.findOrderItems(orderId)).map((row) => row.id);
+    const keptIds = new Set(rows.map((row) => row.id).filter((id) => existingIds.includes(id)));
+    const removedIds = existingIds.filter((id) => !keptIds.has(id));
+
+    const referencedBy = await this.findItemReferencesForRemoval(removedIds);
+    if (referencedBy.length > 0) {
+      throw new BadRequestError(
+        `${referencedBy.join("・")}から参照されている発注明細は削除できません(明細を残したまま数量などを変更してください)`,
+      );
+    }
+
+    const writes: any[] = [];
+    if (removedIds.length > 0) {
+      writes.push(this.db.delete(schema.orderItems).where(inArray(schema.orderItems.id, removedIds)));
+    }
+    for (const row of rows) {
+      if (keptIds.has(row.id)) {
+        const { id: rowId, ...values } = row;
+        writes.push(this.db.update(schema.orderItems).set(values).where(eq(schema.orderItems.id, rowId)));
+      } else {
+        writes.push(this.db.insert(schema.orderItems).values(row));
+      }
+    }
+    return writes;
+  }
+
   // BUG-048: 承認済みの伝票の変更申請の承認時に、ヘッダーの更新・明細の入れ替え・履歴を1回の batch で書き込む
   // (以前は1つずつ書き込んでいたため、途中で失敗すると明細が消えたままになりえた)。itemRows が null なら明細は変えない
   async applyApprovedUpdate(
     orderId: string,
     header: Partial<typeof schema.orders.$inferInsert>,
-    itemRows: (typeof schema.orderItems.$inferInsert)[] | null,
+    itemRows: PurchaseOrderItemRow[] | null,
   ) {
     const statements: any[] = [this.db.update(schema.orders).set(header).where(eq(schema.orders.id, orderId))];
     if (itemRows) {
-      statements.push(this.db.delete(schema.orderItems).where(eq(schema.orderItems.orderId, orderId)));
-      for (const row of itemRows) statements.push(this.db.insert(schema.orderItems).values(row));
+      // 2026-10-18: 明細IDを保ったまま更新する(入庫・仕入・受注とのつながりを保つ)
+      statements.push(...(await this.buildItemSyncWrites(orderId, itemRows)));
     }
+    await this.db.batch(statements as [any, ...any[]]);
+  }
+
+  // 新規要望(2026-10-18): 明細の希望納期・回答納期のみを更新する(他の列・明細IDは変えない)
+  async updateOrderItemDeliveryDates(
+    rows: Array<{ id: string; requestedDeliveryDate: string | null; answeredDeliveryDate: string | null }>,
+  ) {
+    if (rows.length === 0) return;
+    const statements = rows.map((row) =>
+      this.db
+        .update(schema.orderItems)
+        .set({
+          requestedDeliveryDate: row.requestedDeliveryDate,
+          answeredDeliveryDate: row.answeredDeliveryDate,
+        })
+        .where(eq(schema.orderItems.id, row.id)),
+    );
     await this.db.batch(statements as [any, ...any[]]);
   }
 
   async insertOrderAttachment(data: any) {
     await this.db.insert(schema.orderAttachments).values(data);
+  }
+
+  // 2026-10-18: 発注の保存で、既存の添付の行(ID・種類・登録者・明細とのつながり)を保ったまま更新・削除するため
+  async updateOrderAttachment(attachmentId: string, data: Partial<typeof schema.orderAttachments.$inferInsert>) {
+    await this.db.update(schema.orderAttachments).set(data).where(eq(schema.orderAttachments.id, attachmentId));
+  }
+
+  async deleteOrderAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.orderAttachments).where(inArray(schema.orderAttachments.id, attachmentIds));
   }
 
   async deleteOrderAttachments(orderId: string) {

@@ -71,6 +71,9 @@ export type PDFInvoiceData = {
     // 画面構成再編: 納品書では受注に紐づかない明細はunitPriceを持たない(null/undefined時は
     // 単価・金額列を空欄にする、drawItemsTable参照)。既存の見積/注文請書等は常に数値を渡す
     unitPrice?: number | null;
+    // 新規要望(2026-10-18): 明細行ごとの納期(YYYY-MM-DD)。いずれかの明細に値がある場合のみ
+    // 品目名列の右側に「納期」列を設ける(値が無い帳票・明細では従来どおりのレイアウト)
+    deliveryDate?: string | null;
   }>;
 };
 
@@ -454,6 +457,16 @@ interface ItemsTableResult {
 }
 
 // 4-5. 明細テーブルヘッダー+明細行の動的ループ&自動ページ送り
+// 新規要望(2026-10-18): 納期列を設けて品目名列が狭くなった場合に、隣の列へはみ出さないよう末尾を「…」で切り詰める
+function truncateToWidth(text: string, maxWidth: number, font: PDFFont, size: number): string {
+  if (!text || font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  let result = text;
+  while (result.length > 0 && font.widthOfTextAtSize(`${result}…`, size) > maxWidth) {
+    result = result.slice(0, -1);
+  }
+  return `${result}…`;
+}
+
 function drawItemsTable(
   initialPage: PDFPage,
   initialCurrentY: number,
@@ -470,6 +483,10 @@ function drawItemsTable(
   // ハンコ枠下端(height-230)との間に約35ptの空きが生まれる
   let currentY = Math.min(initialCurrentY - 30, height - 265);
   let tableTopY = currentY; // 💡 縦枠線の起点としてテーブルの最上部を記憶
+  // 新規要望(2026-10-18): いずれかの明細に納期がある場合のみ、品目名列(75〜310)を
+  // 75〜250と250〜310(納期)に分ける
+  const showDeliveryDate = data.items.some((item) => !!item.deliveryDate);
+  const itemNameMaxWidth = showDeliveryDate ? 160 : 220;
 
   const drawTableHeader = (p: PDFPage, y: number) => {
     // 💡【エラー修正】fillColor を型定義通りの「color」に変更し、ライトグレーで塗りつぶします
@@ -484,6 +501,7 @@ function drawItemsTable(
     });
     drawTextOnPage(p, "No.", 57, y + 5, 9.5, rgb(0.1, 0.1, 0.1));
     drawTextOnPage(p, "品目名", 85, y + 5, 9.5, rgb(0.1, 0.1, 0.1));
+    if (showDeliveryDate) drawTextOnPage(p, "納期", 258, y + 5, 9.5, rgb(0.1, 0.1, 0.1));
     drawTextOnPage(p, "数量", 320, y + 5, 9.5, rgb(0.1, 0.1, 0.1));
     drawTextOnPage(p, "単価", 380, y + 5, 9.5, rgb(0.1, 0.1, 0.1));
     drawTextOnPage(p, "金額 (税抜)", 460, y + 5, 9.5, rgb(0.1, 0.1, 0.1));
@@ -501,7 +519,9 @@ function drawItemsTable(
     endBottomY: number,
   ) => {
     // 各列の境界となる正確なX座標（左端、品名の左(=No.の右)、数量の左、単価の左、金額の左、右端）
-    const vLinesX = [50, 75, 310, 370, 450, 545];
+    const vLinesX = showDeliveryDate
+      ? [50, 75, 250, 310, 370, 450, 545]
+      : [50, 75, 310, 370, 450, 545];
     vLinesX.forEach((lineX) => {
       p.drawLine({
         start: { x: lineX, y: startTopY + 18 }, // ヘッダーの上端から
@@ -542,7 +562,16 @@ function drawItemsTable(
       borderColor: rgb(0.6, 0.6, 0.6),
     });
     drawTextOnPage(page, String(index + 1), 57, currentY + 5, 9);
-    drawTextOnPage(page, item.itemName, 85, currentY + 5, 9);
+    drawTextOnPage(
+      page,
+      showDeliveryDate ? truncateToWidth(item.itemName, itemNameMaxWidth, customFont, 9) : item.itemName,
+      85,
+      currentY + 5,
+      9,
+    );
+    if (showDeliveryDate && item.deliveryDate) {
+      drawTextOnPage(page, item.deliveryDate, 255, currentY + 5, 9);
+    }
 
     // 💡【数量の完全右寄せ】右区切り線(370)の手前でピタッと揃えます
     const qtyStr = String(item.quantity);

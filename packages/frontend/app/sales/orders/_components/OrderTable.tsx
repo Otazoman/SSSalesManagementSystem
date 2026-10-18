@@ -13,6 +13,9 @@ interface OrderTableProps {
   onOpenEditForm: (id: string) => void;
   onDeleteOrder: (id: string) => void;
   onOpenPreview: (id: string) => void;
+  // 新規要望(2026-10-18): 過去の受注を複写して新規作成する
+  onCopyOrder?: (id: string) => void;
+  canCreate?: boolean;
   canUpdate: boolean;
   canDelete: boolean;
   sortBy?: string | null;
@@ -100,6 +103,8 @@ export function OrderTable({
   onOpenEditForm,
   onDeleteOrder,
   onOpenPreview,
+  onCopyOrder,
+  canCreate = false,
   canUpdate,
   canDelete,
   sortBy,
@@ -311,6 +316,17 @@ export function OrderTable({
                       >
                         編集
                       </button>
+                      {onCopyOrder && (
+                        <button
+                          type="button"
+                          onClick={() => onCopyOrder(order.id)}
+                          disabled={!canCreate}
+                          title="この受注の内容を複写して新規作成します"
+                          className="font-bold text-slate-700 hover:text-slate-900 hover:underline disabled:opacity-30 disabled:no-underline cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          複写
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onDeleteOrder(order.id)}

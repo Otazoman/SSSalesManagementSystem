@@ -91,6 +91,8 @@ export function useOrderSaveActions({
       salesPersonEmployeeNumber: payload.salesPersonEmployeeNumber || null,
       inputPersonEmployeeNumber: payload.inputPersonEmployeeNumber || null,
       items: payload.items.map((item: any) => ({
+        // 明細ID。サーバー側で明細IDを保ったまま更新し、発注・出荷・売上などとのつながりを保つ(新しい明細は無視される)
+        id: item.id ?? null,
         itemId: item.itemId,
         itemName: item.itemName || null,
         inputType: item.inputType,
@@ -100,6 +102,7 @@ export function useOrderSaveActions({
         taxCategoryCode: item.taxCategoryCode || null,
         memo: item.memo || null,
         sourceQuoteItemId: item.sourceQuoteItemId || null,
+        deliveryDate: item.deliveryDate || null,
       })),
       attachments: cleanedAttachments,
       companyName: payload.companyName,
@@ -193,6 +196,8 @@ export function useOrderSaveActions({
     };
 
     const items = payload.items.map((item: any) => ({
+      // 明細ID。承認確定時に明細IDを保ったまま更新するため送る(2026-10-18)
+      id: item.id ?? null,
       itemId: item.itemId,
       itemName: item.itemName || null,
       inputType: item.inputType || null,
@@ -203,6 +208,7 @@ export function useOrderSaveActions({
       taxCategoryCode: item.taxCategoryCode || null,
       memo: item.memo || null,
       sourceQuoteItemId: item.sourceQuoteItemId || null,
+      deliveryDate: item.deliveryDate || null,
     }));
 
     try {

@@ -103,6 +103,7 @@
 | `payment_terms` | 支払条件 |
 | `memo` | 備考 |
 | `sales_person_name` | 営業担当者名 |
+| `item.delivery_date` | 明細行ごとの納期(`2026-11-10` の形。未設定の明細は空欄) |
 
 **発注書**(`purchase_order`)
 
@@ -118,6 +119,9 @@
 | `payment_terms` | 支払条件 |
 | `memo` | 備考 |
 | `sales_person_name` | 購買担当者名 |
+| `item.requested_delivery_date` | 明細行ごとの希望納期(未設定の明細は空欄) |
+| `item.answered_delivery_date` | 明細行ごとの回答納期(未設定の明細は空欄) |
+| `item.delivery_date` | 明細行ごとの納期。回答納期があれば回答納期、無ければ希望納期 |
 
 **検収書**(`acceptance_inspection`)
 

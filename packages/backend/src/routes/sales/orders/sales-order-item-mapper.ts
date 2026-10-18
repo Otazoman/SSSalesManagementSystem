@@ -20,6 +20,8 @@ export interface SalesOrderItemInput {
   // Item7残課題2-5: 倉庫×数量の内訳リクエスト(JSON配列、フロントから文字列で受け取る)。
   // 未指定なら引当実行時に自動でFIFO割当する
   warehouseAllocationRequest?: string | null;
+  // 新規要望(2026-10-18): 明細行ごとの納期(YYYY-MM-DD)
+  deliveryDate?: string | null;
 }
 
 export function buildSalesOrderItemInsertRow(
@@ -44,6 +46,7 @@ export function buildSalesOrderItemInsertRow(
     taxCategoryCode: item.taxCategoryCode || null,
     accountCode: item.accountCode || null,
     warehouseAllocationRequest: item.warehouseAllocationRequest || null,
+    deliveryDate: item.deliveryDate || null,
   };
 }
 
