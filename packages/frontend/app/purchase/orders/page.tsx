@@ -154,6 +154,9 @@ export default function PurchaseOrdersPage() {
     handleClearForm,
     handleSelectEdit,
     handleSubmit,
+    handleSaveDeliveryDatesOnly,
+    deliveryDateReflection,
+    setDeliveryDateReflection,
     handleSubmitForApproval,
     handleDeleteLink,
     handleDownloadCsv,
@@ -502,6 +505,9 @@ export default function PurchaseOrdersPage() {
             isSubmitting={isSubmitting}
             onSubmit={handleSubmit}
             onSubmitForApproval={handleSubmitForApproval}
+            deliveryDateReflection={deliveryDateReflection}
+            setDeliveryDateReflection={setDeliveryDateReflection}
+            onSaveDeliveryDatesOnly={() => void handleSaveDeliveryDatesOnly()}
             onGeneratePdf={handleGeneratePdf}
             onOpenMailModal={handleOpenMailModal}
             onCancel={async () => {

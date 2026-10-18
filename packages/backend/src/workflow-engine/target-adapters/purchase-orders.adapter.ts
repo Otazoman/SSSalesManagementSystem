@@ -5,10 +5,7 @@
  */
 import { PurchaseOrderRepository } from "../../routes/purchase/orders/purchase-order.repository";
 import { PurchaseOrderService } from "../../routes/purchase/orders/purchase-order.service";
-import {
-  buildPurchaseOrderItemInsertRow,
-  PurchaseOrderItemInput,
-} from "../../routes/purchase/orders/purchase-order-item-mapper";
+import { PurchaseOrderItemInput } from "../../routes/purchase/orders/purchase-order-item-mapper";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { NotFoundError } from "../../platform/http/http-error";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
@@ -22,6 +19,7 @@ import type {
   HistoryPreviewResult,
 } from "./registry";
 import { recalculateDocumentTotals } from "../../platform/tax/recalculate-document-totals";
+import { reflectAnsweredDeliveryDatesToSalesOrders } from "../../routes/purchase/orders/purchase-order-delivery-date.service";
 
 interface PurchaseOrderUpdateSnapshot {
   header?: Record<string, any>;
@@ -130,11 +128,31 @@ async function applyApproved({ db, reqParent, userId, now, c }: ApplyApprovedPar
     updatedAt: now,
   };
 
+  // 2026-10-18: 申請内容の明細のうち、この発注に既にある明細ID(item.id)を持つものはそのIDのまま更新する
+  // (入庫・仕入・受注とのつながりを保つ。以前は全件を新しいIDで入れ直していた)
   const itemRows = Array.isArray(snapshot.items)
-    ? snapshot.items.map((item, index) => buildPurchaseOrderItemInsertRow( item as PurchaseOrderItemInput, reqParent.targetId, index, ))
+    ? await repo.buildSyncedItemRows(
+        reqParent.targetId,
+        snapshot.items as Array<PurchaseOrderItemInput & { id?: string | null }>,
+      )
     : null;
 
   await repo.applyApprovedUpdate(reqParent.targetId, headerData, itemRows);
+
+  // 新規要望(2026-10-18): 申請時に回答納期の受注への反映が指定されていれば、変更が確定したこの時点で反映する
+  // (反映の失敗で承認確定自体を失敗させない。受注側は後から納期のみ更新APIで再反映できる)
+  if (header.deliveryDateReflection) {
+    try {
+      await reflectAnsweredDeliveryDatesToSalesOrders(
+        db,
+        reqParent.targetId,
+        header.deliveryDateReflection,
+        approverEmployeeNumber,
+      );
+    } catch (err) {
+      console.error("発注の回答納期の受注への反映に失敗しました:", err);
+    }
+  }
 }
 
 // 差戻し確定時: REGISTER/UPDATE(承認申請中)はDRAFTへ戻す。DELETE(削除申請)の差戻しは、

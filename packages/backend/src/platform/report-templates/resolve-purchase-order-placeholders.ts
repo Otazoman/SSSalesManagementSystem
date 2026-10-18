@@ -14,6 +14,11 @@ export interface PurchaseOrderPlaceholderItem {
   unit_price: string;
   tax_rate: string;
   amount: string;
+  // 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期(YYYY-MM-DD、未設定なら空欄)。
+  // delivery_dateは回答納期があればそれを、無ければ希望納期を出す(1列で納期を示したいテンプレート用)
+  requested_delivery_date: string;
+  answered_delivery_date: string;
+  delivery_date: string;
 }
 
 export interface ResolvedPurchaseOrderPlaceholders {
@@ -41,6 +46,8 @@ interface OrderItemRowLike {
   unitPrice: number;
   unitCode: string | null;
   taxCategoryCode: string | null;
+  requestedDeliveryDate?: string | null;
+  answeredDeliveryDate?: string | null;
 }
 
 export function resolvePurchaseOrderPlaceholders(params: {
@@ -75,6 +82,9 @@ export function resolvePurchaseOrderPlaceholders(params: {
       unit_price: formatYen(item.unitPrice),
       tax_rate: `${Math.round(rate * 100)}%`,
       amount: formatYen(item.quantity * item.unitPrice),
+      requested_delivery_date: item.requestedDeliveryDate || "",
+      answered_delivery_date: item.answeredDeliveryDate || "",
+      delivery_date: item.answeredDeliveryDate || item.requestedDeliveryDate || "",
     };
   });
 

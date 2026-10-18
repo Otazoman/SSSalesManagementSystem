@@ -17,6 +17,7 @@ import {
   SingleSendEmailSchema,
   RequestDownloadOtpSchema,
   VerifyDownloadOtpSchema,
+  UpdateDeliveryDatesSchema,
 } from "./purchase-order.schema";
 import { todayJst } from "../../../platform/date/format-jst-date";
 
@@ -203,6 +204,32 @@ purchaseOrdersRouter.put(
     }
 
     const result = await getService(c).updateOrder(c, id, formData, parsed.output);
+    return c.json(result);
+  },
+);
+
+// ==========================================
+// 新規要望(2026-10-18): 明細の希望納期・回答納期のみ更新(承認済みでも変更申請不要)
+// ==========================================
+purchaseOrdersRouter.put(
+  "/:id/delivery-dates",
+  describeApiRoute({
+    summary: "発注明細の希望納期・回答納期の更新(受注納期への反映指定可)",
+    tags: ["purchase-orders"],
+    responses: {
+      200: { description: "更新成功" },
+      400: { description: "バリデーションエラー、承認処理中、または発注に存在しない明細" },
+      404: { description: "対象の発注が見つからない" },
+    },
+  }),
+  async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => null);
+    const parsed = v.safeParse(UpdateDeliveryDatesSchema, body);
+    if (!parsed.success) {
+      return respondValidationError(c, parsed.issues);
+    }
+    const result = await getService(c).updateDeliveryDates(c, id, parsed.output);
     return c.json(result);
   },
 );

@@ -42,6 +42,9 @@ interface PurchaseOrderItemsTableProps {
 const inputClass =
   "w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:outline-none transition-colors placeholder:text-slate-500 font-medium disabled:bg-slate-100 disabled:text-slate-500";
 
+const deliveryDateInputClass =
+  "mt-0.5 w-full border border-slate-300 p-1.5 text-base sm:text-xs rounded bg-white text-slate-900 focus:border-indigo-600 focus:outline-none font-medium disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-70";
+
 export function PurchaseOrderItemsTable({
   items,
   allItems,
@@ -85,7 +88,7 @@ export function PurchaseOrderItemsTable({
       {items.length > 0 && (
         <div className="border border-slate-200 rounded-lg overflow-hidden overflow-x-auto">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 border-b font-bold text-slate-500">
+            <thead className="bg-slate-50 border-b font-bold text-slate-700">
               <tr>
                 <th className="p-2 w-10 text-center">No</th>
                 <th className="p-2 w-10 text-center">並替</th>
@@ -95,6 +98,7 @@ export function PurchaseOrderItemsTable({
                 <th className="p-2">単価</th>
                 <th className="p-2">単位</th>
                 <th className="p-2">税区分</th>
+                <th className="p-2 w-36">希望納期 / 回答納期</th>
                 <th className="p-2">小計金額</th>
                 <th className="p-2 w-10 text-center">削除</th>
               </tr>
@@ -115,7 +119,7 @@ export function PurchaseOrderItemsTable({
                             type="button"
                             disabled={isLocked || idx === 0}
                             onClick={() => onMoveItemUp(idx)}
-                            className="text-slate-500 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
+                            className="text-slate-700 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
                             title="上へ移動"
                           >
                             ▲
@@ -124,7 +128,7 @@ export function PurchaseOrderItemsTable({
                             type="button"
                             disabled={isLocked || idx === items.length - 1}
                             onClick={() => onMoveItemDown(idx)}
-                            className="text-slate-500 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
+                            className="text-slate-700 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
                             title="下へ移動"
                           >
                             ▼
@@ -262,6 +266,46 @@ export function PurchaseOrderItemsTable({
                           ))}
                         </select>
                       </td>
+                      <td className="p-2">
+                        {/* 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期 */}
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold text-slate-700">
+                            希望
+                            <input
+                              type="date"
+                              aria-label={`${idx + 1}行目の希望納期`}
+                              className={deliveryDateInputClass}
+                              value={item.requestedDeliveryDate || ""}
+                              disabled={isLocked}
+                              onChange={(e) =>
+                                onItemChange(idx, {
+                                  requestedDeliveryDate: e.target.value || null,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="text-[10px] font-bold text-slate-700">
+                            回答
+                            <input
+                              type="date"
+                              aria-label={`${idx + 1}行目の回答納期`}
+                              className={deliveryDateInputClass}
+                              value={item.answeredDeliveryDate || ""}
+                              disabled={isLocked}
+                              onChange={(e) =>
+                                onItemChange(idx, {
+                                  answeredDeliveryDate: e.target.value || null,
+                                })
+                              }
+                            />
+                          </label>
+                          {(item.salesOrderItemId || item.purchaseRequestItemId) && (
+                            <span className="text-[10px] font-bold text-indigo-700">
+                              {item.salesOrderItemId ? "受注に紐付き" : "購買申請経由"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td
                         className={`p-2 font-mono font-bold ${amount < 0 ? "text-rose-600" : "text-slate-700"}`}
                       >
@@ -284,7 +328,7 @@ export function PurchaseOrderItemsTable({
                       </td>
                     </tr>
                     <tr className="hover:bg-slate-50/50">
-                      <td colSpan={10} className="px-2 pb-2 pt-0">
+                      <td colSpan={11} className="px-2 pb-2 pt-0">
                         <div className="flex gap-1">
                           <select
                             className={`${inputClass} bg-white w-1/3`}
@@ -326,7 +370,7 @@ export function PurchaseOrderItemsTable({
 
       <div className="flex justify-end pt-2">
         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 w-full sm:w-72 space-y-1.5 text-xs">
-          <div className="flex justify-between text-slate-500">
+          <div className="flex justify-between text-slate-700">
             <span>小計 (値引き前・税抜):</span>
             <span className="font-mono">
               ¥{calcGrossSubTotal().toLocaleString()}
@@ -340,14 +384,14 @@ export function PurchaseOrderItemsTable({
               </span>
             </div>
           )}
-          <div className="flex justify-between text-slate-500">
+          <div className="flex justify-between text-slate-700">
             <span>税抜金額小計:</span>
             <span className="font-mono">
               ¥{calcSubTotal().toLocaleString()}
             </span>
           </div>
           {taxBreakdown.rate10.excl !== 0 && (
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-slate-700">
               <span>消費税 (10%対象):</span>
               <span className="font-mono">
                 ¥{taxBreakdown.rate10.tax.toLocaleString()}
@@ -355,7 +399,7 @@ export function PurchaseOrderItemsTable({
             </div>
           )}
           {taxBreakdown.rate8.excl !== 0 && (
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-slate-700">
               <span>消費税 (8%対象):</span>
               <span className="font-mono">
                 ¥{taxBreakdown.rate8.tax.toLocaleString()}
@@ -363,14 +407,14 @@ export function PurchaseOrderItemsTable({
             </div>
           )}
           {taxBreakdown.rate0.excl !== 0 && (
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-slate-700">
               <span>非課税分:</span>
               <span className="font-mono">
                 ¥{taxBreakdown.rate0.excl.toLocaleString()}
               </span>
             </div>
           )}
-          <div className="flex justify-between text-slate-500">
+          <div className="flex justify-between text-slate-700">
             <span>消費税合計:</span>
             <span className="font-mono">¥{calcTax().toLocaleString()}</span>
           </div>

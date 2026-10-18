@@ -10,6 +10,13 @@ import { combineConditions } from "../../../platform/repository/search-condition
 import { PaginationParams, toOffset } from "../../../platform/http/pagination";
 import { buildOrderBy, SortQuery } from "../../../platform/http/sort";
 import { containsText } from "../../../platform/repository/text-search";
+import { BadRequestError } from "../../../platform/http/http-error";
+import {
+  buildPurchaseRequisitionItemInsertRow,
+  PurchaseRequisitionItemInput,
+} from "./purchase-requisition-item-mapper";
+
+type PurchaseRequisitionItemRow = ReturnType<typeof buildPurchaseRequisitionItemInsertRow>;
 
 // ヘッダクリックソート(追加要望D)の許可カラム
 const PURCHASE_REQUISITIONS_SORT_COLUMNS = {
@@ -234,17 +241,73 @@ export class PurchaseRequisitionRepository {
 
   // BUG-048: 承認済みの伝票の変更申請の承認時に、ヘッダーの更新・明細の入れ替え・履歴を1回の batch で書き込む
   // (以前は1つずつ書き込んでいたため、途中で失敗すると明細が消えたままになりえた)。itemRows が null なら明細は変えない
+  // 2026-10-18(BUG-069): 保存内容の明細から明細行を組み立てる。この購買申請に既にある明細ID(item.id)を持つ明細は
+  // そのIDを使い(=既存明細の更新)、それ以外は新しいIDで追加する(受注・発注と同じ方針)
+  async buildSyncedItemRows(
+    requisitionId: string,
+    items: Array<PurchaseRequisitionItemInput & { id?: string | null }>,
+  ): Promise<PurchaseRequisitionItemRow[]> {
+    const existingIds = new Set((await this.findRequisitionItems(requisitionId)).map((row) => row.id));
+    return items.map((item, index) => {
+      const isKept = !!item.id && existingIds.has(item.id);
+      return buildPurchaseRequisitionItemInsertRow({ ...item, lineId: isKept ? item.id : null }, requisitionId, index);
+    });
+  }
+
+  // 削除しようとしている購買申請明細を参照している伝票の種類(参照が無ければ空配列)
+  async findItemReferencesForRemoval(itemIds: string[]): Promise<string[]> {
+    if (itemIds.length === 0) return [];
+    const exists = async (table: any, column: any) =>
+      (await this.db.select({ id: table.id }).from(table).where(inArray(column, itemIds)).limit(1)).length > 0;
+    const checks: Array<[string, Promise<boolean>]> = [
+      ["発注", exists(schema.orderItems, schema.orderItems.purchaseRequestItemId)],
+      ["購買申請の添付", exists(schema.purchaseRequestAttachments, schema.purchaseRequestAttachments.purchaseRequestItemId)],
+    ];
+    const results = await Promise.all(checks.map(([, p]) => p));
+    return checks.filter((_, i) => results[i]).map(([label]) => label);
+  }
+
+  // 2026-10-18(BUG-069): 明細IDを保ったまま、購買申請の明細を保存内容(rows)に合わせる書き込みを組み立てる(まだ実行しない)。
+  // 以前は明細を全件削除して入れ直していたため、発注から参照されている購買申請を保存・変更申請の承認をすると
+  // FK制約違反(500)になっていた。保存内容に無い明細は削除し、参照されている明細の削除は400で止める
+  async buildItemSyncWrites(requisitionId: string, rows: PurchaseRequisitionItemRow[]): Promise<any[]> {
+    const existingIds = (await this.findRequisitionItems(requisitionId)).map((row) => row.id);
+    const keptIds = new Set(rows.map((row) => row.id).filter((id) => existingIds.includes(id)));
+    const removedIds = existingIds.filter((id) => !keptIds.has(id));
+
+    const referencedBy = await this.findItemReferencesForRemoval(removedIds);
+    if (referencedBy.length > 0) {
+      throw new BadRequestError(
+        `${referencedBy.join("・")}から参照されている購買申請明細は削除できません(明細を残したまま数量などを変更してください)`,
+      );
+    }
+
+    const writes: any[] = [];
+    if (removedIds.length > 0) {
+      writes.push(this.db.delete(schema.purchaseRequestItems).where(inArray(schema.purchaseRequestItems.id, removedIds)));
+    }
+    for (const row of rows) {
+      if (keptIds.has(row.id)) {
+        const { id: rowId, ...values } = row;
+        writes.push(this.db.update(schema.purchaseRequestItems).set(values).where(eq(schema.purchaseRequestItems.id, rowId)));
+      } else {
+        writes.push(this.db.insert(schema.purchaseRequestItems).values(row));
+      }
+    }
+    return writes;
+  }
+
   async applyApprovedUpdate(
     requisitionId: string,
     header: Partial<typeof schema.purchaseRequests.$inferInsert>,
-    itemRows: (typeof schema.purchaseRequestItems.$inferInsert)[] | null,
+    itemRows: PurchaseRequisitionItemRow[] | null,
   ) {
     const statements: any[] = [
       this.db.update(schema.purchaseRequests).set(header).where(eq(schema.purchaseRequests.id, requisitionId)),
     ];
     if (itemRows) {
-      statements.push(this.db.delete(schema.purchaseRequestItems).where(eq(schema.purchaseRequestItems.requestId, requisitionId)));
-      for (const row of itemRows) statements.push(this.db.insert(schema.purchaseRequestItems).values(row));
+      // 2026-10-18(BUG-069): 明細IDを保ったまま更新する(発注とのつながりを保つ)
+      statements.push(...(await this.buildItemSyncWrites(requisitionId, itemRows)));
     }
     await this.db.batch(statements as [any, ...any[]]);
   }
@@ -253,6 +316,16 @@ export class PurchaseRequisitionRepository {
     data: typeof schema.purchaseRequestAttachments.$inferInsert,
   ) {
     await this.db.insert(schema.purchaseRequestAttachments).values(data);
+  }
+
+  // 2026-10-18(BUG-068): 保存で既存の添付の行(ID・種類・登録者)を保ったまま更新・削除するため(platform/r2/sync-attachments.ts)
+  async updateRequisitionAttachment(attachmentId: string, data: Partial<typeof schema.purchaseRequestAttachments.$inferInsert>) {
+    await this.db.update(schema.purchaseRequestAttachments).set(data).where(eq(schema.purchaseRequestAttachments.id, attachmentId));
+  }
+
+  async deleteRequisitionAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.purchaseRequestAttachments).where(inArray(schema.purchaseRequestAttachments.id, attachmentIds));
   }
 
   async deleteRequisitionAttachments(requisitionId: string) {

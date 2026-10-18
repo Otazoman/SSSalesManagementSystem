@@ -237,7 +237,8 @@ beforeEach(async () => {
 });
 
 describe("承認機能ON時の返品ライフサイクル", () => {
-  it("申請→最終承認でOUTBOUND(仕入先へ返品)が在庫を減算する", async () => {
+  // ファイル最初のテストで承認処理一式を動的importするため、読み込み時間で既定の5秒を超えることがある(2026-10-18)
+  it("申請→最終承認でOUTBOUND(仕入先へ返品)が在庫を減算する", { timeout: 15000 }, async () => {
     const createRes = await postReturn("applicant-1", {
       itemId: "ITEM1",
       warehouseId: "WH1",

@@ -15,7 +15,9 @@ import {
   PurchaseOrderPrefillData,
   BusinessLocationLookup,
   WarehouseLookup,
+  DeliveryDateReflection,
 } from "../_types";
+import { parseDeliveryDateText, applyDeliveryDateTextToItems } from "./parse-delivery-date-text";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
 import { roundTaxAmount } from "../../../_shared/tax-amounts";
@@ -131,6 +133,11 @@ export function usePurchaseOrderOperations({
   const [paymentTerms, setPaymentTerms] = useState("");
   const [isPaid, setIsPaid] = useState(false);
   const [paidAt, setPaidAt] = useState("");
+  // 新規要望(2026-10-18): 回答納期の受注納期への反映方法(保存のたびに指定、既定は「反映しない」)
+  const [deliveryDateReflection, setDeliveryDateReflection] = useState<DeliveryDateReflection>({
+    mode: "NONE",
+    addDays: 0,
+  });
   const [attachments, setAttachments] = useState<PurchaseOrderAttachment[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Record<string, File>>({});
 
@@ -289,6 +296,7 @@ export function usePurchaseOrderOperations({
     setPaymentTerms("");
     setIsPaid(false);
     setPaidAt("");
+    setDeliveryDateReflection({ mode: "NONE", addDays: 0 });
     setAttachments([]);
     setSelectedFiles({});
     setError("");
@@ -333,6 +341,7 @@ export function usePurchaseOrderOperations({
     setPaymentTerms(detail.paymentTerms || "");
     setIsPaid(detail.isPaid || false);
     setPaidAt(detail.paidAt ? detail.paidAt.split("T")[0] : "");
+    setDeliveryDateReflection({ mode: "NONE", addDays: 0 });
     setAttachments(detail.attachments || []);
     setSelectedFiles({});
     setViewMode("FORM");
@@ -369,9 +378,21 @@ export function usePurchaseOrderOperations({
         unitCode: "",
         taxCategoryCode: "",
         memo: "",
+        // 新規要望(2026-10-18): 発注書印字納期が日付なら、追加した行の希望納期にもセットする
+        requestedDeliveryDate: parseDeliveryDateText(deliveryDate),
       },
     ]);
-  }, []);
+  }, [deliveryDate]);
+
+  // 新規要望(2026-10-18): 発注書印字納期に日付を入れたら、希望納期が空欄の明細へ自動でセットする
+  // (applyDeliveryDateTextToItems参照。明細ごとに入れた希望納期は上書きしない)
+  const handleDeliveryDateChange = useCallback(
+    (value: string) => {
+      setItems((prev) => applyDeliveryDateTextToItems(prev, deliveryDate, value));
+      setDeliveryDate(value);
+    },
+    [deliveryDate],
+  );
 
   const moveItemUp = useCallback((index: number) => {
     setItems((prev) => {
@@ -561,6 +582,18 @@ export function usePurchaseOrderOperations({
   const isLocked =
     isPurchaseOrderWfEnabled && (editingStatus === "PENDING_APPROVAL" || editingStatus === "PENDING_DELETION");
 
+  // 新規要望(2026-10-18): 反映指定をAPIへ送る形にする(反映しない場合はnull)
+  const buildDeliveryDateReflectionPayload = () =>
+    deliveryDateReflection.mode === "NONE"
+      ? null
+      : {
+          mode: deliveryDateReflection.mode,
+          addDays:
+            deliveryDateReflection.mode === "ADD_DAYS"
+              ? Math.max(0, Math.trunc(deliveryDateReflection.addDays || 0))
+              : 0,
+        };
+
   const buildOrderJson = () => ({
     id: editingId || undefined,
     title,
@@ -585,7 +618,10 @@ export function usePurchaseOrderOperations({
     totalAmount,
     taxAmount,
     memo: memo.trim() === "" ? null : memo,
+    deliveryDateReflection: buildDeliveryDateReflectionPayload(),
     items: items.map((it) => ({
+      // 明細ID。サーバー側で明細IDを保ったまま更新し、入庫・仕入・受注とのつながりを保つ(新しい明細は無視される)
+      id: it.id ?? null,
       itemId: it.itemId,
       itemName: it.itemName || null,
       inputType: it.inputType || "MASTER",
@@ -595,8 +631,17 @@ export function usePurchaseOrderOperations({
       taxCategoryCode: it.taxCategoryCode || null,
       memo: it.memo || null,
       purchaseRequestItemId: it.purchaseRequestItemId || null,
+      // 新規要望(2026-10-18)の関連修正: 受注明細との紐付けを送っていなかったため、受注欠品から作成した
+      // 発注を保存すると紐付けが失われていた(回答納期を受注へ反映するのに必要)
+      salesOrderItemId: it.salesOrderItemId || null,
+      requestedDeliveryDate: it.requestedDeliveryDate || null,
+      answeredDeliveryDate: it.answeredDeliveryDate || null,
     })),
     attachments: attachments.map((att) => ({
+      // 2026-10-18: 既存の添付のIDと種類を送り、サーバー側で行(ID・種類・登録者)を保ったまま更新させる
+      // (送らないと保存のたびに添付IDが変わり、取引先へ送ったダウンロードリンクが無効になっていた)
+      id: att.id ?? null,
+      fileType: att.fileType || null,
       fileName: att.fileName,
       storageType: att.storageType,
       attachmentR2Path: att.attachmentR2Path || null,
@@ -657,8 +702,12 @@ export function usePurchaseOrderOperations({
                 totalAmount,
                 taxAmount,
                 memo: memo.trim() === "" ? null : memo,
+                // 新規要望(2026-10-18): 変更が承認確定した時点で回答納期を受注へ反映する
+                deliveryDateReflection: buildDeliveryDateReflectionPayload(),
               },
               items: items.map((it) => ({
+                // 明細ID。承認確定時に明細IDを保ったまま更新するため送る(2026-10-18)
+                id: it.id ?? null,
                 itemId: it.itemId,
                 itemName: it.itemName || null,
                 inputType: it.inputType || "MASTER",
@@ -667,6 +716,12 @@ export function usePurchaseOrderOperations({
                 unitCode: it.unitCode || null,
                 taxCategoryCode: it.taxCategoryCode || null,
                 memo: it.memo || null,
+                // 新規要望(2026-10-18)の関連修正: 承認確定時に明細を入れ替えるため、購買申請・受注との
+                // 紐付けと納期も送る(送らないと承認確定で紐付けが失われる)
+                purchaseRequestItemId: it.purchaseRequestItemId || null,
+                salesOrderItemId: it.salesOrderItemId || null,
+                requestedDeliveryDate: it.requestedDeliveryDate || null,
+                answeredDeliveryDate: it.answeredDeliveryDate || null,
               })),
             },
             comment: `発注[${editingId}]の変更申請`,
@@ -688,17 +743,72 @@ export function usePurchaseOrderOperations({
       });
 
       const url = editingId ? `/api/purchase-orders/${editingId}` : "/api/purchase-orders/register";
-      const data = await apiFetch<{ id?: string }>(url, {
+      const data = await apiFetch<{ id?: string; message?: string }>(url, {
         method: editingId ? "PUT" : "POST",
         body: formData,
         defaultErrorMessage: "発注の保存に失敗しました",
       });
 
-      setMessage(editingId ? "発注を更新しました" : "発注を新規登録しました");
+      // 新規要望(2026-10-18): 受注への納期反映の結果はサーバーのメッセージに含まれるため、反映を指定した場合はそちらを出す
+      setMessage(
+        deliveryDateReflection.mode !== "NONE" && data.message
+          ? data.message
+          : editingId
+            ? "発注を更新しました"
+            : "発注を新規登録しました",
+      );
       if (!editingId && data.id) {
         setEditingId(data.id);
         setEditingStatus("DRAFT");
       }
+      setDeliveryDateReflection({ mode: "NONE", addDays: 0 });
+      // 新規要望(2026-10-18): 追加した行の明細IDはサーバー側で採番されるため、続けて
+      // 「納期のみ保存」ができるよう保存後の明細(ID込み)を取り直す
+      const savedId = editingId || data.id;
+      if (savedId) {
+        try {
+          const saved = await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${savedId}`);
+          setItems(saved.items || []);
+        } catch {
+          // 取り直しに失敗しても保存自体は完了しているため、画面はそのままにする
+        }
+      }
+      void syncOrders(filterStatus);
+    } catch (err) {
+      if (err instanceof Error) setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 新規要望(2026-10-18): 明細の希望納期・回答納期のみを保存する(承認済みでも変更申請不要)。
+  // 金額・数量等の他の変更はここでは保存されない(通常の保存/変更申請で行う)
+  const handleSaveDeliveryDatesOnly = async () => {
+    if (!editingId) return;
+    setError("");
+    setMessage("");
+    if (items.some((it) => !it.id)) {
+      setError(
+        "保存されていない明細行があります。納期のみ保存は保存済みの明細が対象です(行の追加は通常の保存で行ってください)",
+      );
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const data = await apiFetch<{ message?: string }>(`/api/purchase-orders/${editingId}/delivery-dates`, {
+        method: "PUT",
+        json: {
+          items: items.map((it) => ({
+            id: it.id,
+            requestedDeliveryDate: it.requestedDeliveryDate || null,
+            answeredDeliveryDate: it.answeredDeliveryDate || null,
+          })),
+          deliveryDateReflection: buildDeliveryDateReflectionPayload(),
+        },
+        defaultErrorMessage: "納期の保存に失敗しました",
+      });
+      setMessage(data.message || "納期を保存しました");
+      setDeliveryDateReflection({ mode: "NONE", addDays: 0 });
       void syncOrders(filterStatus);
     } catch (err) {
       if (err instanceof Error) setError(err.message);
@@ -933,7 +1043,7 @@ export function usePurchaseOrderOperations({
     companyFax,
     setCompanyFax,
     deliveryDate,
-    setDeliveryDate,
+    setDeliveryDate: handleDeliveryDateChange,
     deliveryPlace,
     setDeliveryPlace,
     deliveryLocationId,
@@ -1014,6 +1124,9 @@ export function usePurchaseOrderOperations({
     handleClearForm,
     handleSelectEdit,
     handleSubmit,
+    handleSaveDeliveryDatesOnly,
+    deliveryDateReflection,
+    setDeliveryDateReflection,
     handleSubmitForApproval,
     handleDeleteLink,
     handleDownloadCsv,

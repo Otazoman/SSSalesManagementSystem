@@ -84,6 +84,34 @@ export function useQuoteListActions({
     setViewMode("FORM");
   };
 
+  // 新規要望(2026-10-18): 過去の見積を複写して新規作成フォームを開く。この時点ではDBに書き込まず、
+  // 保存した時点で新しい見積番号で登録される。番号・ステータス・承認情報・添付・明細IDは引き継がない
+  // (見積日・有効期限・入力担当者はuseQuoteForm側で新規作成時の既定値にする)
+  const handleCopyToNewForm = async (id: string) => {
+    try {
+      setError("");
+      setMessage("");
+      const data = await apiFetch<QuoteRecord>(`/api/quotes/${id}`, {
+        defaultErrorMessage: "複写元の見積の取得に失敗しました",
+      });
+      const copied: QuoteRecord = {
+        ...data,
+        id: "",
+        title: `${data.title || ""}(コピー)`,
+        status: "DRAFT",
+        attachments: [],
+        items: (data.items || []).map((item) => ({ ...item, id: undefined })),
+      };
+      setEditingId(null);
+      setQuoteId("");
+      setInitialFormData(copied);
+      setViewMode("FORM");
+      setMessage(`見積[${id}]を複写しました。内容を確認して保存してください`);
+    } catch (err) {
+      if (err instanceof Error) setError(err.message);
+    }
+  };
+
   const handleOpenEditForm = async (id: string) => {
     try {
       setError("");
@@ -245,6 +273,7 @@ export function useQuoteListActions({
     setFilters,
     handleClearSearch,
     handleOpenNewForm,
+    handleCopyToNewForm,
     handleOpenEditForm,
     handleOpenPreview,
     handleCSVImportChange,

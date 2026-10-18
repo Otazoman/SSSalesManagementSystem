@@ -69,9 +69,9 @@ export function OrderItemsTable({
             ＋ 行を追加
           </Button>
         </div>
-        <TableScroll minWidth={960}>
+        <TableScroll minWidth={1080}>
           <table className="w-full table-fixed text-xs text-left">
-            <thead className="bg-slate-50 border-b font-bold text-slate-500">
+            <thead className="bg-slate-50 border-b font-bold text-slate-700">
               <tr>
                 <th className="p-2 w-10 text-center">No</th>
                 <th className="p-2 w-10 text-center">並替</th>
@@ -81,6 +81,7 @@ export function OrderItemsTable({
                 <th className="p-2 w-24">単価 (税抜)</th>
                 <th className="p-2 w-20">単位</th>
                 <th className="p-2 w-36">税区分</th>
+                <th className="p-2 w-32">納期</th>
                 <th className="p-2 w-24">小計金額</th>
                 <th className="p-2 w-12 text-center">削除</th>
               </tr>
@@ -98,7 +99,7 @@ export function OrderItemsTable({
                           type="button"
                           disabled={idx === 0}
                           onClick={() => onMoveItemUp(idx)}
-                          className="text-slate-500 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
+                          className="text-slate-700 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
                           title="上へ移動"
                         >
                           ▲
@@ -107,7 +108,7 @@ export function OrderItemsTable({
                           type="button"
                           disabled={idx === items.length - 1}
                           onClick={() => onMoveItemDown(idx)}
-                          className="text-slate-500 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
+                          className="text-slate-700 hover:text-indigo-600 disabled:opacity-20 disabled:pointer-events-none leading-none"
                           title="下へ移動"
                         >
                           ▼
@@ -232,6 +233,18 @@ export function OrderItemsTable({
                         ))}
                       </select>
                     </td>
+                    <td className="p-2">
+                      {/* 新規要望(2026-10-18): 明細行ごとの納期。紐づく発注の回答納期から反映されることもある */}
+                      <input
+                        type="date"
+                        aria-label={`${idx + 1}行目の納期`}
+                        className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900 focus:border-indigo-600 focus:outline-none font-medium"
+                        value={item.deliveryDate || ""}
+                        onChange={(e) =>
+                          onItemChange(idx, "deliveryDate", e.target.value || null)
+                        }
+                      />
+                    </td>
                     <td
                       className={`p-2 font-mono font-bold ${
                         (item.quantity || 0) * (item.unitPrice || 0) < 0
@@ -261,7 +274,7 @@ export function OrderItemsTable({
                     </td>
                   </tr>
                   <tr className="hover:bg-slate-50/50">
-                    <td colSpan={10} className="px-2 pb-2 pt-0">
+                    <td colSpan={11} className="px-2 pb-2 pt-0">
                       <div className="flex gap-1">
                         <select
                           className={`${inputClass} bg-white w-1/3`}
@@ -295,7 +308,7 @@ export function OrderItemsTable({
                   </tr>
                   {item.inputType === "MASTER" && item.itemId && (
                     <tr className="hover:bg-slate-50/50">
-                      <td colSpan={10} className="px-2 pb-2 pt-0">
+                      <td colSpan={11} className="px-2 pb-2 pt-0">
                         <OrderItemWarehouseAllocation
                           key={item.itemId}
                           itemId={item.itemId}
@@ -319,7 +332,7 @@ export function OrderItemsTable({
 
       <div className="flex justify-end pt-2">
         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 w-full sm:w-72 space-y-1.5 text-xs">
-          <div className="flex justify-between text-slate-500">
+          <div className="flex justify-between text-slate-700">
             <span>小計 (値引き前・税抜):</span>
             <span className="font-mono">
               ¥{calcGrossSubTotal().toLocaleString()}
@@ -333,7 +346,7 @@ export function OrderItemsTable({
               </span>
             </div>
           )}
-          <div className="flex justify-between text-slate-500">
+          <div className="flex justify-between text-slate-700">
             <span>税抜金額小計:</span>
             <span className="font-mono">
               ¥{calcSubTotal().toLocaleString()}
@@ -342,7 +355,7 @@ export function OrderItemsTable({
           {taxBreakdown ? (
             <>
               {taxBreakdown.rate10.excl !== 0 && (
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-slate-700">
                   <span>消費税 (10%対象):</span>
                   <span className="font-mono">
                     ¥{taxBreakdown.rate10.tax.toLocaleString()}
@@ -350,7 +363,7 @@ export function OrderItemsTable({
                 </div>
               )}
               {taxBreakdown.rate8.excl !== 0 && (
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-slate-700">
                   <span>消費税 (8%対象):</span>
                   <span className="font-mono">
                     ¥{taxBreakdown.rate8.tax.toLocaleString()}
@@ -358,7 +371,7 @@ export function OrderItemsTable({
                 </div>
               )}
               {taxBreakdown.rate0.excl !== 0 && (
-                <div className="flex justify-between text-slate-500">
+                <div className="flex justify-between text-slate-700">
                   <span>非課税分:</span>
                   <span className="font-mono">
                     ¥{taxBreakdown.rate0.excl.toLocaleString()}
@@ -367,7 +380,7 @@ export function OrderItemsTable({
               )}
             </>
           ) : (
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-slate-700">
               <span>消費税 (10%):</span>
               <span className="font-mono">¥{calcTax().toLocaleString()}</span>
             </div>

@@ -260,6 +260,16 @@ export class SalesInvoiceRepository {
       .where(eq(schema.salesInvoices.id, id));
   }
 
+  // 2026-10-18(BUG-068): 保存で既存の添付の行(ID・種類・登録者)を保ったまま更新・削除するため(platform/r2/sync-attachments.ts)
+  async updateInvoiceAttachment(attachmentId: string, data: Partial<typeof schema.salesInvoiceAttachments.$inferInsert>) {
+    await this.db.update(schema.salesInvoiceAttachments).set(data).where(eq(schema.salesInvoiceAttachments.id, attachmentId));
+  }
+
+  async deleteInvoiceAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.salesInvoiceAttachments).where(inArray(schema.salesInvoiceAttachments.id, attachmentIds));
+  }
+
   async deleteInvoiceAttachments(salesInvoiceId: string) {
     await this.db
       .delete(schema.salesInvoiceAttachments)

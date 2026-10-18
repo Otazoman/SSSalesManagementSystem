@@ -4,6 +4,7 @@ import { QuotePayload } from "./quote.schema";
 import { RESOURCE_KEY } from "./quote-constants";
 import { buildQuoteItemInsertRow, QuoteItemInput } from "./quote-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
@@ -326,46 +327,23 @@ export class QuoteCrudService {
 
     const existingAttachments = await this.repo.findQuoteAttachments(id);
 
-    await tx.repo.deleteQuoteAttachments(id);
-
+    // 2026-10-18(BUG-068): 添付は全件削除して入れ直さず、既存の行(ID・種類・登録者)を保ったまま保存内容に合わせる
+    // (保存のたびに添付IDが変わり、取引先へ送ったダウンロードリンクが無効になっていた)
+    let keptR2Paths: Array<string | null> = [];
     if (body.attachments && Array.isArray(body.attachments)) {
-      for (const att of body.attachments) {
-        let r2Path = att.attachmentR2Path || null;
-        let extUrl = null;
-
-        if (att.storageType === "R2") {
-          const fileObj = formData.get(`files[${att.fileName}]`) as File;
-          if (fileObj) {
-            r2Path = generateAttachmentKey(`quotes/${id}`, fileObj.name);
-            await c.env.QUATES_BUCKET.put(r2Path, fileObj.stream(), {
-              httpMetadata: { contentType: fileObj.type },
-            });
-          } else if (!r2Path) {
-            const match = existingAttachments.find(
-              (ea) => ea.fileName === att.fileName && ea.storageType === "R2",
-            );
-            if (match) r2Path = match.attachmentR2Path;
-          }
-        } else {
-          extUrl = att.externalUrl || null;
-        }
-
-        if (r2Path || extUrl) {
-          await tx.repo.insertQuoteAttachment({
-            id: crypto.randomUUID(),
-            quoteId: id,
-            fileName: att.fileName,
-            storageType: att.storageType,
-            attachmentR2Path: r2Path,
-            externalUrl: extUrl,
-            fileType: att.fileType || "OTHER",
-            uploadedById: opId,
-            uploadedAt: new Date(),
-          });
-        }
-      }
+      ({ keptR2Paths } = await syncAttachments({
+        existing: existingAttachments,
+        incoming: body.attachments,
+        formData,
+        bucket: c.env.QUATES_BUCKET,
+        keyPrefix: `quotes/${id}`,
+        operatorId: opId,
+        hasFileType: true,
+        update: (attachmentId, data) => tx.repo.updateQuoteAttachment(attachmentId, data),
+        insert: (data) => tx.repo.insertQuoteAttachment({ ...data, quoteId: id }),
+        deleteByIds: (attachmentIds) => tx.repo.deleteQuoteAttachmentsByIds(attachmentIds),
+      }));
     }
-
     await tx.repo.insertHistoryLog({
       id: crypto.randomUUID(),
       quoteId: id,
@@ -393,7 +371,7 @@ export class QuoteCrudService {
       await deleteOrphanedR2Attachments(
         c.env.QUATES_BUCKET,
         existingAttachments,
-        body.attachments.map((att: any) => att.attachmentR2Path),
+        keptR2Paths,
       );
     }
 

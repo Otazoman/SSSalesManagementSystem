@@ -1,3 +1,4 @@
+import { BadRequestError } from "../../../platform/http/http-error";
 import { Context } from "hono";
 import { createLineIdChecker } from "../../../platform/csv/line-id";
 import { PurchaseOrderRepository } from "./purchase-order.repository";
@@ -5,6 +6,7 @@ import { RESOURCE_KEY } from "./purchase-order-constants";
 import { buildPurchaseOrderItemInsertRow } from "./purchase-order-item-mapper";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { parseCsv } from "../../../platform/csv/csv-parser";
+import { normalizeCsvDate } from "../../../platform/csv/csv-date";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
 
@@ -57,6 +59,13 @@ export class PurchaseOrderCsvService {
       "unitCode",
       "taxCategoryCode",
       "itemMemo",
+      // 新規要望(2026-10-18): 明細行ごとの希望納期・回答納期(YYYY-MM-DD)
+      "requestedDeliveryDate",
+      "answeredDeliveryDate",
+      // 新規要望(2026-10-18): 受注明細・購買申請明細とのつながり。取り込み直してもつながりを保ち、
+      // 回答納期を受注の納期へ反映できるようにする
+      "salesOrderItemId",
+      "purchaseRequestItemId",
     ];
 
     const rows = rawData.map((row) => {
@@ -94,6 +103,10 @@ export class PurchaseOrderCsvService {
         csvField(`${item?.unitCode || ""}`),
         csvField(`${item?.taxCategoryCode || ""}`),
         csvField(item?.memo),
+        csvField(item?.requestedDeliveryDate),
+        csvField(item?.answeredDeliveryDate),
+        csvField(item?.salesOrderItemId),
+        csvField(item?.purchaseRequestItemId),
       ].join(",");
     });
 
@@ -146,6 +159,35 @@ export class PurchaseOrderCsvService {
     const idxUnitCode = getIdx(["unitcode", "unit_code"]);
     const idxTaxCategoryCode = getIdx(["taxcategorycode", "tax_category_code"]);
     const idxItemMemo = getIdx(["itemmemo", "item_memo"]);
+    const idxRequestedDeliveryDate = getIdx(["requesteddeliverydate", "requested_delivery_date"]);
+    const idxAnsweredDeliveryDate = getIdx(["answereddeliverydate", "answered_delivery_date"]);
+    const idxSalesOrderItemId = getIdx(["salesorderitemid", "sales_order_item_id"]);
+    const idxPurchaseRequestItemId = getIdx(["purchaserequestitemid", "purchase_request_item_id"]);
+
+    // 紐付け列に存在しない明細IDがあると、FK制約で取込全体が500エラーになるため、先に検証して分かりやすく止める
+    const collectIds = (idx: number) =>
+      idx === -1
+        ? []
+        : [...new Set(allLines.slice(1).map((cols) => (cols[idx] || "").trim()).filter((v) => v !== ""))];
+    const csvSalesOrderItemIds = collectIds(idxSalesOrderItemId);
+    const existingSalesOrderItemIds = await this.repo.findExistingSalesOrderItemIds(csvSalesOrderItemIds);
+    const missingSalesOrderItemIds = csvSalesOrderItemIds.filter((v) => !existingSalesOrderItemIds.has(v));
+    if (missingSalesOrderItemIds.length > 0) {
+      throw new BadRequestError(
+        `salesOrderItemIdに存在しない受注明細IDがあります: ${missingSalesOrderItemIds.slice(0, 5).join(", ")}`,
+      );
+    }
+    const csvPurchaseRequestItemIds = collectIds(idxPurchaseRequestItemId);
+    const existingPurchaseRequestItemIds =
+      await this.repo.findExistingPurchaseRequestItemIds(csvPurchaseRequestItemIds);
+    const missingPurchaseRequestItemIds = csvPurchaseRequestItemIds.filter(
+      (v) => !existingPurchaseRequestItemIds.has(v),
+    );
+    if (missingPurchaseRequestItemIds.length > 0) {
+      throw new BadRequestError(
+        `purchaseRequestItemIdに存在しない購買申請明細IDがあります: ${missingPurchaseRequestItemIds.slice(0, 5).join(", ")}`,
+      );
+    }
 
     let count = 0;
     const clearedIds = new Set<string>();
@@ -238,6 +280,16 @@ export class PurchaseOrderCsvService {
               unitCode: getCellVal(idxUnitCode),
               taxCategoryCode: getCellVal(idxTaxCategoryCode),
               memo: getCellVal(idxItemMemo),
+              requestedDeliveryDate: normalizeCsvDate(
+                getCellVal(idxRequestedDeliveryDate),
+                "requestedDeliveryDate",
+              ),
+              answeredDeliveryDate: normalizeCsvDate(
+                getCellVal(idxAnsweredDeliveryDate),
+                "answeredDeliveryDate",
+              ),
+              salesOrderItemId: getCellVal(idxSalesOrderItemId),
+              purchaseRequestItemId: getCellVal(idxPurchaseRequestItemId),
             },
             id,
             sortOrder,

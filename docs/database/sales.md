@@ -587,6 +587,7 @@ erDiagram
 | `memo` | 文字列 |  |  |  | 備考 |
 | `warehouse_allocation_request` | 文字列 |  |  |  | 受注フォームでユーザーが指定した倉庫×数量の内訳リクエスト(JSON配列、 例: [{"warehouseId":"WH-1","quantity":6}])。未指定(null)なら引当実行時に自動でFIFO割当する |
 | `backordered_quantity` | 数値 | ○ | `0` |  | 倉庫単位の引当で確保しきれなかった残数量(バックオーダー)。承認自体は ブロックしない(与信警告と同じ非ブロッキング方針)。 |
+| `delivery_date` | 文字列 |  |  |  | 納期 |
 
 <a id="sales_orders"></a>
 

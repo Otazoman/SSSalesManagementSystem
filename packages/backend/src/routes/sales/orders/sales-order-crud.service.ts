@@ -3,10 +3,12 @@ import { SalesOrderRepository } from "./sales-order.repository";
 import { SalesOrderPayload } from "./sales-order.schema";
 import { RESOURCE_KEY } from "./sales-order-constants";
 import {
+  SalesOrderItemInput,
   buildSalesOrderItemInsertRow,
   buildSalesOrderItemsFromQuote,
 } from "./sales-order-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
@@ -397,56 +399,36 @@ export class SalesOrderCrudService {
       updatedAt: new Date(),
     });
 
-    await tx.repo.deleteOrderItems(id);
-    if (body.items && Array.isArray(body.items)) {
-      for (const [index, item] of body.items.entries()) {
-        await tx.repo.insertOrderItem(
-          buildSalesOrderItemInsertRow(item as any, id, index),
-        );
-      }
+    // 2026-10-18: 明細IDを保ったまま、保存内容に合わせて明細を更新・追加・削除する(以前は全件削除して入れ直して
+    // いたため、発注・出荷・売上などから参照されている受注を保存するとFK制約違反になっていた)。既存の倉庫単位の
+    // 引当は従来のdeleteOrderItemsと同じく解放し、下のAPPROVED時の再引当でやり直す。参照されている明細を
+    // 削除しようとした場合は400で、commit() しないので何も書き込まれない
+    const syncedRows = await this.repo.buildSyncedItemRows(
+      id,
+      Array.isArray(body.items) ? (body.items as Array<SalesOrderItemInput & { id?: string | null }>) : [],
+    );
+    for (const write of await tx.repo.buildItemSyncWrites(id, syncedRows, { releaseReservations: true })) {
+      await write;
     }
 
     const existingAttachments = await this.repo.findOrderAttachments(id);
-    await tx.repo.deleteOrderAttachments(id);
-
+    // 2026-10-18(BUG-068): 添付は全件削除して入れ直さず、既存の行(ID・種類・登録者)を保ったまま保存内容に合わせる
+    // (保存のたびに添付IDが変わり、取引先へ送ったダウンロードリンクが無効になっていた)
+    let keptR2Paths: Array<string | null> = [];
     if (body.attachments && Array.isArray(body.attachments)) {
-      for (const att of body.attachments) {
-        let r2Path = att.attachmentR2Path || null;
-        let extUrl = null;
-
-        if (att.storageType === "R2") {
-          const fileObj = formData.get(`files[${att.fileName}]`) as File;
-          if (fileObj) {
-            r2Path = generateAttachmentKey(`orders/${id}`, fileObj.name);
-            await c.env.SALES_ORDERS_BUCKET.put(r2Path, fileObj.stream(), {
-              httpMetadata: { contentType: fileObj.type },
-            });
-          } else if (!r2Path) {
-            const match = existingAttachments.find(
-              (ea) => ea.fileName === att.fileName && ea.storageType === "R2",
-            );
-            if (match) r2Path = match.attachmentR2Path;
-          }
-        } else {
-          extUrl = att.externalUrl || null;
-        }
-
-        if (r2Path || extUrl) {
-          await tx.repo.insertOrderAttachment({
-            id: crypto.randomUUID(),
-            salesOrderId: id,
-            fileName: att.fileName,
-            storageType: att.storageType,
-            attachmentR2Path: r2Path,
-            externalUrl: extUrl,
-            fileType: att.fileType || "OTHER",
-            uploadedById: opId,
-            uploadedAt: new Date(),
-          });
-        }
-      }
+      ({ keptR2Paths } = await syncAttachments({
+        existing: existingAttachments,
+        incoming: body.attachments,
+        formData,
+        bucket: c.env.SALES_ORDERS_BUCKET,
+        keyPrefix: `orders/${id}`,
+        operatorId: opId,
+        hasFileType: true,
+        update: (attachmentId, data) => tx.repo.updateOrderAttachment(attachmentId, data),
+        insert: (data) => tx.repo.insertOrderAttachment({ ...data, salesOrderId: id }),
+        deleteByIds: (attachmentIds) => tx.repo.deleteOrderAttachmentsByIds(attachmentIds),
+      }));
     }
-
     await tx.repo.insertHistoryLog({
       id: crypto.randomUUID(),
       salesOrderId: id,
@@ -471,7 +453,7 @@ export class SalesOrderCrudService {
       await deleteOrphanedR2Attachments(
         c.env.SALES_ORDERS_BUCKET,
         existingAttachments,
-        body.attachments.map((att: any) => att.attachmentR2Path),
+        keptR2Paths,
         c.env.QUATES_BUCKET,
       );
     }
@@ -487,7 +469,7 @@ export class SalesOrderCrudService {
     const creditWarning = await this.buildCreditWarning(body.partnerId, body.totalAmount || 0, id);
 
     // Item7残課題2-5フォローアップ2: 更新後もAPPROVEDのままの場合(承認機能OFF時の直接編集)は
-    // 明細差し替え後の実際の数量で在庫を再引当する(既存の引当はdeleteOrderItems内で解放済み)。
+    // 明細更新後の実際の数量で在庫を再引当する(既存の引当はbuildItemSyncWritesで解放済み)。
     // それ以外(DRAFT等、まだ実引当を行わない状態)は与信警告と同じ非破壊のプレビューに留める
     let stockWarning: string | undefined;
     if (resolvedStatus === "APPROVED") {

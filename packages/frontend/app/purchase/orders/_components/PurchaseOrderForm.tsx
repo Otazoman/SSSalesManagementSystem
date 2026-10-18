@@ -3,6 +3,7 @@
 import { FormField, formFieldInputClass } from "../../../_shared/ui/FormField";
 import { Button } from "../../../_shared/ui/Button";
 import { PurchaseOrderItemsTable } from "./PurchaseOrderItemsTable";
+import { PurchaseOrderDeliveryDateReflection } from "./PurchaseOrderDeliveryDateReflection";
 import { PurchaseOrderAttachmentsSection } from "./PurchaseOrderAttachmentsSection";
 import { PurchaseOrderReceiptProgress } from "./PurchaseOrderReceiptProgress";
 import { PurchaseOrderFormHeader } from "./PurchaseOrderFormHeader";
@@ -19,6 +20,7 @@ import {
   AccountLookup,
   BusinessLocationLookup,
   WarehouseLookup,
+  DeliveryDateReflection,
 } from "../_types";
 import { selectablePartners } from "../../../_shared/partner-options";
 
@@ -112,6 +114,10 @@ interface PurchaseOrderFormProps {
   isSubmitting: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onSubmitForApproval: () => void;
+  // 新規要望(2026-10-18): 回答納期の受注への反映方法と、納期のみ保存(承認済みでも変更申請不要)
+  deliveryDateReflection: DeliveryDateReflection;
+  setDeliveryDateReflection: (value: DeliveryDateReflection) => void;
+  onSaveDeliveryDatesOnly: () => void;
   onGeneratePdf: () => void;
   onOpenMailModal: (orderId: string) => void;
   onCancel: () => void;
@@ -197,6 +203,9 @@ export function PurchaseOrderForm({
   isSubmitting,
   onSubmit,
   onSubmitForApproval,
+  deliveryDateReflection,
+  setDeliveryDateReflection,
+  onSaveDeliveryDatesOnly,
   onGeneratePdf,
   onOpenMailModal,
   onCancel,
@@ -327,10 +336,10 @@ export function PurchaseOrderForm({
             </select>
           </FormField>
 
-          <FormField label="希望納期">
+          <FormField label="発注書印字納期">
             <input
               className={formFieldInputClass}
-              placeholder="例: 発注確定後、約2週間"
+              placeholder="例: 2026-11-10(日付なら明細の希望納期にも入ります)/ 発注確定後、約2週間"
               value={deliveryDate}
               onChange={(e) => setDeliveryDate(e.target.value)}
               disabled={isLocked}
@@ -517,6 +526,18 @@ export function PurchaseOrderForm({
           calcTax={calcTax}
           calcTaxBreakdown={calcTaxBreakdown}
           calcTotal={calcTotal}
+        />
+
+        <PurchaseOrderDeliveryDateReflection
+          value={deliveryDateReflection}
+          onChange={setDeliveryDateReflection}
+          hasLinkedItems={items.some(
+            (it) => !!it.salesOrderItemId || !!it.purchaseRequestItemId,
+          )}
+          canSaveDeliveryDatesOnly={!!editingId && editingStatus === "APPROVED"}
+          isLocked={isLocked}
+          isSubmitting={isSubmitting}
+          onSaveDeliveryDatesOnly={onSaveDeliveryDatesOnly}
         />
 
         <PurchaseOrderAttachmentsSection

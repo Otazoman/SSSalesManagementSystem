@@ -301,6 +301,16 @@ export class PurchaseRecognitionRepository {
       .where(eq(schema.purchaseRecognitions.id, id));
   }
 
+  // 2026-10-18(BUG-068): 保存で既存の添付の行(ID・種類・登録者)を保ったまま更新・削除するため(platform/r2/sync-attachments.ts)
+  async updateRecognitionAttachment(attachmentId: string, data: Partial<typeof schema.purchaseRecognitionAttachments.$inferInsert>) {
+    await this.db.update(schema.purchaseRecognitionAttachments).set(data).where(eq(schema.purchaseRecognitionAttachments.id, attachmentId));
+  }
+
+  async deleteRecognitionAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.purchaseRecognitionAttachments).where(inArray(schema.purchaseRecognitionAttachments.id, attachmentIds));
+  }
+
   async deleteRecognitionAttachments(purchaseRecognitionId: string) {
     await this.db
       .delete(schema.purchaseRecognitionAttachments)

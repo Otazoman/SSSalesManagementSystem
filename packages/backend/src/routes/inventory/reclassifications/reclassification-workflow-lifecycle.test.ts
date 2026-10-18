@@ -265,7 +265,8 @@ beforeEach(async () => {
 });
 
 describe("承認機能ON時の品質区分変更ライフサイクル", () => {
-  it("申請→最終承認で、在庫が良品バケットから破損品バケットへ付け替わる", async () => {
+  // ファイル最初のテストで承認処理一式を動的importするため、読み込み時間で既定の5秒を超えることがある(2026-10-18)
+  it("申請→最終承認で、在庫が良品バケットから破損品バケットへ付け替わる", { timeout: 15000 }, async () => {
     const createRes = await postReclassification("applicant-1", {
       itemId: "ITEM1",
       warehouseId: "WH1",

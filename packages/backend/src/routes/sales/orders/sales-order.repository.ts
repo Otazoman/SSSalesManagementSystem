@@ -12,6 +12,10 @@ import { combineConditions } from "../../../platform/repository/search-condition
 import { PaginationParams, toOffset } from "../../../platform/http/pagination";
 import { buildOrderBy, SortQuery } from "../../../platform/http/sort";
 import { containsText } from "../../../platform/repository/text-search";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { buildSalesOrderItemInsertRow, SalesOrderItemInput } from "./sales-order-item-mapper";
+
+type SalesOrderItemRow = ReturnType<typeof buildSalesOrderItemInsertRow> & { backorderedQuantity?: number };
 
 // ヘッダクリックソート(追加要望D)の許可カラム
 const SALES_ORDERS_SORT_COLUMNS = {
@@ -213,6 +217,8 @@ export class SalesOrderRepository {
         unitCode: schema.salesOrderItems.unitCode,
         taxCategoryCode: schema.salesOrderItems.taxCategoryCode,
         memo: schema.salesOrderItems.memo,
+        // 新規要望(2026-10-18): 欠品から発注を作成する際の希望納期の初期値に使う
+        deliveryDate: schema.salesOrderItems.deliveryDate,
       })
       .from(schema.salesOrderItems)
       .innerJoin(schema.salesOrders, eq(schema.salesOrders.id, schema.salesOrderItems.salesOrderId))
@@ -380,13 +386,132 @@ export class SalesOrderRepository {
       .where(eq(schema.salesOrderItems.salesOrderId, salesOrderId));
   }
 
-  // BUG-048: 承認済みの受注の変更申請の承認時に、ヘッダーの更新・明細の入れ替え・引当の記録(ledger)・履歴を1回の batch で書き込む。
+  // 2026-10-18: 保存内容の明細から明細行を組み立てる。この受注に既にある明細ID(item.id)を持つ明細は
+  // そのIDを使い(=既存明細の更新)、それ以外は新しいIDで追加する(quote.repository.tsのbuildItemSyncWritesと同じ方針)
+  async buildSyncedItemRows(
+    salesOrderId: string,
+    items: Array<SalesOrderItemInput & { id?: string | null }>,
+  ): Promise<SalesOrderItemRow[]> {
+    const existingIds = new Set((await this.findOrderItemIds(salesOrderId)).map((row) => row.id));
+    return items.map((item, index) => {
+      const isKept = !!item.id && existingIds.has(item.id);
+      return buildSalesOrderItemInsertRow({ ...item, lineId: isKept ? item.id : null }, salesOrderId, index);
+    });
+  }
+
+  private async findOrderItemIds(salesOrderId: string) {
+    return await this.db
+      .select({ id: schema.salesOrderItems.id, itemId: schema.salesOrderItems.itemId })
+      .from(schema.salesOrderItems)
+      .where(eq(schema.salesOrderItems.salesOrderId, salesOrderId));
+  }
+
+  // 削除しようとしている受注明細を参照している伝票の種類(参照が無ければ空配列)。
+  // いずれもFK(onDelete指定なし)のため、参照されたまま削除するとDBエラーになる
+  async findItemReferencesForRemoval(salesOrderItemIds: string[]): Promise<string[]> {
+    if (salesOrderItemIds.length === 0) return [];
+    const exists = async (table: any, column: any) =>
+      (await this.db.select({ id: table.id }).from(table).where(inArray(column, salesOrderItemIds)).limit(1)).length > 0;
+    const checks: Array<[string, Promise<boolean>]> = [
+      ["発注", exists(schema.orderItems, schema.orderItems.salesOrderItemId)],
+      ["購買申請", exists(schema.purchaseRequestItems, schema.purchaseRequestItems.salesOrderItemId)],
+      ["出荷指示", exists(schema.itemShipmentInstructionItems, schema.itemShipmentInstructionItems.salesOrderItemId)],
+      ["出庫", exists(schema.itemShipmentItems, schema.itemShipmentItems.salesOrderItemId)],
+      ["売上", exists(schema.salesInvoiceItems, schema.salesInvoiceItems.sourceOrderItemId)],
+    ];
+    const results = await Promise.all(checks.map(([, p]) => p));
+    return checks.filter((_, i) => results[i]).map(([label]) => label);
+  }
+
+  // 2026-10-18: 明細IDを保ったまま、受注の明細を保存内容(rows、buildSyncedItemRowsで組み立てたもの)に合わせる書き込みを
+  // 組み立てる(まだ実行しない)。以前は明細を全件削除して新しいIDで入れ直していたため、発注・購買申請・出荷・売上から
+  // 参照されている受注を保存するとFK制約違反(500)になり、つながりも保存のたびに切れていた。
+  // - 保存内容に無い明細は削除する。他の伝票から参照されている明細の削除は400で止める
+  // - 倉庫単位の引当の記録(ledger)は既存明細の分をすべて消す(呼び出し元が保存後の明細で引当をやり直す/書き直す)。
+  //   releaseReservations=true なら、その記録の数量を在庫の引当カウンタからも解放する(従来のdeleteOrderItemsと同じ)。
+  //   変更申請の承認確定時はカウンタを申請提出時に調整済みのためfalseにする(従来のskipReservationReleaseと同じ)
+  // - 更新する明細の入荷待ち数量(backorderedQuantity)は、行に値が無ければ0に戻す(入れ直していた従来と同じ)
+  async buildItemSyncWrites(
+    salesOrderId: string,
+    rows: SalesOrderItemRow[],
+    options: { releaseReservations: boolean },
+  ): Promise<any[]> {
+    const existing = await this.findOrderItemIds(salesOrderId);
+    const existingIds = existing.map((row) => row.id);
+    const keptIds = new Set(rows.map((row) => row.id).filter((id) => existingIds.includes(id)));
+    const removedIds = existingIds.filter((id) => !keptIds.has(id));
+
+    const referencedBy = await this.findItemReferencesForRemoval(removedIds);
+    if (referencedBy.length > 0) {
+      throw new BadRequestError(
+        `${referencedBy.join("・")}から参照されている受注明細は削除できません(明細を残したまま数量などを変更してください)`,
+      );
+    }
+
+    const writes: any[] = [];
+    if (existingIds.length > 0) {
+      if (options.releaseReservations) {
+        const itemIdByOrderItemId = new Map(existing.map((row) => [row.id, row.itemId]));
+        const reservations = await this.db
+          .select({
+            salesOrderItemId: schema.salesOrderItemReservations.salesOrderItemId,
+            warehouseId: schema.salesOrderItemReservations.warehouseId,
+            reservedQuantity: schema.salesOrderItemReservations.reservedQuantity,
+          })
+          .from(schema.salesOrderItemReservations)
+          .where(inArray(schema.salesOrderItemReservations.salesOrderItemId, existingIds));
+        const now = new Date();
+        for (const r of reservations) {
+          const itemId = itemIdByOrderItemId.get(r.salesOrderItemId);
+          if (!itemId) continue;
+          writes.push(
+            this.db
+              .update(schema.warehouseStockReservations)
+              .set({
+                reservedQuantity: sql`MAX(${schema.warehouseStockReservations.reservedQuantity} - ${r.reservedQuantity}, 0)`,
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(schema.warehouseStockReservations.itemId, itemId),
+                  eq(schema.warehouseStockReservations.warehouseId, r.warehouseId),
+                ),
+              ),
+          );
+        }
+      }
+      writes.push(
+        this.db
+          .delete(schema.salesOrderItemReservations)
+          .where(inArray(schema.salesOrderItemReservations.salesOrderItemId, existingIds)),
+      );
+    }
+    if (removedIds.length > 0) {
+      writes.push(this.db.delete(schema.salesOrderItems).where(inArray(schema.salesOrderItems.id, removedIds)));
+    }
+    for (const row of rows) {
+      if (keptIds.has(row.id)) {
+        const { id: rowId, ...values } = row;
+        writes.push(
+          this.db
+            .update(schema.salesOrderItems)
+            .set({ ...values, backorderedQuantity: row.backorderedQuantity ?? 0 })
+            .where(eq(schema.salesOrderItems.id, rowId)),
+        );
+      } else {
+        writes.push(this.db.insert(schema.salesOrderItems).values(row));
+      }
+    }
+    return writes;
+  }
+
+  // BUG-048: 承認済みの受注の変更申請の承認時に、ヘッダーの更新・明細の更新(2026-10-18から明細IDを保つ)・引当の記録(ledger)・履歴を1回の batch で書き込む。
   // 在庫の引当の数(カウンタ)は申請の提出時に調整済みのため、ここでは触らない(deleteOrderItems の skipReservationRelease と同じ)。
   // itemRows が null なら明細は変えない
   async applyApprovedUpdate(
     salesOrderId: string,
     header: Partial<typeof schema.salesOrders.$inferInsert>,
-    itemRows: (typeof schema.salesOrderItems.$inferInsert)[] | null,
+    itemRows: SalesOrderItemRow[] | null,
     ledgerRows: (typeof schema.salesOrderItemReservations.$inferInsert)[],
     history: typeof schema.salesOrderHistoryLogs.$inferInsert,
   ) {
@@ -394,8 +519,8 @@ export class SalesOrderRepository {
       this.db.update(schema.salesOrders).set(header).where(eq(schema.salesOrders.id, salesOrderId)),
     ];
     if (itemRows) {
-      statements.push(this.db.delete(schema.salesOrderItems).where(eq(schema.salesOrderItems.salesOrderId, salesOrderId)));
-      for (const row of itemRows) statements.push(this.db.insert(schema.salesOrderItems).values(row));
+      // 2026-10-18: 明細IDを保ったまま更新する(引当カウンタは申請提出時に調整済みのため解放しない)
+      statements.push(...(await this.buildItemSyncWrites(salesOrderId, itemRows, { releaseReservations: false })));
       for (const row of ledgerRows) statements.push(this.db.insert(schema.salesOrderItemReservations).values(row));
     }
     statements.push(this.db.insert(schema.salesOrderHistoryLogs).values(history));
@@ -404,6 +529,16 @@ export class SalesOrderRepository {
 
   async insertOrderAttachment(data: any) {
     await this.db.insert(schema.salesOrderAttachments).values(data);
+  }
+
+  // 2026-10-18(BUG-068): 保存で既存の添付の行(ID・種類・登録者)を保ったまま更新・削除するため(platform/r2/sync-attachments.ts)
+  async updateOrderAttachment(attachmentId: string, data: Partial<typeof schema.salesOrderAttachments.$inferInsert>) {
+    await this.db.update(schema.salesOrderAttachments).set(data).where(eq(schema.salesOrderAttachments.id, attachmentId));
+  }
+
+  async deleteOrderAttachmentsByIds(attachmentIds: string[]) {
+    if (attachmentIds.length === 0) return;
+    await this.db.delete(schema.salesOrderAttachments).where(inArray(schema.salesOrderAttachments.id, attachmentIds));
   }
 
   async deleteOrderAttachments(salesOrderId: string) {

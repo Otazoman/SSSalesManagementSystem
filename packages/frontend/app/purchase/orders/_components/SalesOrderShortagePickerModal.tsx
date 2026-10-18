@@ -177,6 +177,8 @@ export function SalesOrderShortagePickerModal({
       // Item9: purchaseRequestItemId経由では辿れないケース(承認OFF時、購買申請を経由せず
       // 発注が直接受注に紐付けて起票される場合)のためのトレーサビリティ
       salesOrderItemId: item.id,
+      // 新規要望(2026-10-18): 受注明細の納期を発注の希望納期の初期値にする
+      requestedDeliveryDate: item.deliveryDate ?? null,
     }));
 
     if (isAggregateMode) {

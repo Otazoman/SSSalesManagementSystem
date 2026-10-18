@@ -164,8 +164,11 @@ const headerData = {
   let itemRows: (ReturnType<typeof buildSalesOrderItemInsertRow> & { backorderedQuantity?: number })[] | null = null;
   const ledgerRows: { id: string; salesOrderItemId: string; warehouseId: string; reservedQuantity: number; createdAt: Date; updatedAt: Date }[] = [];
   if (Array.isArray(snapshot.items)) {
-    itemRows = snapshot.items.map((item, index) =>
-      buildSalesOrderItemInsertRow(item as SalesOrderItemInput, reqParent.targetId, index),
+    // 2026-10-18: 申請内容の明細のうち、この受注に既にある明細ID(item.id)を持つものはそのIDのまま更新する
+    // (発注・出荷・売上などからのつながりを保つ。以前は全件を新しいIDで入れ直していた)
+    itemRows = await repo.buildSyncedItemRows(
+      reqParent.targetId,
+      snapshot.items as Array<SalesOrderItemInput & { id?: string | null }>,
     );
     for (const outcomeItem of snapshot.reservationOutcome?.items ?? []) {
       const row = itemRows[outcomeItem.index];

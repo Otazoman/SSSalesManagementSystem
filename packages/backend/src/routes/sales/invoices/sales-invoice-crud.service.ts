@@ -8,6 +8,7 @@ import {
   SalesInvoiceItemInput,
 } from "./sales-invoice-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
@@ -414,46 +415,23 @@ export class SalesInvoiceCrudService {
 
     const existingAttachments = await this.repo.findInvoiceAttachments(id);
 
-    await tx.repo.deleteInvoiceAttachments(id);
-
+    // 2026-10-18(BUG-068): 添付は全件削除して入れ直さず、既存の行(ID・種類・登録者)を保ったまま保存内容に合わせる
+    // (保存のたびに添付IDが変わり、取引先へ送ったダウンロードリンクが無効になっていた)
+    let keptR2Paths: Array<string | null> = [];
     if (body.attachments && Array.isArray(body.attachments)) {
-      for (const att of body.attachments) {
-        let r2Path = att.attachmentR2Path || null;
-        let extUrl = null;
-
-        if (att.storageType === "R2") {
-          const fileObj = formData.get(`files[${att.fileName}]`) as File;
-          if (fileObj) {
-            r2Path = generateAttachmentKey(`sales-invoices/${id}`, fileObj.name);
-            await c.env.SALES_INVOICES_BUCKET.put(r2Path, fileObj.stream(), {
-              httpMetadata: { contentType: fileObj.type },
-            });
-          } else if (!r2Path) {
-            const match = existingAttachments.find(
-              (ea) => ea.fileName === att.fileName && ea.storageType === "R2",
-            );
-            if (match) r2Path = match.attachmentR2Path;
-          }
-        } else {
-          extUrl = att.externalUrl || null;
-        }
-
-        if (r2Path || extUrl) {
-          await tx.repo.insertInvoiceAttachment({
-            id: crypto.randomUUID(),
-            salesInvoiceId: id,
-            fileName: att.fileName,
-            storageType: att.storageType,
-            attachmentR2Path: r2Path,
-            externalUrl: extUrl,
-            fileType: att.fileType || "OTHER",
-            uploadedById: opId,
-            uploadedAt: new Date(),
-          });
-        }
-      }
+      ({ keptR2Paths } = await syncAttachments({
+        existing: existingAttachments,
+        incoming: body.attachments,
+        formData,
+        bucket: c.env.SALES_INVOICES_BUCKET,
+        keyPrefix: `sales-invoices/${id}`,
+        operatorId: opId,
+        hasFileType: true,
+        update: (attachmentId, data) => tx.repo.updateInvoiceAttachment(attachmentId, data),
+        insert: (data) => tx.repo.insertInvoiceAttachment({ ...data, salesInvoiceId: id }),
+        deleteByIds: (attachmentIds) => tx.repo.deleteInvoiceAttachmentsByIds(attachmentIds),
+      }));
     }
-
     await tx.repo.insertHistoryLog({
       id: crypto.randomUUID(),
       salesInvoiceId: id,
@@ -478,7 +456,7 @@ export class SalesInvoiceCrudService {
       await deleteOrphanedR2Attachments(
         c.env.SALES_INVOICES_BUCKET,
         existingAttachments,
-        body.attachments.map((att: any) => att.attachmentR2Path),
+        keptR2Paths,
         c.env.QUATES_BUCKET,
       );
     }

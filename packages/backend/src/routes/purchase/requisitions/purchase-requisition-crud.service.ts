@@ -2,8 +2,12 @@ import { Context } from "hono";
 import { PurchaseRequisitionRepository } from "./purchase-requisition.repository";
 import { PurchaseRequisitionPayload } from "./purchase-requisition.schema";
 import { RESOURCE_KEY } from "./purchase-requisition-constants";
-import { buildPurchaseRequisitionItemInsertRow } from "./purchase-requisition-item-mapper";
+import {
+  buildPurchaseRequisitionItemInsertRow,
+  PurchaseRequisitionItemInput,
+} from "./purchase-requisition-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
@@ -289,55 +293,35 @@ export class PurchaseRequisitionCrudService {
       updatedAt: new Date(),
     });
 
-    await tx.repo.deleteRequisitionItems(id);
-    if (body.items && Array.isArray(body.items)) {
-      for (const [index, item] of body.items.entries()) {
-        await tx.repo.insertRequisitionItem(
-          buildPurchaseRequisitionItemInsertRow(item, id, index),
-        );
-      }
+    // 2026-10-18(BUG-069): 明細IDを保ったまま、保存内容に合わせて明細を更新・追加・削除する(以前は全件削除して
+    // 入れ直していたため、発注から参照されている購買申請を保存するとFK制約違反になっていた)。参照されている明細を
+    // 削除しようとした場合は400で、commit() しないので何も書き込まれない
+    const syncedRows = await this.repo.buildSyncedItemRows(
+      id,
+      Array.isArray(body.items) ? (body.items as Array<PurchaseRequisitionItemInput & { id?: string | null }>) : [],
+    );
+    for (const write of await tx.repo.buildItemSyncWrites(id, syncedRows)) {
+      await write;
     }
 
     const existingAttachments = await this.repo.findRequisitionAttachments(id);
 
-    await tx.repo.deleteRequisitionAttachments(id);
-
+    // 2026-10-18(BUG-068): 添付は全件削除して入れ直さず、既存の行(ID・種類・登録者)を保ったまま保存内容に合わせる
+    // (保存のたびに添付IDが変わり、取引先へ送ったダウンロードリンクが無効になっていた)
+    let keptR2Paths: Array<string | null> = [];
     if (body.attachments && Array.isArray(body.attachments)) {
-      for (const att of body.attachments) {
-        let r2Path = att.attachmentR2Path || null;
-        let extUrl: string | null = null;
-
-        if (att.storageType === "R2") {
-          const fileObj = formData.get(`files[${att.fileName}]`) as File;
-          if (fileObj) {
-            r2Path = generateAttachmentKey(`purchase-requisitions/${id}`, fileObj.name);
-            await c.env.PURCHASE_REQUISITIONS_BUCKET.put(r2Path, fileObj.stream(), {
-              httpMetadata: { contentType: fileObj.type },
-            });
-          } else if (!r2Path) {
-            const match = existingAttachments.find(
-              (ea) => ea.fileName === att.fileName && ea.storageType === "R2",
-            );
-            if (match) r2Path = match.attachmentR2Path;
-          }
-        } else {
-          extUrl = att.externalUrl || null;
-        }
-
-        if (r2Path || extUrl) {
-          await tx.repo.insertRequisitionAttachment({
-            id: crypto.randomUUID(),
-            requestId: id,
-            purchaseRequestItemId: null,
-            fileName: att.fileName,
-            storageType: att.storageType || "R2",
-            attachmentR2Path: r2Path,
-            externalUrl: extUrl,
-            uploadedById: opId,
-            uploadedAt: new Date(),
-          });
-        }
-      }
+      ({ keptR2Paths } = await syncAttachments({
+        existing: existingAttachments,
+        incoming: body.attachments,
+        formData,
+        bucket: c.env.PURCHASE_REQUISITIONS_BUCKET,
+        keyPrefix: `purchase-requisitions/${id}`,
+        operatorId: opId,
+        hasFileType: false,
+        update: (attachmentId, data) => tx.repo.updateRequisitionAttachment(attachmentId, data),
+        insert: (data) => tx.repo.insertRequisitionAttachment({ ...data, requestId: id, purchaseRequestItemId: null }),
+        deleteByIds: (attachmentIds) => tx.repo.deleteRequisitionAttachmentsByIds(attachmentIds),
+      }));
     }
     await tx.commit();
 
@@ -345,7 +329,7 @@ export class PurchaseRequisitionCrudService {
       await deleteOrphanedR2Attachments(
         c.env.PURCHASE_REQUISITIONS_BUCKET,
         existingAttachments,
-        body.attachments.map((att: any) => att.attachmentR2Path),
+        keptR2Paths,
       );
     }
 

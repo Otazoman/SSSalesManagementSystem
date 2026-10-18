@@ -3,6 +3,16 @@ import * as v from "valibot";
 // Helper: null, undefined, 空文字を安全に受容して文字列を返す
 const optionalString = v.optional(v.nullable(v.string()));
 
+// 新規要望(2026-10-18): 明細行の納期用。null/undefined/空文字、またはYYYY-MM-DD形式のみ受け付ける
+const optionalDate = v.optional(
+  v.nullable(
+    v.pipe(
+      v.string(),
+      v.regex(/^(\d{4}-\d{2}-\d{2})?$/, "納期はYYYY-MM-DD形式で入力してください"),
+    ),
+  ),
+);
+
 // Helper: 数値、または数値に変換可能な文字列/null/undefinedを安全に受容
 const optionalNumber = v.optional(
   v.nullable(
@@ -89,6 +99,8 @@ export const SalesOrderItemSchema = v.looseObject({
   sourceQuoteItemId: optionalString,
   // Item7残課題2-5: 倉庫×数量の内訳リクエスト(JSON文字列)。未指定なら引当実行時に自動でFIFO割当する
   warehouseAllocationRequest: optionalString,
+  // 新規要望(2026-10-18): 明細行ごとの納期(YYYY-MM-DD)
+  deliveryDate: optionalDate,
 });
 
 // 添付ファイルの型

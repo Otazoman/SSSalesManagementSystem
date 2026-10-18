@@ -216,17 +216,29 @@ export function useQuoteForm({
   }, []);
 
   useEffect(() => {
-    if (editingId && initialData) {
+    // 新規要望(2026-10-18): 過去の見積からの複写(useQuoteListActions.handleCopyToNewForm)は
+    // editingId=nullのままinitialDataだけを渡す(受注のQuotePickerModalと同じ方式、保存するまでDBには書き込まない)。
+    // その場合は見積日・有効期限・ステータス・入力担当者を新規作成時と同じ既定値にする
+    if (initialData) {
+      const isCopy = !editingId;
       setQuoteTitle(initialData.title || "");
       setCustomerId(initialData.customerId);
       setCustomerId(initialData.customerId || initialData.partnerId || "");
       setQuoteDate(
-        initialData.quoteDate ? initialData.quoteDate.split("T")[0] : "",
+        isCopy
+          ? todayJst()
+          : initialData.quoteDate
+            ? initialData.quoteDate.split("T")[0]
+            : "",
       );
       setValidUntil(
-        initialData.validUntil ? initialData.validUntil.split("T")[0] : "",
+        isCopy
+          ? addMonthsToDate(todayJst(), 1)
+          : initialData.validUntil
+            ? initialData.validUntil.split("T")[0]
+            : "",
       );
-      setStatus(initialData.status);
+      setStatus(isCopy ? "DRAFT" : initialData.status);
       setMemo(initialData.memo || "");
       setTerms(initialData.terms || "");
       setProjectId(initialData.projectId || "");
@@ -234,8 +246,11 @@ export function useQuoteForm({
       const selectedEmployeeNumber = initialData.salesPersonEmployeeNumber || "";
       setSalesPersonEmployeeNumber(selectedEmployeeNumber);
 
-      // Item7残課題(見積へも展開): 既存見積の編集時は保存済みの値を復元する
-      setInputPersonEmployeeNumber(initialData.inputPersonEmployeeNumber || "");
+      // Item7残課題(見積へも展開): 既存見積の編集時は保存済みの値を復元する。
+      // 複写時は複写元から引き継がず、新規作成時と同じくログインユーザーを既定値とする
+      setInputPersonEmployeeNumber(
+        isCopy ? currentUserEmployeeNumber || "" : initialData.inputPersonEmployeeNumber || "",
+      );
 
       const user = userMaster.find(
         (u) => u.employeeNumber === selectedEmployeeNumber,

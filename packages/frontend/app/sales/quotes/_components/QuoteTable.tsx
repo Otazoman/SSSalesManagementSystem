@@ -13,6 +13,9 @@ interface QuoteTableProps {
   onOpenEditForm: (id: string) => void;
   onDeleteQuote: (id: string) => void;
   onOpenPreview: (id: string) => void;
+  // 新規要望(2026-10-18): 過去の見積を複写して新規作成する
+  onCopyQuote?: (id: string) => void;
+  canCreate?: boolean;
   canUpdate: boolean;
   canDelete: boolean;
   sortBy?: string | null;
@@ -99,6 +102,8 @@ export function QuoteTable({
   onOpenEditForm,
   onDeleteQuote,
   onOpenPreview,
+  onCopyQuote,
+  canCreate = false,
   canUpdate,
   canDelete,
   sortBy,
@@ -354,6 +359,17 @@ export function QuoteTable({
                       >
                         編集
                       </button>
+                      {onCopyQuote && (
+                        <button
+                          type="button"
+                          onClick={() => onCopyQuote(mainQuote.id)}
+                          disabled={!canCreate}
+                          title="この見積の内容を複写して新規作成します"
+                          className="font-bold text-slate-700 hover:text-slate-900 hover:underline disabled:opacity-30 disabled:no-underline cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          複写
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onDeleteQuote(mainQuote.id)}

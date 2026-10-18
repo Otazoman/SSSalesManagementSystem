@@ -426,3 +426,54 @@ describe("伝票番号フォーマット統一化: 見積の自動採番とVer.U
     expect(revisionId).toBe(`${expectedBase}-2`);
   });
 });
+
+// 2026-10-18(BUG-068): 見積の保存で添付の行(ID・種類・登録者)を保つ(取引先へ送ったダウンロードリンクを無効にしない)
+describe("PUT /:id 添付の行を保ったままの更新", () => {
+  it("IDを送った添付は行が保たれ、新しい添付は追加、送られなかった添付は削除される", async () => {
+    await seedQuote("Q-1", { status: "DRAFT" });
+    const uploadedAt = new Date("2026-10-01T00:00:00Z");
+    await db.insert(schema.quoteAttachments).values([
+      {
+        id: "QA-PDF",
+        quoteId: "Q-1",
+        fileName: "見積書.pdf",
+        storageType: "R2",
+        attachmentR2Path: "quotes/Q-1/q.pdf",
+        fileType: "PDF",
+        uploadedById: "system",
+        uploadedAt,
+      },
+      {
+        id: "QA-OLD",
+        quoteId: "Q-1",
+        fileName: "古い資料",
+        storageType: "GOOGLE_DRIVE",
+        externalUrl: "https://example.com/old",
+        fileType: "OTHER",
+        uploadedById: "system",
+        uploadedAt,
+      },
+    ]);
+
+    const res = await callUpdateQuote("Q-1", "applicant-1", {
+      quoteDate: "2026-01-01",
+      partnerId: "partner-1",
+      title: "添付の更新",
+      items: [],
+      attachments: [
+        { id: "QA-PDF", fileName: "見積書.pdf", storageType: "R2", attachmentR2Path: "quotes/Q-1/q.pdf", fileType: "PDF" },
+        { fileName: "新しい資料", storageType: "GOOGLE_DRIVE", externalUrl: "https://example.com/new" },
+      ],
+    });
+    expect(res.status).toBe(200);
+
+    const atts = await db.select().from(schema.quoteAttachments).where(eq(schema.quoteAttachments.quoteId, "Q-1"));
+    expect(atts).toHaveLength(2);
+    const kept = atts.find((a) => a.id === "QA-PDF");
+    expect(kept).toMatchObject({ fileType: "PDF", uploadedById: "system", attachmentR2Path: "quotes/Q-1/q.pdf" });
+    expect(kept?.uploadedAt).toEqual(uploadedAt);
+    const added = atts.find((a) => a.fileName === "新しい資料");
+    expect(added).toMatchObject({ quoteId: "Q-1", externalUrl: "https://example.com/new", fileType: "OTHER" });
+    expect(atts.some((a) => a.id === "QA-OLD")).toBe(false);
+  });
+});

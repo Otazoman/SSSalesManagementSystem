@@ -1,12 +1,18 @@
 import { Context } from "hono";
 import { PurchaseOrderRepository } from "./purchase-order.repository";
-import { PurchaseOrderPayload } from "./purchase-order.schema";
+import { PurchaseOrderPayload, UpdateDeliveryDatesInput } from "./purchase-order.schema";
+import {
+  reflectAnsweredDeliveryDatesToSalesOrders,
+  formatReflectionMessage,
+} from "./purchase-order-delivery-date.service";
 import { RESOURCE_KEY } from "./purchase-order-constants";
 import {
+  PurchaseOrderItemInput,
   buildPurchaseOrderItemInsertRow,
   buildPurchaseOrderItemsFromRequisition,
 } from "./purchase-order-item-mapper";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
@@ -270,7 +276,20 @@ export class PurchaseOrderCrudService {
       }),
     );
 
-    return { success: true, message: "発注情報を新規保存しました", id: orderId };
+    const reflectionMessage = formatReflectionMessage(
+      await reflectAnsweredDeliveryDatesToSalesOrders(
+        createDb(c.env.DB),
+        orderId,
+        body.deliveryDateReflection,
+        opId,
+      ),
+    );
+
+    return {
+      success: true,
+      message: ["発注情報を新規保存しました", reflectionMessage].filter(Boolean).join(" / "),
+      id: orderId,
+    };
   }
 
   async updateOrder(c: Context, id: string, formData: FormData, body: PurchaseOrderPayload) {
@@ -330,63 +349,41 @@ export class PurchaseOrderCrudService {
       updatedAt: new Date(),
     });
 
-    await tx.repo.deleteOrderItems(id);
-    if (body.items && Array.isArray(body.items)) {
-      for (const [index, item] of body.items.entries()) {
-        await tx.repo.insertOrderItem(buildPurchaseOrderItemInsertRow(item as any, id, index));
-      }
+    // 2026-10-18: 明細IDを保ったまま、保存内容に合わせて明細を更新・追加・削除する(以前は全件削除して入れ直して
+    // いたため、入庫・仕入から参照されている発注を保存するとFK制約違反になっていた)。参照されている明細を
+    // 削除しようとした場合は400で、commit() しないので何も書き込まれない
+    const syncedRows = await this.repo.buildSyncedItemRows(
+      id,
+      Array.isArray(body.items) ? (body.items as Array<PurchaseOrderItemInput & { id?: string | null }>) : [],
+    );
+    for (const write of await tx.repo.buildItemSyncWrites(id, syncedRows)) {
+      await write;
     }
 
     const existingAttachments = await this.repo.findOrderAttachments(id);
 
-    await tx.repo.deleteOrderAttachments(id);
-
+    // 2026-10-18: 添付は全件削除して入れ直さず、既存の行(ID・種類・登録者・明細とのつながり)を保ったまま保存内容に合わせる
+    // (保存のたびに添付IDが変わり取引先へ送ったダウンロードリンクが無効になる、画面が種類を送らないため発注書PDFの
+    // 種類が「その他」に変わる、などの問題があった。platform/r2/sync-attachments.ts 参照)
+    let keptR2Paths: Array<string | null> = [];
     if (body.attachments && Array.isArray(body.attachments)) {
-      for (const att of body.attachments) {
-        let r2Path = att.attachmentR2Path || null;
-        let extUrl: string | null = null;
-
-        if (att.storageType === "R2") {
-          const fileObj = formData.get(`files[${att.fileName}]`) as File;
-          if (fileObj) {
-            r2Path = generateAttachmentKey(`purchase-orders/${id}`, fileObj.name);
-            await c.env.PURCHASE_ORDERS_BUCKET.put(r2Path, fileObj.stream(), {
-              httpMetadata: { contentType: fileObj.type },
-            });
-          } else if (!r2Path) {
-            const match = existingAttachments.find(
-              (ea) => ea.fileName === att.fileName && ea.storageType === "R2",
-            );
-            if (match) r2Path = match.attachmentR2Path;
-          }
-        } else {
-          extUrl = att.externalUrl || null;
-        }
-
-        if (r2Path || extUrl) {
-          await tx.repo.insertOrderAttachment({
-            id: crypto.randomUUID(),
-            orderId: id,
-            orderItemId: null,
-            fileName: att.fileName,
-            storageType: att.storageType || "R2",
-            attachmentR2Path: r2Path,
-            externalUrl: extUrl,
-            fileType: att.fileType || "OTHER",
-            uploadedById: opId,
-            uploadedAt: new Date(),
-          });
-        }
-      }
+      ({ keptR2Paths } = await syncAttachments({
+        existing: existingAttachments,
+        incoming: body.attachments,
+        formData,
+        bucket: c.env.PURCHASE_ORDERS_BUCKET,
+        keyPrefix: `purchase-orders/${id}`,
+        operatorId: opId,
+        hasFileType: true,
+        update: (attachmentId, data) => tx.repo.updateOrderAttachment(attachmentId, data),
+        insert: (data) => tx.repo.insertOrderAttachment({ ...data, orderId: id, orderItemId: null }),
+        deleteByIds: (attachmentIds) => tx.repo.deleteOrderAttachmentsByIds(attachmentIds),
+      }));
     }
     await tx.commit();
 
     if (body.attachments && Array.isArray(body.attachments)) {
-      await deleteOrphanedR2Attachments(
-        c.env.PURCHASE_ORDERS_BUCKET,
-        existingAttachments,
-        body.attachments.map((att: any) => att.attachmentR2Path),
-      );
+      await deleteOrphanedR2Attachments(c.env.PURCHASE_ORDERS_BUCKET, existingAttachments, keptR2Paths);
     }
 
     c.executionCtx.waitUntil(
@@ -397,7 +394,95 @@ export class PurchaseOrderCrudService {
       }),
     );
 
-    return { success: true, message: "発注情報を更新しました" };
+    const reflectionMessage = formatReflectionMessage(
+      await reflectAnsweredDeliveryDatesToSalesOrders(
+        createDb(c.env.DB),
+        id,
+        body.deliveryDateReflection,
+        opId,
+      ),
+    );
+
+    return {
+      success: true,
+      message: ["発注情報を更新しました", reflectionMessage].filter(Boolean).join(" / "),
+    };
+  }
+
+  // 新規要望(2026-10-18): 明細の希望納期・回答納期のみを更新する。納期は仕入先からの回答で
+  // 承認後に変わるのが通常のため、承認済みでも変更申請なしで更新できる(ユーザー確認済み)。
+  // 金額・数量等は対象外(従来どおり変更申請が必要)。承認処理中は、承認確定時に申請内容の明細で
+  // 置き換わり今回の更新が失われるため受け付けない
+  async updateDeliveryDates(c: Context, id: string, body: UpdateDeliveryDatesInput) {
+    const opId = await this.repo.getFallbackOperatorId(c);
+    const order = await this.repo.findOrderById(id);
+    if (!order) throw new NotFoundError("対象の発注が見つかりません");
+    if (order.status === "PENDING_APPROVAL" || order.status === "PENDING_DELETION") {
+      throw new BadRequestError("承認処理中の発注は納期を更新できません");
+    }
+
+    const currentItems = await this.repo.findOrderItems(id);
+    const currentById = new Map(currentItems.map((it) => [it.id, it]));
+    const changes: Array<{
+      id: string;
+      before: { requestedDeliveryDate: string | null; answeredDeliveryDate: string | null };
+      after: { requestedDeliveryDate: string | null; answeredDeliveryDate: string | null };
+    }> = [];
+    for (const input of body.items) {
+      const current = currentById.get(input.id);
+      if (!current) {
+        throw new BadRequestError(`この発注に存在しない明細が指定されました(${input.id})`);
+      }
+      const next = {
+        requestedDeliveryDate: input.requestedDeliveryDate || null,
+        answeredDeliveryDate: input.answeredDeliveryDate || null,
+      };
+      if (
+        next.requestedDeliveryDate === current.requestedDeliveryDate &&
+        next.answeredDeliveryDate === current.answeredDeliveryDate
+      ) {
+        continue;
+      }
+      changes.push({
+        id: input.id,
+        before: {
+          requestedDeliveryDate: current.requestedDeliveryDate,
+          answeredDeliveryDate: current.answeredDeliveryDate,
+        },
+        after: next,
+      });
+    }
+
+    if (changes.length > 0) {
+      await this.repo.updateOrderItemDeliveryDates(
+        changes.map((ch) => ({ id: ch.id, ...ch.after })),
+      );
+      c.executionCtx.waitUntil(
+        logAuditEvent(c, "UPDATE_PURCHASE_ORDER_DELIVERY_DATES", RESOURCE_KEY, id, null, {
+          changes,
+        }),
+      );
+    }
+
+    // 回答納期に変更が無くても、反映指定があれば受注側へ反映する(以前反映し忘れた場合のやり直し用)
+    const reflectionMessage = formatReflectionMessage(
+      await reflectAnsweredDeliveryDatesToSalesOrders(
+        createDb(c.env.DB),
+        id,
+        body.deliveryDateReflection,
+        opId,
+      ),
+    );
+
+    return {
+      success: true,
+      message: [
+        changes.length > 0 ? `明細${changes.length}行の納期を更新しました` : "納期に変更はありませんでした",
+        reflectionMessage,
+      ]
+        .filter(Boolean)
+        .join(" / "),
+    };
   }
 
   // 発注の削除(直接削除。下書き(DRAFT)のみ許可。それ以外はrequestOrderDeletion経由の削除申請が必要)

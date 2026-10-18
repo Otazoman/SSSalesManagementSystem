@@ -120,6 +120,7 @@ export default function SalesOrdersPage() {
     handleClearSearch,
     handleOpenNewForm,
     handlePrefillFromQuote,
+    handleCopyToNewForm,
     handleOpenEditForm,
     handleOpenPreview,
     handleCSVImportChange,
@@ -322,6 +323,8 @@ export default function SalesOrdersPage() {
             }
             onOpenEditForm={handleOpenEditForm}
             onDeleteOrder={handleDeleteAction}
+            onCopyOrder={handleCopyToNewForm}
+            canCreate={canCreate}
             onOpenPreview={handleOpenPreview}
             canUpdate={canUpdate}
             canDelete={canDelete}

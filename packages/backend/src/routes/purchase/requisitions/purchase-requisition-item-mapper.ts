@@ -2,6 +2,8 @@
 // (create/update/CSVインポート/adapterの承認確定時UPDATE反映の4箇所で使う)。
 
 export interface PurchaseRequisitionItemInput {
+  // 2026-10-18(BUG-069): 既存の明細を更新する場合の明細ID(空なら自動採番)
+  lineId?: string | null;
   itemId: string;
   quantity: number;
   estimatedUnitPrice: number;
@@ -25,7 +27,7 @@ export function buildPurchaseRequisitionItemInsertRow(
   index = 0,
 ) {
   return {
-    id: crypto.randomUUID(),
+    id: item.lineId || crypto.randomUUID(),
     requestId,
     itemId: item.itemId,
     quantity: item.quantity,
