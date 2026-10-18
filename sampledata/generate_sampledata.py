@@ -493,17 +493,20 @@ SO = [  # id, title, partner, sourceQuote, date, status, sales, lines, memo
     ("SO-2026-0004", "製品Z 追加受注(下書き)", "CUST-0003", "", "2026-09-02", "DRAFT", "EMP0003",
      [("ITEM-2003", 15, 8000)], "見積を経由しない直接受注(承認申請前)"),
 ]
+# 明細ごとの納期(itemDeliveryDate)。受注ごとに同じ日付を入れる(下書きの受注は未定のため空欄)
+SO_DELIVERY = {"SO-2026-0001": "2026-08-25", "SO-2026-0002": "2026-08-26", "SO-2026-0003": "2026-08-28", "SO-2026-0004": ""}
 srows = []
 for sid, title, pid, sq, d, st, sp, lines, memo in SO:
     tot, tax = totals(lines)
     for n, ln in enumerate(lines, 1):
         it = item_cols(*ln)
         src = source_line(sq, QLINES.get(sq, []), ln[0])
-        srows.append((sid, title, pid, sq, DEPT_SALES, d, st, tot, tax, memo, "", sp, sp, line_id(sid, n), it[0], it[1], src, it[2], it[3], it[4], it[5], it[6], it[7]))
+        srows.append((sid, title, pid, sq, DEPT_SALES, d, st, tot, tax, memo, "", sp, sp, line_id(sid, n), it[0], it[1], src, it[2], it[3], it[4], it[5], it[6], it[7],
+                      SO_DELIVERY[sid]))
 SOLINES = {o[0]: o[7] for o in SO}
 SHEAD = ["id", "title", "partnerId", "sourceQuoteId", "companyDepartment", "orderDate", "status", "totalAmount", "taxAmount", "memo", "terms",
          "updatedBy", "inputPersonEmployeeNumber", "lineId", "itemId", "itemName", "sourceQuoteItemId", "inputType", "quantity", "unitPrice", "unitCode",
-         "taxCategoryCode", "itemMemo"]
+         "taxCategoryCode", "itemMemo", "itemDeliveryDate"]
 write("sales_orders_import_sample.csv", SHEAD, srows)
 
 INV = [  # id, title, partner, order, date, status, doctype, original, billing, sales, lines, memo
@@ -591,13 +594,18 @@ for pid_, req, sup, title, d, st, dd, place, terms, buyer, paid, lines, memo in 
     po_total[pid_] = (tot, tax)
     for n, ln in enumerate(lines, 1):
         it = item_cols(*ln)
+        # 明細の希望納期は発注書印字納期(deliveryDate)と同じ日付、回答納期は承認済みの発注のみ(仕入先から回答済みの想定)。
+        # 受注明細・購買申請明細とのつながり(salesOrderItemId・purchaseRequestItemId)は、サンプルに該当する発注が無いため空欄
+        answered = dd if st == "APPROVED" else ""
         porows.append((pid_, req, sup, title, d, st, "5101", tot, tax, memo, CO["companyName"], CO["companyDepartment"], CO["companyAddress"], CO["companyTel"],
-                       CO["companyFax"], dd, place, terms, buyer, buyer, paid, line_id(pid_, n), it[0], it[1], "MASTER", it[3], it[4], it[5], it[6], ""))
+                       CO["companyFax"], dd, place, terms, buyer, buyer, paid, line_id(pid_, n), it[0], it[1], "MASTER", it[3], it[4], it[5], it[6], "",
+                       dd, answered, "", ""))
 POLINES = {p[0]: p[11] for p in PO}
 write("purchase_orders_import_sample.csv",
       ["id", "requestId", "partnerId", "title", "orderDate", "status", "accountCode", "totalAmount", "taxAmount", "memo", "companyName", "companyDepartment",
        "companyAddress", "companyTel", "companyFax", "deliveryDate", "deliveryPlace", "paymentTerms", "purchasePersonEmployeeNumber",
-       "inputPersonEmployeeNumber", "isPaid", "lineId", "itemId", "itemName", "inputType", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo"], porows)
+       "inputPersonEmployeeNumber", "isPaid", "lineId", "itemId", "itemName", "inputType", "quantity", "unitPrice", "unitCode", "taxCategoryCode", "itemMemo",
+       "requestedDeliveryDate", "answeredDeliveryDate", "salesOrderItemId", "purchaseRequestItemId"], porows)
 
 RC = [  # id, title, partner, order, date, status, doctype, original, payStatus, buyer, lines, memo
     ("PC-2026-0001", "原材料A 仕入", "SUPP-0001", "PO-2026-0001", "2026-08-31", "APPROVED", "PURCHASE", "", "PAID", "EMP0006", [("ITEM-1001", 300, 1100)], "入庫済みの全量を仕入計上。支払済み"),

@@ -42,12 +42,12 @@
 | 20 | `stock_disposals_import_sample.csv` | 廃棄 | |
 | 21 | `stock_returns_import_sample.csv` | 返品 | 仕入先へ返品・得意先から返品受入 |
 | 22 | `quotes_import_sample.csv` | 見積 | 5件(見込み客宛てを含む) |
-| 23 | `sales_orders_import_sample.csv` | 受注 | 見積からの受注3件・直接受注1件。承認済みの受注は在庫を引き当てるため、入庫より後に取り込む |
+| 23 | `sales_orders_import_sample.csv` | 受注 | 見積からの受注3件・直接受注1件。承認済みの受注は在庫を引き当てるため、入庫より後に取り込む。明細の納期(`itemDeliveryDate`)あり |
 | 24 | `sales_invoices_import_sample.csv` | 売上 | 通常・分納・値引(赤伝)・下書き |
 | 25 | `billing_import_sample.csv` | 請求 | 請求済みの売上を束ねる |
 | 26 | `billing_payment_receipts_import_sample.csv` | 請求の入金(消込) | 入金の記録を追加する取込。**同じファイルを2回取り込むとエラー**(既存と同じ入金・CSV内の重複・存在しない請求・不正な日付/金額があれば、1件も登録しない) |
 | 27 | `purchase_requisitions_import_sample.csv` | 購買申請 | 通常・前払 |
-| 28 | `purchase_orders_import_sample.csv` | 発注 | 購買申請経由・直接・前払・下書き |
+| 28 | `purchase_orders_import_sample.csv` | 発注 | 購買申請経由・直接・前払・下書き。明細の希望納期・回答納期あり(受注・購買申請とのつながりの列は空欄) |
 | 29 | `purchase_recognitions_import_sample.csv` | 仕入 | 通常・返品(赤伝)・下書き |
 | 30 | `purchase_payments_import_sample.csv` | 支払 | 仕入を束ねる |
 | 31 | `purchase_payment_disbursements_import_sample.csv` | 支払の消込 | 支払消込の記録を追加する取込。**同じファイルを2回取り込むとエラー**(入金消込と同じ検証) |

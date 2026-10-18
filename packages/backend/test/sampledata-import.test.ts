@@ -227,6 +227,22 @@ describe("取込後のデータが、サンプルの想定どおりになって�
     expect(po.body.map((p: any) => [p.sourceOrderItemId, p.recognizedQuantity, p.remainingQuantity])).toEqual([["PO-2026-0001-L1", 300, 0]]);
   });
 
+  it("納期: 受注明細の納期、発注明細の希望納期・回答納期が取り込まれる(2026-10-18)", async () => {
+    const by = <T extends Record<string, any>>(rows: T[], parentKey: string, parentId: string) => rows.filter((r) => r[parentKey] === parentId);
+    const soItems = await db.select().from(schema.salesOrderItems);
+    expect(by(soItems, "salesOrderId", "SO-2026-0001").every((i: any) => i.deliveryDate === "2026-08-25")).toBe(true);
+    expect(by(soItems, "salesOrderId", "SO-2026-0004").every((i: any) => i.deliveryDate === null)).toBe(true);
+    const poItems = await db.select().from(schema.orderItems);
+    expect(by(poItems, "orderId", "PO-2026-0001")[0]).toMatchObject({
+      requestedDeliveryDate: "2026-08-03",
+      answeredDeliveryDate: "2026-08-03",
+    });
+    expect(by(poItems, "orderId", "PO-2026-0004")[0]).toMatchObject({
+      requestedDeliveryDate: "2026-09-15",
+      answeredDeliveryDate: null,
+    });
+  });
+
   it("出力したCSVには明細ID(lineId)が含まれる(出力 → 取り込み直しでも明細IDが変わらない)", async () => {
     for (const [url, lineId] of [
       ["/api/quotes/csv-download", "QT-2026-0001-1-L1"],
