@@ -15,6 +15,9 @@ interface PurchaseOrderTableProps {
   isSubmitting: boolean;
   onSelectEdit: (r: PurchaseOrderRecord) => void;
   onDeleteLink: (r: PurchaseOrderRecord) => void;
+  // 新規要望(2026-10-19): 過去の発注を複写して新規作成する(承認機能が有効な場合は押せない)
+  onCopy?: (r: PurchaseOrderRecord) => void;
+  canCopy?: boolean;
   sortBy?: string | null;
   sortDirection?: "asc" | "desc";
   sortKeys?: { key: string; direction: "asc" | "desc" }[];
@@ -31,6 +34,8 @@ export function PurchaseOrderTable({
   isSubmitting,
   onSelectEdit,
   onDeleteLink,
+  onCopy,
+  canCopy = false,
   sortBy,
   sortDirection,
   sortKeys,
@@ -101,6 +106,25 @@ export function PurchaseOrderTable({
             >
               変更
             </button>
+            {onCopy && (
+              <button
+                type="button"
+                onClick={() => void onCopy(r)}
+                disabled={!canCopy || isSubmitting}
+                title={
+                  canCopy
+                    ? "この発注の内容を複写して新規作成します"
+                    : "承認機能有効時は「購買申請から発注を作成」より起票してください"
+                }
+                className={`font-bold ${
+                  canCopy && !isSubmitting
+                    ? "text-slate-700 hover:text-slate-900 hover:underline cursor-pointer"
+                    : "text-slate-600 no-underline cursor-not-allowed opacity-50"
+                }`}
+              >
+                複写
+              </button>
+            )}
             {r.status !== "PENDING_DELETION" && (
               <button
                 type="button"

@@ -23,6 +23,7 @@ import { OrderForm } from "./_components/OrderForm";
 import { OrderPreview } from "./_components/OrderPreview";
 import { QuotePickerModal } from "./_components/QuotePickerModal";
 import { BulkShipmentPlanModal } from "./_components/BulkShipmentPlanModal";
+import { DocumentCopyPickerModal } from "../../_shared/ui/DocumentCopyPickerModal";
 
 export default function SalesOrdersPage() {
   const {
@@ -45,6 +46,8 @@ export default function SalesOrdersPage() {
   // 先頭部門を補完する(ユーザーが既に選択した値は上書きしない)。
   const [applicantDepartmentSurrogateId, setApplicantDepartmentSurrogateId] =
     useState<string | null>(null);
+  // 新規要望(2026-10-19): ヘッダーの「過去の受注から作成」で開く選択モーダル
+  const [showCopyPicker, setShowCopyPicker] = useState(false);
   useEffect(() => {
     if (
       applicantDepartmentSurrogateId === null &&
@@ -299,6 +302,14 @@ export default function SalesOrdersPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setShowCopyPicker(true)}
+                  disabled={!canCreate}
+                  className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm border ${canCreate ? "bg-white border-indigo-300 text-indigo-700 hover:bg-indigo-50" : "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed opacity-60"}`}
+                >
+                  📋 過去の受注から作成
+                </button>
+                <button
+                  type="button"
                   onClick={handleOpenNewForm}
                   disabled={!canCreate}
                   className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${canCreate ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-300 text-slate-500 cursor-not-allowed"}`}
@@ -414,6 +425,16 @@ export default function SalesOrdersPage() {
         <QuotePickerModal
           onClose={() => setShowQuotePicker(false)}
           onPrefill={handlePrefillFromQuote}
+        />
+      )}
+
+      {showCopyPicker && (
+        <DocumentCopyPickerModal
+          title="📋 過去の受注から作成"
+          listPath="/api/sales-orders"
+          documentLabel="受注"
+          onClose={() => setShowCopyPicker(false)}
+          onSelect={(id) => void handleCopyToNewForm(id)}
         />
       )}
 

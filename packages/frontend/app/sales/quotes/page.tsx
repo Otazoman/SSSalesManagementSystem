@@ -21,6 +21,7 @@ import { QuoteSearchForm } from "./_components/QuoteSearchForm";
 import { QuoteTable } from "./_components/QuoteTable";
 import { QuoteForm } from "./_components/QuoteForm";
 import { QuotePreview } from "./_components/QuotePreview";
+import { DocumentCopyPickerModal } from "../../_shared/ui/DocumentCopyPickerModal";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "🌐 すべて" },
@@ -51,6 +52,8 @@ export default function QuotesPage() {
   // 先頭部門を補完する(ユーザーが既に選択した値は上書きしない)。
   const [applicantDepartmentSurrogateId, setApplicantDepartmentSurrogateId] =
     useState<string | null>(null);
+  // 新規要望(2026-10-19): ヘッダーの「過去の見積から作成」で開く選択モーダル
+  const [showCopyPicker, setShowCopyPicker] = useState(false);
   useEffect(() => {
     if (
       applicantDepartmentSurrogateId === null &&
@@ -274,6 +277,14 @@ export default function QuotesPage() {
                     ? "SMTP送信中..."
                     : `選択したデータをメール一括送信 (${selectedQuoteIds.length}件) 🚀`}
                 </Button>
+                <button
+                  type="button"
+                  onClick={() => setShowCopyPicker(true)}
+                  disabled={!canCreate}
+                  className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm border ${canCreate ? "bg-white border-indigo-300 text-indigo-700 hover:bg-indigo-50" : "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed opacity-60"}`}
+                >
+                  📋 過去の見積から作成
+                </button>
                 <Button
                   size="sm"
                   onClick={handleOpenNewForm}
@@ -394,6 +405,16 @@ export default function QuotesPage() {
             setSavedQuoteSummary(null);
             setViewMode("LIST");
           }}
+        />
+      )}
+
+      {showCopyPicker && (
+        <DocumentCopyPickerModal
+          title="📋 過去の見積から作成"
+          listPath="/api/quotes"
+          documentLabel="見積"
+          onClose={() => setShowCopyPicker(false)}
+          onSelect={(id) => void handleCopyToNewForm(id)}
         />
       )}
 

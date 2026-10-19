@@ -153,6 +153,7 @@ export default function PurchaseOrdersPage() {
     isEmailRestrictedToContacts,
     handleClearForm,
     handleSelectEdit,
+    handleCopyToNewForm,
     handleSubmit,
     handleSaveDeliveryDatesOnly,
     deliveryDateReflection,
@@ -407,6 +408,8 @@ export default function PurchaseOrdersPage() {
             isSubmitting={isSubmitting}
             onSelectEdit={handleSelectEdit}
             onDeleteLink={handleDeleteLink}
+            onCopy={handleCopyToNewForm}
+            canCopy={canCreate && !isPurchaseOrderWfEnabled}
             sortBy={sortBy}
             sortDirection={sortDirection}
             sortKeys={sortKeys}

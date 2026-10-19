@@ -347,6 +347,61 @@ export function usePurchaseOrderOperations({
     setViewMode("FORM");
   }, []);
 
+  // 新規要望(2026-10-19): 過去の発注を複写して新規作成フォームを開く(受注の複写
+  // sales/orders/_hooks/useOrderListActions.tsのhandleCopyToNewFormと同じ方針)。この時点ではDBに書き込まない。
+  // 番号・ステータス・承認情報・購買申請とのつながり・添付・支払済・明細ID・受注明細/購買申請明細とのつながり・
+  // 発注書印字納期・明細の希望納期/回答納期は引き継がない(入力担当者はログインユーザー、発注日は今日にする)。
+  // 承認機能が有効な場合は購買申請からしか発注を作れないため複写させない(一覧のボタンも押せない)
+  const handleCopyToNewForm = useCallback(
+    async (record: PurchaseOrderRecord) => {
+      if (isPurchaseOrderWfEnabled) {
+        setError(
+          "承認機能が有効な場合、発注は「購買申請から発注を作成」より承認済みの購買申請を選択して作成してください",
+        );
+        return;
+      }
+      setMessage("");
+      let detail: PurchaseOrderRecord;
+      try {
+        detail = await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${record.id}`, {
+          defaultErrorMessage: "複写元の発注の取得に失敗しました",
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "複写元の発注の取得に失敗しました");
+        return;
+      }
+
+      handleClearForm();
+      setTitle(`${detail.title || ""}(コピー)`);
+      setPartnerId(detail.partnerId || "");
+      setProjectId(detail.projectId || "");
+      setMemo(detail.memo || "");
+      setItems(
+        (detail.items || []).map((item) => ({
+          ...item,
+          id: undefined,
+          purchaseRequestItemId: null,
+          salesOrderItemId: null,
+          requestedDeliveryDate: null,
+          answeredDeliveryDate: null,
+        })),
+      );
+      setPurchasePersonEmployeeNumber(detail.purchasePersonEmployeeNumber || "");
+      setCompanyName(detail.companyName || "");
+      setCompanyDepartment(detail.companyDepartment || "");
+      setCompanyAddress(detail.companyAddress || "");
+      setCompanyTel(detail.companyTel || "");
+      setCompanyFax(detail.companyFax || "");
+      setDeliveryPlace(detail.deliveryPlace || "");
+      setDeliveryLocationId(detail.deliveryLocationId || "");
+      setDeliveryWarehouseId(detail.deliveryWarehouseId || "");
+      setPaymentTerms(detail.paymentTerms || "");
+      setViewMode("FORM");
+      setMessage(`発注[${detail.id}]を複写しました。内容を確認して保存してください`);
+    },
+    [isPurchaseOrderWfEnabled, handleClearForm],
+  );
+
   // sales/orders/_hooks/useOrderListActions.tsのhandlePrefillFromQuoteと同じ方針。
   // まだDBには一切書き込まず、フォームへ初期値を反映するだけ。
   // PurchaseRequisitionPickerModal(購買申請から)・SalesOrderShortagePickerModal(受注欠品から、
@@ -1123,6 +1178,7 @@ export function usePurchaseOrderOperations({
     isEmailRestrictedToContacts,
     handleClearForm,
     handleSelectEdit,
+    handleCopyToNewForm,
     handleSubmit,
     handleSaveDeliveryDatesOnly,
     deliveryDateReflection,

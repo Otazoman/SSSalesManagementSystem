@@ -52,3 +52,18 @@ describe("PurchaseOrderTable: メール送信対象の選択チェックボッ�
     expect(screen.getByRole("checkbox")).not.toBeDisabled();
   });
 });
+
+// 新規要望(2026-10-19): 一覧の「複写」ボタン
+describe("PurchaseOrderTable: 複写ボタン", () => {
+  it("押すとその行の発注で onCopy が呼ばれる", () => {
+    const onCopy = vi.fn();
+    render(<PurchaseOrderTable {...baseProps({ onCopy, canCopy: true })} />);
+    screen.getByRole("button", { name: "複写" }).click();
+    expect(onCopy).toHaveBeenCalledWith(expect.objectContaining({ id: "PO-1" }));
+  });
+
+  it("複写できない場合(承認機能が有効など)は押せない", () => {
+    render(<PurchaseOrderTable {...baseProps({ onCopy: vi.fn(), canCopy: false })} />);
+    expect(screen.getByRole("button", { name: "複写" })).toBeDisabled();
+  });
+});
