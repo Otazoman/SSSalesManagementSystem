@@ -850,7 +850,7 @@ function stampPageNumbers(
 }
 
 // REQ-002: ご発注書の右上の、お客様の記入欄(ご発注日・貴社名・ご住所・ご担当者・印)
-function drawCustomerFillBlock(page: PDFPage, height: number, drawTextOnPage: DrawTextFn): void {
+function drawCustomerFillBlock(page: PDFPage, height: number, drawTextOnPage: DrawTextFn, note?: string): void {
   const x = 330;
   const lineEnd = 545;
   const fields = ["ご発注日:          年      月      日", "貴社名:", "ご住所:", "", "ご担当者:"];
@@ -877,6 +877,8 @@ function drawCustomerFillBlock(page: PDFPage, height: number, drawTextOnPage: Dr
     borderColor: rgb(0.4, 0.4, 0.4),
   });
   drawTextOnPage(page, "印", lineEnd - boxSize / 2 - 4, boxY + boxSize / 2 - 4, 9, rgb(0.6, 0.6, 0.6));
+  // 記入欄の下に、記入・押印して返送していただく旨の案内を置く(左上の案内文に入れると記入欄と重なるため)
+  if (note) drawTextOnPage(page, note, x, boxY - 14, 8.5, rgb(0.1, 0.1, 0.1));
 }
 
 // REQ-002: PDF の後ろに別の PDF のページをつなげる(見積書の後ろにご発注書を付ける)
@@ -928,7 +930,7 @@ export async function generateDocumentPDF(
 
   // REQ-002: ご発注書は、発行元の欄をお客様が記入・押印する欄にする(自社の情報・ロゴ・印影は出さない)
   if ((layoutConfig as { customerFillsIssuer?: boolean }).customerFillsIssuer) {
-    drawCustomerFillBlock(page, height, drawTextOnPage);
+    drawCustomerFillBlock(page, height, drawTextOnPage, (layoutConfig as { customerFillNote?: string }).customerFillNote);
   } else {
     await drawCompanyInfoBlock(pdfDoc, page, data, resources, height, drawTextOnPage);
   }
