@@ -138,7 +138,7 @@ export class BusinessLocationsService {
 
   async generateCsv(searchParams: BusinessLocationSearchParams) {
     const data = await this.repo.findAllForCsv(searchParams);
-    const headers = ["id", "name", "postalCode", "address", "phoneNumber", "status", "memo"];
+    const headers = ["id", "name", "postalCode", "address", "phoneNumber", "faxNumber", "status", "memo"];
 
     const rows = data.map((w: any) => {
       const getVal = (camel: string, snake: string) => {
@@ -152,6 +152,7 @@ export class BusinessLocationsService {
         csvField(`${getVal("postalCode", "postal_code")}`),
         csvField(getVal("address", "address")),
         csvField(`${getVal("phoneNumber", "phone_number")}`),
+        csvField(`${getVal("faxNumber", "fax_number")}`),
         csvField(`${getVal("status", "status")}`),
         csvField(getVal("memo", "memo")),
       ].join(",");
@@ -173,6 +174,7 @@ export class BusinessLocationsService {
     const idxPostal = header.indexOf("postalCode");
     const idxAddress = header.indexOf("address");
     const idxPhone = header.indexOf("phoneNumber");
+    const idxFax = header.indexOf("faxNumber");
     const idxStatus = header.indexOf("status");
     const idxMemo = header.indexOf("memo");
 
@@ -197,6 +199,8 @@ export class BusinessLocationsService {
           postalCode: idxPostal !== -1 ? cols[idxPostal] || null : null,
           address: idxAddress !== -1 ? cols[idxAddress] || null : null,
           phoneNumber: idxPhone !== -1 ? cols[idxPhone] || null : null,
+          // REQ-003: faxNumber の列が無い CSV(以前の形式)では FAX を変えない
+          faxNumber: idxFax !== -1 ? cols[idxFax] || null : undefined,
           status: idxStatus !== -1 ? cols[idxStatus] || "active" : "active",
           memo: idxMemo !== -1 ? cols[idxMemo] || null : null,
         };

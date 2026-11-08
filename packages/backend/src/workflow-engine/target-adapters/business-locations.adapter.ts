@@ -49,6 +49,8 @@ async function applyApproved({
             postalCode: snapshot.postalCode ?? null,
             address: snapshot.address ?? null,
             phoneNumber: snapshot.phoneNumber ?? null,
+            // REQ-003: FAX を含まない以前の変更申請では undefined(変えない)
+            faxNumber: snapshot.faxNumber,
             status: finalStatus,
             memo: snapshot.memo ?? null,
           },

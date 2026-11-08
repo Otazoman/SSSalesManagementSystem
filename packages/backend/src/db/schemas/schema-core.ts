@@ -459,6 +459,8 @@ export const businessLocations = sqliteTable("business_locations", {
   postalCode: text("postal_code"),
   address: text("address"),
   phoneNumber: text("phone_number"),
+  // REQ-003: 見積・受注・売上の帳票に印字する自社の FAX(営業拠点を選んだ時に展開する)
+  faxNumber: text("fax_number"),
   status: text("status").notNull().default("temporary"),
   memo: text("memo"),
   ...withAuditColumns(),

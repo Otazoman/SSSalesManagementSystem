@@ -104,6 +104,17 @@ export function BusinessLocationForm({
             onChange={(e) => form.handleInputChange("phoneNumber", e.target.value)}
           />
         </div>
+        {/* REQ-003: 見積・受注・売上で営業拠点を選んだ時に、帳票の自社 FAX として展開する */}
+        <div>
+          <label className={labelClass}>FAX番号</label>
+          <input
+            type="text"
+            disabled={!canSubmitForm}
+            className={inputClass}
+            value={form.formData.faxNumber}
+            onChange={(e) => form.handleInputChange("faxNumber", e.target.value)}
+          />
+        </div>
       </div>
 
       <div>
