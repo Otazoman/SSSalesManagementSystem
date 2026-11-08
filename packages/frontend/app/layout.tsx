@@ -29,6 +29,9 @@ export default function RootLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // 左のメニューで今いる画面を押した時に、画面を作り直す(フォームを開いたままでも一覧に戻れるように)。
+  // 同じ URL への router.push では画面が作り直されず、画面ごとの表示の状態(一覧/フォーム)が残るため
+  const [samePageReloadKey, setSamePageReloadKey] = useState(0);
 
   const isAuthPage =
     pathname === "/login" ||
@@ -187,6 +190,10 @@ export default function RootLayout({
                             currentPath={pathname}
                             onNavigate={(path) => {
                               setIsMobileMenuOpen(false);
+                              if (path === pathname) {
+                                setSamePageReloadKey((k) => k + 1);
+                                return;
+                              }
                               router.push(path);
                             }}
                           />
@@ -204,19 +211,21 @@ export default function RootLayout({
                           loading={loading}
                           isAuthPage={isAuthPage}
                         >
-                          {React.isValidElement(children)
-                            ? React.cloneElement(
-                                children as React.ReactElement<InjectedChildProps>,
-                                {
-                                  userName: user?.name || "ユーザー",
-                                  isPartnerWfEnabled:
-                                    !loading &&
-                                    user?.isPartnerWfEnabled === true,
-                                  isQuoteWfEnabled:
-                                    !loading && user?.isQuoteWfEnabled === true,
-                                },
-                              )
-                            : children}
+                          <React.Fragment key={samePageReloadKey}>
+                            {React.isValidElement(children)
+                              ? React.cloneElement(
+                                  children as React.ReactElement<InjectedChildProps>,
+                                  {
+                                    userName: user?.name || "ユーザー",
+                                    isPartnerWfEnabled:
+                                      !loading &&
+                                      user?.isPartnerWfEnabled === true,
+                                    isQuoteWfEnabled:
+                                      !loading && user?.isQuoteWfEnabled === true,
+                                  },
+                                )
+                              : children}
+                          </React.Fragment>
                         </PermissionGuard>
                       </div>
                     </main>

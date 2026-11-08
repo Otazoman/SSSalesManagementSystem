@@ -202,10 +202,16 @@ export function DeliveryNotePanel() {
         error={mailError || csvError || history.detailError}
       />
 
+      {/* BUG-076: 単価・金額が出るのは、受注とつながった出庫だけ(仕様) */}
+      <p className="text-xs text-slate-700 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+        納品書の単価・金額は、受注から作った出庫(受注の明細とつながった明細)だけに印字します。
+        受注を使わずに登録した出庫・CSV で取り込んだ出庫の明細は、単価・金額が空欄になります。
+      </p>
+
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               出荷日(From)
             </label>
             <input
@@ -216,7 +222,7 @@ export function DeliveryNotePanel() {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               出荷日(To)
             </label>
             <input
@@ -227,7 +233,7 @@ export function DeliveryNotePanel() {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">得意先</label>
+            <label className="text-sm text-slate-700 block mb-1">得意先</label>
             <select
               value={history.partnerId}
               onChange={(e) => history.setPartnerId(e.target.value)}
@@ -242,7 +248,7 @@ export function DeliveryNotePanel() {
             </select>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               ステータス
             </label>
             <select

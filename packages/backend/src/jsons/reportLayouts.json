@@ -1,5 +1,6 @@
 {
   "QUOTATION": {
+    "totalBoxLabel": "見積金額(税込)",
     "mainTitle": "御 見 積 書",
     "titleColor": [0.2, 0.2, 0.6],
     "amountLabel": "御見積合計金額 (税込)",
@@ -15,6 +16,7 @@
     ]
   },
   "INVOICE": {
+    "totalBoxLabel": "請求金額(税込)",
     "mainTitle": "御 請 求 書",
     "titleColor": [0.1, 0.4, 0.1],
     "amountLabel": "御請求合計金額 (税込)",
@@ -24,6 +26,7 @@
     "conditions": []
   },
   "ORDER": {
+    "totalBoxLabel": "発注金額(税込)",
     "mainTitle": "御 発 注 書",
     "titleColor": [0.2, 0.2, 0.2],
     "amountLabel": "御発注合計金額 (税込)",
@@ -37,6 +40,7 @@
     ]
   },
   "ORDER_ACKNOWLEDGMENT": {
+    "totalBoxLabel": "注文金額(税込)",
     "mainTitle": "注 文 請 書",
     "titleColor": [0.2, 0.2, 0.6],
     "amountLabel": "御注文合計金額 (税込)",
@@ -51,6 +55,7 @@
     ]
   },
   "DELIVERY": {
+    "totalBoxLabel": "合計金額(税込)",
     "mainTitle": "納 品 書",
     "titleColor": [0.3, 0.3, 0.3],
     "amountLabel": "御納品金額合計 (税込)",
@@ -66,6 +71,7 @@
     ]
   },
   "ACCEPTANCE": {
+    "totalBoxLabel": "合計金額(税込)",
     "mainTitle": "検 収 書",
     "titleColor": [0.2, 0.2, 0.2],
     "amountLabel": "検収合計金額 (税込)",
@@ -79,6 +85,7 @@
     ]
   },
   "PURCHASE_RECOGNITION": {
+    "totalBoxLabel": "計上金額(税込)",
     "mainTitle": "仕 入 計 上 書",
     "titleColor": [0.2, 0.2, 0.2],
     "amountLabel": "仕入合計金額 (税込)",
@@ -92,6 +99,7 @@
     ]
   },
   "SALES_RECOGNITION": {
+    "totalBoxLabel": "売上金額(税込)",
     "mainTitle": "売 上 計 上 書",
     "titleColor": [0.2, 0.2, 0.2],
     "amountLabel": "売上合計金額 (税込)",

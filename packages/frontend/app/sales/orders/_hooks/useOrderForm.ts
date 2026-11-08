@@ -52,6 +52,25 @@ interface UseOrderFormProps {
  * Item7: quotes/_hooks/useQuoteForm.tsと同じ方針(状態管理・副作用・イベントハンドラを
  * 専用hookへ分離)。受注には見積のvalidUntil(有効期限)相当の概念が無いため持たない。
  */
+// BUG-075: ヘッダーの納期の文字が日付なら、明細の納期(YYYY-MM-DD)の形にする。日付でなければ null。
+// 年・月・日(2026-11-26・2026/11/26)のほか、年の無い月/日(11/26)も受け付ける。年の無い場合は今年とし、
+// 今日(today、YYYY-MM-DD)より前の日付なら来年とみなす(納期は先の日付のため)
+export function toItemDeliveryDate(text: string, today: string = todayJst()): string | null {
+  const toIso = (y: number, m: number, d: number) => {
+    const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const date = new Date(`${iso}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : null;
+  };
+  const full = /^\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*$/.exec(text);
+  if (full) return toIso(Number(full[1]), Number(full[2]), Number(full[3]));
+  const monthDay = /^\s*(\d{1,2})\/(\d{1,2})\s*$/.exec(text);
+  if (!monthDay) return null;
+  const year = Number(today.slice(0, 4));
+  const thisYear = toIso(year, Number(monthDay[1]), Number(monthDay[2]));
+  if (thisYear && thisYear >= today) return thisYear;
+  return toIso(year + 1, Number(monthDay[1]), Number(monthDay[2]));
+}
+
 export function useOrderForm({
   editingId,
   orderId,
@@ -88,6 +107,23 @@ export function useOrderForm({
   const [companyFax, setCompanyFax] = useState("");
 
   const [deliveryDate, setDeliveryDate] = useState("注文確定後、約2週間でお届け");
+  // BUG-075: ヘッダーの納期(帳票に印字する自由入力)が日付の場合、明細の納期が空欄のものにその日付を入れる。
+  // ヘッダーから入れた日付(autoDeliveryDate)のままの明細は、ヘッダーを変えたら一緒に変える(1文字ずつの入力の途中で
+  // 「2026/11/2」のように日付が成立しても、続けて入力した「2026/11/26」に追随させるため)。手で入力した明細は変えない。
+  // 日付でない文字(「約2週間でお届け」など)・入力の途中の場合は明細を変えない
+  const [autoDeliveryDate, setAutoDeliveryDate] = useState<string | null>(null);
+  const changeDeliveryDate = (value: string) => {
+    setDeliveryDate(value);
+    const itemDate = toItemDeliveryDate(value);
+    if (!itemDate) return;
+    const previous = autoDeliveryDate;
+    setAutoDeliveryDate(itemDate);
+    setItems((prev) =>
+      prev.map((item) =>
+        !item.deliveryDate || (previous && item.deliveryDate === previous) ? { ...item, deliveryDate: itemDate } : item,
+      ),
+    );
+  };
   const [deliveryPlace, setDeliveryPlace] = useState("貴社指定場所");
   // 新規要望(2026-09-23): 取引先ごとの複数納品先からの選択
   const [deliveryDestinationId, setDeliveryDestinationId] = useState("");
@@ -249,6 +285,8 @@ export function useOrderForm({
       const dbCompFax = initialData.companyFax || "";
 
       setDeliveryDate(initialData.deliveryDate || "注文確定後、約2週間でお届け");
+      // BUG-075: 保存済みのヘッダーの納期が日付なら、その日付のままの明細はヘッダーの変更に追随させる
+      setAutoDeliveryDate(toItemDeliveryDate(initialData.deliveryDate || ""));
       setDeliveryPlace(initialData.deliveryPlace || "貴社指定場所");
       setDeliveryDestinationId(initialData.deliveryDestinationId || "");
       setPaymentTerms(initialData.paymentTerms || "貴社お支払基準に準拠");
@@ -378,6 +416,7 @@ export function useOrderForm({
     const targetPartner = partners.find((p) => p.id === newPartnerId);
     if (targetPartner) {
       setDeliveryDate("注文確定後、約2週間でお届け");
+      setAutoDeliveryDate(null);
       if (targetPartner.address && targetPartner.address.trim() !== "") {
         setDeliveryPlace(targetPartner.address);
       } else {
@@ -495,6 +534,8 @@ export function useOrderForm({
   };
 
   const handleAddItemRow = () => {
+    // BUG-075: ヘッダーの納期が日付なら、追加した行の納期にも入れる
+    const headerDate = toItemDeliveryDate(deliveryDate);
     setItems([
       ...items,
       {
@@ -505,6 +546,7 @@ export function useOrderForm({
         unitPrice: 0,
         unitCode: "",
         taxCategoryCode: "",
+        ...(headerDate ? { deliveryDate: headerDate } : {}),
       },
     ]);
   };
@@ -691,7 +733,8 @@ export function useOrderForm({
     companyFax,
     setCompanyFax,
     deliveryDate,
-    setDeliveryDate,
+    // BUG-075: ヘッダーの納期を変えた時に、明細の納期(空欄のもの)へも反映する
+    setDeliveryDate: changeDeliveryDate,
     deliveryPlace,
     setDeliveryPlace,
     deliveryDestinationId,

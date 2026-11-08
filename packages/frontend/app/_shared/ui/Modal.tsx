@@ -27,6 +27,11 @@ interface ModalProps {
    * 「保存していない編集を破棄しますか？」を確認する(一覧から選ぶだけのモーダルなどでは指定しない)
    */
   warnOnDiscard?: boolean;
+  /**
+   * BUG-081: この値が変わると「未保存の編集なし」に戻す(保存した後もモーダルを開いたままにする画面で、
+   * 保存の成功のたびに変える。省略時は開いている間ずっと同じ扱い)
+   */
+  discardResetKey?: unknown;
   children: ReactNode;
 }
 
@@ -40,9 +45,10 @@ export function Modal({
   size = "md",
   footer,
   warnOnDiscard = false,
+  discardResetKey = true,
   children,
 }: ModalProps) {
-  const guard = useDiscardGuard();
+  const guard = useDiscardGuard(discardResetKey);
   const requestClose = async () => {
     if (!warnOnDiscard || (await guard.confirmDiscard())) onClose();
   };

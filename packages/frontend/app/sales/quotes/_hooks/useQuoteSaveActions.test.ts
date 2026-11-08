@@ -127,3 +127,23 @@ describe("useQuoteSaveActions: 明細IDを送る(受注明細とのつながり�
     expect(JSON.parse(init!.body as string).payload.items.map((i: { id?: string | null }) => i.id)).toEqual(["QT-1-1-L1"]);
   });
 });
+
+// BUG-074: 見積の保存で、プロジェクトを送る(以前は送っておらず保存されず、受注へも引き継げなかった)
+describe("useQuoteSaveActions: プロジェクトの保存(BUG-074)", () => {
+  it("保存でプロジェクトを送る。空なら null を送る", async () => {
+    const fetchSpy = vi.fn(async (_url: string, init?: RequestInit) => {
+      void init;
+      return jsonResponse({ id: "QT-1-1" });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const { result } = renderSaveActions(null);
+    await act(async () => {
+      await result.current.handleFormSubmitAction({ ...payload("DRAFT"), projectId: "PJ-1" }, false);
+    });
+    await act(async () => {
+      await result.current.handleFormSubmitAction({ ...payload("DRAFT"), projectId: "" }, false);
+    });
+    const sent = fetchSpy.mock.calls.map(([, init]) => JSON.parse(String((init!.body as FormData).get("quoteData"))));
+    expect(sent.map((q) => q.projectId)).toEqual(["PJ-1", null]);
+  });
+});

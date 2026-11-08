@@ -203,7 +203,7 @@ function drawPartnerAndConditionsBlock(
     // 画面構成再編: 納品書(DELIVERY)は元々小計/消費税/合計を一切表示していなかったため、
     // layoutConfig.showTotals === false の場合はこの金額ボックス自体を描画しない
     if (layoutConfig.showTotals !== false) {
-      // 見積金額(税込)ボックス
+      // 合計金額(税込)ボックス(見出しは帳票ごと)
       page.drawRectangle({
         x: 50,
         y: currentY - rowHeight,
@@ -221,9 +221,10 @@ function drawPartnerAndConditionsBlock(
         borderColor: rgb(0.2, 0.2, 0.2),
       });
 
+      // BUG-077: 合計欄の見出しは帳票ごと(reportLayouts.json の totalBoxLabel)。以前は帳票に関係なく「見積金額(税込)」だった
       drawTextOnPage(
         page,
-        "見積金額(税込)",
+        layoutConfig.totalBoxLabel || "合計金額(税込)",
         53,
         currentY - rowHeight + 4,
         8.5,

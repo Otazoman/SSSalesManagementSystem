@@ -247,6 +247,9 @@ export function useDealForm(onSaved: () => Promise<void>) {
     quoteIds: form.quoteIds,
   });
 
+  // BUG-081: 保存・添付の成功のたびに増やす(モーダルの「未保存の編集あり」を消し、保存後に閉じても破棄の確認を出さない)
+  const [savedVersion, setSavedVersion] = useState(0);
+
   const save = async () => {
     setSaving(true);
     setError("");
@@ -261,6 +264,7 @@ export function useDealForm(onSaved: () => Promise<void>) {
         setMessage("商談を更新しました");
         await onSaved();
         await openEdit(form.id);
+        setSavedVersion((v) => v + 1);
       } else {
         const res = await apiFetch<{ id: string }>(`${BASE}/register`, {
           method: "POST",
@@ -270,6 +274,7 @@ export function useDealForm(onSaved: () => Promise<void>) {
         await onSaved();
         // 登録後は編集状態にして、そのまま添付ファイルを追加できるようにする
         await openEdit(res.id);
+        setSavedVersion((v) => v + 1);
         setMessage("商談を登録しました。続けて添付ファイルを追加できます");
       }
     } catch (err) {
@@ -295,6 +300,8 @@ export function useDealForm(onSaved: () => Promise<void>) {
       });
       setDetail(await apiFetch<DealDetail>(`${BASE}/${form.id}`));
       await onSaved();
+      // 添付はその場で保存されるため、ファイルの選択を「未保存の編集」に数えない
+      setSavedVersion((v) => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "ファイルの添付に失敗しました");
     } finally {
@@ -324,6 +331,7 @@ export function useDealForm(onSaved: () => Promise<void>) {
     open,
     form,
     detail,
+    savedVersion,
     candidates,
     quoteCandidates,
     saving,
