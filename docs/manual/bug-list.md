@@ -32,9 +32,10 @@
 
 | No | 状態 | 重要度 | 対象 | 内容 |
 |---|---|---|---|---|
-| TSK-001 | 未対応 | 高 | 依存(backend・frontend) | 以前から入っている依存に既知の脆弱性がある(backend 12件・frontend 5件。2026-11-03 の `npm audit --omit=dev`) |
+| TSK-001 | 確認待ち | 高 | 依存(backend・frontend) | 以前から入っている依存に既知の脆弱性がある(backend 12件・frontend 5件。2026-11-03 の `npm audit --omit=dev`) |
 | TSK-002 | 確認待ち | 低 | 依存(backend) | 使われていない依存 `mimetext`・`smtp-client` が入っている |
 | TSK-003 | 未対応 | 低 | 帳票ダウンロードの OTP | 各帳票のダウンロード処理に、OTP の設定を読み取る同じ処理が重複している |
+| TSK-005 | 未対応 | 中 | 依存(backend) | TSK-001 で直せなかった脆弱性: exceljs(依存の uuid・archiver を含む。修正版はメジャーバージョンの格下げ)、zod(テスト用の依存が版を固定) |
 | TSK-004 | 未対応 | 中 | 入荷・出荷(倉庫間移動) | 倉庫間移動(横持ち)が、出庫と入庫を別々に入力する作りで、つながっていない(入力漏れ・輸送中の在庫・数量の食い違いが分からない) |
 
 ## 画面テスト(2026-10-03)
@@ -166,6 +167,14 @@
 
 - 進め方(案): パッケージごとに、修正版への更新で互換性が壊れないか(メジャーバージョンが上がるか)を確認して提案する。
   更新は依存の変更のため、承認を得てから行う。更新後は、テスト・ビルド・画面での確認を行う。
+- 対応(2026-11-08。ユーザーの承認済み):
+  - backend: `npm audit fix`(互換を壊さない範囲)で hono(4.13.17)・brace-expansion を更新。
+  - frontend: next・eslint-config-next を 16.2.6 → 16.4.5(マイナー更新。package.json の固定の版指定は維持)。source-map-js・
+    baseline-browser-mapping を範囲内で更新。frontend の本番の依存の既知の脆弱性は0件になった。
+  - 確認: 型チェック・全テスト(backend 1968件、frontend 1226件・24件)・`npm run build`(CSP の生成を含む)。lint の指摘は
+    エラー318件・警告48件(CLAUDE.md の記録 127/33 は古い)。eslint-config-next の更新で新しく出た規則は
+    `@next/next/no-location-assign-relative-destination` の1件(`hooks/use-auth-and-menu.ts`。以前からの書き方)。
+  - 残り(TSK-005 へ): exceljs・uuid・zod。
 
 ### TSK-002 使われていない依存 `mimetext`・`smtp-client` が入っている
 
@@ -204,3 +213,13 @@
   4. 在庫照会での輸送中の在庫の見え方、棚卸・在庫評価(会計)での扱い。
   5. 今ある倉庫間移動の記録(出庫の移動先倉庫・入庫の移動元倉庫)の移行。
 - DB・画面・承認の流れの変更を含むため、設計を相談してから進める。
+
+### TSK-005 TSK-001 で直せなかった依存の脆弱性(exceljs・uuid・zod)
+
+- 見つけた日: 2026-11-08(TSK-001 の対応の中で)
+- exceljs(中。依存の archiver・uuid・glob・minimatch などを含む): npm が示す修正は exceljs 3.4.0 への格下げ(メジャーバージョンが変わる)で、
+  帳票の Excel テンプレートの読み込みなどが壊れるおそれがあるため見送った。uuid の脆弱性は v3/v5/v6 で buf を渡した場合のもの。
+  exceljs の新しい版(依存を更新したもの)が出るのを待つか、使い方(帳票テンプレートの読み込み)を調べて代わりのライブラリを検討する。
+- zod(高。大きな入力の検証でメモリを使い切る): テスト用の `@cloudflare/vitest-pool-workers`(最新の 0.23.0 も)が zod 4.4.3 を固定で
+  要求している。本番のコードは zod を使っておらず(バンドルにも入らない)、影響はテストの実行環境に限られる。
+  vitest-pool-workers の更新を待つ。
