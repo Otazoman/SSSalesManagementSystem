@@ -163,10 +163,12 @@ export function useQuoteListActions({
     e.target.value = "";
   };
 
-  const handleGeneratePDF = async (id: string) => {
+  // REQ-002: includeOrderForm が true なら、見積書の後ろにご発注書を付ける
+  const handleGeneratePDF = async (id: string, options: { includeOrderForm?: boolean } = {}) => {
     if (
       !(await confirm(
-        `現在表示中の見積バージョン [ ${id} ] から正式なPDF帳票を自動生成しますか？`,
+        `現在表示中の見積バージョン [ ${id} ] から正式なPDF帳票を自動生成しますか？` +
+          (options.includeOrderForm ? "(見積書の後ろにご発注書を付けます)" : ""),
       ))
     )
       return;
@@ -176,6 +178,7 @@ export function useQuoteListActions({
     try {
       await apiFetch(`/api/quotes/${id}/generate-pdf`, {
         method: "POST",
+        json: { includeOrderForm: options.includeOrderForm === true },
         defaultErrorMessage: "PDF生成に失敗しました",
       });
 

@@ -85,8 +85,8 @@ export class QuoteService {
   }
 
   // --- PDF生成 (quote-pdf.service.ts) ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+  generatePdf(c: Context, id: string, options: { includeOrderForm?: boolean } = {}) {
+    return this.pdf.generatePdf(c, id, options);
   }
 
   // --- ダウンロード/OTP (quote-download.service.ts) ---

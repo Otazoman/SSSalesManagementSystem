@@ -1,7 +1,7 @@
 import { Context } from "hono";
 import { QuoteRepository } from "./quote.repository";
 import { RESOURCE_KEY } from "./quote-constants";
-import { generateDocumentPDF } from "../../../utils/pdfGenerator";
+import { appendPdfPages, generateDocumentPDF } from "../../../utils/pdfGenerator";
 import { DEFAULT_ITEM_NAME, DEFAULT_PAYMENT_TERMS } from "../../../platform/documents/document-defaults";
 import { renderLayoutToPdf } from "../../../platform/report-templates/render-layout-pdf";
 import { resolveQuotePlaceholders } from "../../../platform/report-templates/resolve-quote-placeholders";
@@ -22,7 +22,8 @@ export class QuotePdfService {
   }
 
   // 8. PDF 生成
-  async generatePdf(c: Context, id: string) {
+  // REQ-002: includeOrderForm が true なら、見積書の後ろに「ご発注書」(固定レイアウト)を付ける
+  async generatePdf(c: Context, id: string, options: { includeOrderForm?: boolean } = {}) {
     // findQuoteWithCustomer -> findQuoteWithPartner
     const rows = await this.repo.findQuoteWithPartner(id);
     if (rows.length === 0) return null;
@@ -118,13 +119,28 @@ export class QuotePdfService {
       unitNames,
     );
 
-    const pdfBinary =
+    let pdfBinary =
       customPdf ??
       (await generateDocumentPDF(pdfData, {
         fontBuffer,
         logoBuffer,
         sealBuffer,
       }));
+    // REQ-002: ご発注書は、カスタムの Excel テンプレートを使っている場合も固定レイアウト(reportLayouts.json の CUSTOMER_ORDER_FORM)。
+    // 宛先は自社(発行元の会社名)、右上はお客様の記入・押印欄にし、明細・金額・条件は見積書と同じにする
+    if (options.includeOrderForm) {
+      const orderFormPdf = await generateDocumentPDF(
+        {
+          ...pdfData,
+          templateType: "CUSTOMER_ORDER_FORM",
+          customerName: pdfData.customCompanyName,
+          date: "",
+          sourceQuoteNumber: hData.id,
+        },
+        { fontBuffer, logoBuffer: null, sealBuffer: null },
+      );
+      pdfBinary = await appendPdfPages(pdfBinary, orderFormPdf);
+    }
 
     const r2Path = generateAttachmentKey(`quotes/${id}`, "generated_quote.pdf");
     await c.env.QUATES_BUCKET.put(r2Path, pdfBinary, {

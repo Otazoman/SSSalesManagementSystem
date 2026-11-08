@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
-import { generateDocumentPDF, PDFInvoiceData, resolveMemoBoxTopY } from "./pdfGenerator";
+import { appendPdfPages, generateDocumentPDF, PDFInvoiceData, resolveMemoBoxTopY } from "./pdfGenerator";
+import { PDFDocument } from "pdf-lib";
 
 /**
  * 画面構成再編: 納品書PDFのレンダラーを注文請書と同じgenerateDocumentPDF(pdfGenerator.ts)へ
@@ -238,6 +239,37 @@ describe("合計欄の見出し(reportLayouts.json の totalBoxLabel)", () => {
       ACCEPTANCE: "合計金額(税込)",
       PURCHASE_RECOGNITION: "計上金額(税込)",
       SALES_RECOGNITION: "売上金額(税込)",
+      CUSTOMER_ORDER_FORM: "発注金額(税込)",
     });
+  });
+});
+
+// REQ-002: 見積書の後ろに付けるご発注書(固定レイアウト。右上はお客様の記入・押印欄)
+describe("ご発注書(CUSTOMER_ORDER_FORM)", () => {
+  const quoteData: PDFInvoiceData = {
+    templateType: "QUOTATION",
+    code: "QT-0001",
+    date: "2026-11-08",
+    customCompanyName: "テスト株式会社",
+    customCompanyAddress: "東京都",
+    customCompanyTel: "03-0000-0000",
+    customCompanyFax: "03-0000-0001",
+    customerName: "得意先株式会社",
+    totalAmount: 1100,
+    taxAmount: 100,
+    memo: "",
+    items: [{ itemName: "テスト品目", quantity: 2, unitPrice: 500 }],
+  };
+
+  it("ご発注書を生成でき、見積書の後ろにページをつなげられる", async () => {
+    const quotePdf = await generateDocumentPDF(quoteData, { fontBuffer });
+    const orderForm = await generateDocumentPDF(
+      { ...quoteData, templateType: "CUSTOMER_ORDER_FORM", customerName: "テスト株式会社", date: "", sourceQuoteNumber: "QT-0001" },
+      { fontBuffer },
+    );
+    expect(isValidPdf(orderForm)).toBe(true);
+    const merged = await appendPdfPages(quotePdf, orderForm);
+    const [q, o, m] = await Promise.all([quotePdf, orderForm, merged].map((b) => PDFDocument.load(b)));
+    expect(m.getPageCount()).toBe(q.getPageCount() + o.getPageCount());
   });
 });

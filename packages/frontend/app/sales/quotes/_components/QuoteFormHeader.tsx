@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { QuoteRecord } from "../_types";
 import { Button } from "../../../_shared/ui/Button";
 
@@ -10,7 +10,8 @@ interface QuoteFormHeaderProps {
   siblingVersions: QuoteRecord[];
   onOpenEditForm: (id: string) => void;
   onOpenMailModal: () => void;
-  onGeneratePDF: (id: string) => void;
+  // REQ-002: includeOrderForm が true なら、見積書の後ろにご発注書を付ける
+  onGeneratePDF: (id: string, options?: { includeOrderForm?: boolean }) => void;
 }
 
 export function QuoteFormHeader({
@@ -23,6 +24,7 @@ export function QuoteFormHeader({
   onOpenMailModal,
   onGeneratePDF,
 }: QuoteFormHeaderProps) {
+  const [includeOrderForm, setIncludeOrderForm] = useState(false);
   const isApproved = status === "APPROVED";
   return (
     <div className="flex flex-col gap-3 border-b pb-3 lg:flex-row lg:items-start lg:justify-between">
@@ -68,12 +70,24 @@ export function QuoteFormHeader({
               {isMailSending ? "送信中..." : "📧 見積書をメール送信"}
             </Button>
 
+            {/* REQ-002: 見積書の後ろにご発注書(お客様が記入・押印して返送する用紙)を付けるか */}
+            <label className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeOrderForm}
+                disabled={!isApproved}
+                onChange={(e) => setIncludeOrderForm(e.target.checked)}
+                className="w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+              />
+              ご発注書を付ける
+            </label>
+
             {/* PDF発行ボタン */}
             <Button
               variant="success"
               size="sm"
               disabled={!isApproved}
-              onClick={() => onGeneratePDF(quoteId)}
+              onClick={() => onGeneratePDF(quoteId, { includeOrderForm })}
               title={
                 !isApproved
                   ? "ステータスが承認済み・確定の場合のみPDF発行が可能です"

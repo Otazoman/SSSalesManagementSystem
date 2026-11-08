@@ -15,6 +15,8 @@ export type PDFInvoiceData = {
   // (PURCHASE_RECOGNITIONと対称)
   templateType:
     | "QUOTATION"
+    // REQ-002: 見積書の後ろに付ける「ご発注書」(お客様が記入・押印して返送する)
+    | "CUSTOMER_ORDER_FORM"
     | "INVOICE"
     | "ORDER"
     | "ORDER_ACKNOWLEDGMENT"
@@ -49,6 +51,7 @@ export type PDFInvoiceData = {
   deliveryPlace?: string | null; // 納品場所
   paymentTerms?: string | null; // 支払条件
   expiryDate?: string | null; // 見積期限
+  sourceQuoteNumber?: string | null; // REQ-002: ご発注書の元の見積番号
 
   // 担当者氏名テキスト
   salesPersonName?: string | null;
@@ -846,6 +849,45 @@ function stampPageNumbers(
   });
 }
 
+// REQ-002: ご発注書の右上の、お客様の記入欄(ご発注日・貴社名・ご住所・ご担当者・印)
+function drawCustomerFillBlock(page: PDFPage, height: number, drawTextOnPage: DrawTextFn): void {
+  const x = 330;
+  const lineEnd = 545;
+  const fields = ["ご発注日:          年      月      日", "貴社名:", "ご住所:", "", "ご担当者:"];
+  fields.forEach((label, idx) => {
+    const y = height - 80 - idx * 18;
+    if (label) drawTextOnPage(page, label, x, y, 8.5, rgb(0.1, 0.1, 0.1));
+    page.drawLine({
+      start: { x, y: y - 3 },
+      // 押印欄(右下の四角)の高さにかかる行(ご住所の2行目以降)は、押印欄の手前で線を止める
+      end: { x: idx >= 2 ? lineEnd - 50 : lineEnd, y: y - 3 },
+      thickness: 0.5,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+  });
+  // 押印欄
+  const boxSize = 42;
+  const boxY = height - 80 - 4 * 18 - 3;
+  page.drawRectangle({
+    x: lineEnd - boxSize,
+    y: boxY,
+    width: boxSize,
+    height: boxSize,
+    borderWidth: 0.6,
+    borderColor: rgb(0.4, 0.4, 0.4),
+  });
+  drawTextOnPage(page, "印", lineEnd - boxSize / 2 - 4, boxY + boxSize / 2 - 4, 9, rgb(0.6, 0.6, 0.6));
+}
+
+// REQ-002: PDF の後ろに別の PDF のページをつなげる(見積書の後ろにご発注書を付ける)
+export async function appendPdfPages(base: Uint8Array, extra: Uint8Array): Promise<Uint8Array> {
+  const baseDoc = await PDFDocument.load(base);
+  const extraDoc = await PDFDocument.load(extra);
+  const pages = await baseDoc.copyPages(extraDoc, extraDoc.getPageIndices());
+  pages.forEach((p) => baseDoc.addPage(p));
+  return await baseDoc.save({ useObjectStreams: true });
+}
+
 export async function generateDocumentPDF(
   data: PDFInvoiceData,
   resources: PDFResource,
@@ -884,7 +926,12 @@ export async function generateDocumentPDF(
     drawTextOnPage,
   );
 
-  await drawCompanyInfoBlock(pdfDoc, page, data, resources, height, drawTextOnPage);
+  // REQ-002: ご発注書は、発行元の欄をお客様が記入・押印する欄にする(自社の情報・ロゴ・印影は出さない)
+  if ((layoutConfig as { customerFillsIssuer?: boolean }).customerFillsIssuer) {
+    drawCustomerFillBlock(page, height, drawTextOnPage);
+  } else {
+    await drawCompanyInfoBlock(pdfDoc, page, data, resources, height, drawTextOnPage);
+  }
 
   const tableResult = drawItemsTable(
     page,

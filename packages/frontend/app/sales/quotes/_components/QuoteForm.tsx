@@ -39,7 +39,7 @@ interface QuoteFormProps {
   isQuoteWfEnabled: boolean;
   onSubmitForApproval: (id: string) => void;
   onSubmitApprovedEdit: (formData: any) => void;
-  onGeneratePDF: (id: string) => void;
+  onGeneratePDF: (id: string, options?: { includeOrderForm?: boolean }) => void;
   fetchSpecialPrice: (
     custID: string,
     prodID: string,

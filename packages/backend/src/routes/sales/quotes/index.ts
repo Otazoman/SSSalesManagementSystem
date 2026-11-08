@@ -312,7 +312,9 @@ quotesRouter.post(
   }),
   async (c) => {
   const id = c.req.param("id");
-  const result = await getService(c).generatePdf(c, id);
+  // REQ-002: 本文に includeOrderForm: true があれば、見積書の後ろにご発注書を付ける(本文が無い・不正な場合は見積書だけ)
+  const body = (await c.req.json().catch(() => ({}))) as { includeOrderForm?: unknown };
+  const result = await getService(c).generatePdf(c, id, { includeOrderForm: body?.includeOrderForm === true });
   if (!result) {
     return c.json({ success: false, message: "対象データがありません" }, 404);
   }
