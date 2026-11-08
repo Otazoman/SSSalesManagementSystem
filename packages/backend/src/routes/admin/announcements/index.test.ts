@@ -87,12 +87,12 @@ describe("お知らせ本文(HTML)", () => {
   it("保存時に危険なHTML(script・イベント属性・javascript:リンク)を除去する。更新時も同様", async () => {
     const dirty = '<p onclick="x()">a</p><script>alert(1)</script><a href="javascript:alert(1)">b</a><img src=x onerror=alert(1)>';
     const created = (await (await call("/register", json("POST", { ...base, body: dirty }))).json()) as any;
-    expect(created.body).toBe("<p>a</p><a>b</a><img>");
+    expect(created.body).toBe("<p>a</p><a>b</a><img />");
     const updated = (await (await call(`/${created.id}`, json("PUT", { ...base, body: dirty }))).json()) as any;
-    expect(updated.body).toBe("<p>a</p><a>b</a><img>");
+    expect(updated.body).toBe("<p>a</p><a>b</a><img />");
     // DBに保存された値も無害化済み
     const row = await env.DB_UI.prepare("SELECT body FROM announcements WHERE id = ?").bind(created.id).first<any>();
-    expect(row.body).toBe("<p>a</p><a>b</a><img>");
+    expect(row.body).toBe("<p>a</p><a>b</a><img />");
   });
 
   it("プレビュー: 実際に表示される(無害化後の)HTMLを返し、DBには保存しない", async () => {
@@ -117,7 +117,7 @@ describe("従来のKVからD1への移行", () => {
     const list = (await (await call("/")).json()) as any[];
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ id: "old-1", title: "旧お知らせ", isImportant: true });
-    expect(list[0].body).toBe("1行目<br>&lt;b&gt;2行目&lt;/b&gt;"); // 平文だった本文は、タグも文字として扱う
+    expect(list[0].body).toBe("1行目<br />&lt;b&gt;2行目&lt;/b&gt;"); // 平文だった本文は、タグも文字として扱う
 
     // 取り込み済み: 全件削除してD1が空になっても、再取り込みしない
     expect((await call("/old-1", { method: "DELETE" })).status).toBe(200);

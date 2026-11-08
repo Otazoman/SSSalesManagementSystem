@@ -40,6 +40,12 @@ export function SmtpSettings({
       <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
         ✉️ システム通知用 SMTPメールサーバ設定
       </h3>
+      {/* BUG-072: プロバイダに依らない設定。ポートで暗号化の方式が決まる。Gmail の注意は補足に書く */}
+      <p className="text-xs text-slate-700">
+        ポート 465 は接続時から暗号化(SSL/TLS)、587 などそれ以外は STARTTLS で暗号化して送ります(暗号化できないサーバーには送りません)。
+        Gmail を使う場合は、2段階認証を有効にしてアプリパスワードを発行し、送信元は Gmail のアドレス(または Gmail に登録した別名)にしてください
+        (それ以外は Gmail が書き換えます)。1日に送れる数には上限があります。
+      </p>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="sm:col-span-2">
           <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -76,12 +82,12 @@ export function SmtpSettings({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">
-            SMTP認証ユーザー名 (Gmailアドレス)
+            SMTP認証ユーザー名
           </label>
           <input
             type="text"
             disabled={!canWrite}
-            placeholder="your-name@gmail.com"
+            placeholder="your-name@example.com"
             className="w-full border border-slate-300 p-2 text-base sm:text-xs bg-white text-slate-900 rounded focus:border-indigo-500 focus:outline-none disabled:bg-slate-50"
             value={settings.smtp_user}
             onChange={(e) =>
@@ -91,7 +97,7 @@ export function SmtpSettings({
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">
-            SMTPパスワード (Gmail 16桁アプリパスワード)
+            SMTPパスワード (Gmail はアプリパスワード)
           </label>
           <input
             type="password"
@@ -127,7 +133,7 @@ export function SmtpSettings({
       </div>
 
       <div className="mt-4 pt-4 border-t border-slate-200/60">
-        <label className="block text-xs font-bold text-slate-600 mb-1">
+        <label className="block text-xs font-bold text-slate-700 mb-1">
           🚀 接続テストメールの送信
         </label>
         <div className="flex gap-2">

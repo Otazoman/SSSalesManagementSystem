@@ -8,7 +8,7 @@
 | Frontend Worker | `proxy.ts`(ログイン確認・API の中継) | `packages/frontend` | Vitest(`vitest.config.mts`) | 1ファイル |
 | Frontend 画面 | 画面の部品・フック | `packages/frontend` | Vitest + jsdom + Testing Library(`vitest.config.react.mts`) | 約180ファイル |
 | Frontend 実ブラウザ | 画面幅ごとの表示崩れ・レイアウト | `packages/frontend` | Vitest Browser Mode + Playwright(Chromium)(`vitest.config.browser.mts`) | 15ファイル |
-| スクリプト | `wrangler.jsonc` の生成、DB ドキュメントの生成 | リポジトリのルート | Node.js 標準のテスト(`node --test`) | 2ファイル |
+| スクリプト | `wrangler.jsonc` の生成、DB ドキュメントの生成、画面の Content-Security-Policy の生成 | リポジトリのルート | Node.js 標準のテスト(`node --test`) | 3ファイル |
 
 テストは、Cloudflare の実際のリソース(Staging・本番)には一切つながりません。
 
@@ -52,6 +52,7 @@ npm run test:browser
 # リポジトリのルートで(Windows ではフォルダ指定が動かないため、ファイルを指定する)
 node --test infra/scripts/sync-wrangler.test.mjs
 node --test packages/backend/scripts/db-docs/generate-db-docs.test.mjs
+node --test packages/frontend/scripts/csp/generate-csp-headers.test.mjs
 ```
 
 ## 3. テストの書き方

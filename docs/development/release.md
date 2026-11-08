@@ -99,6 +99,9 @@ npm run build
 npx wrangler deploy --env staging
 ```
 
+- `npm run build` は、`next build` の後に `scripts/csp/generate-csp-headers.mjs` を実行し、ページごとのスクリプトの実行元の制限
+  (Content-Security-Policy)を `out/_headers` に追記します(BUG-083)。`next build` だけで済ませると、この制限が付かないため、必ず `npm run build` を使ってください。
+
 表示の中に `env.BACKEND (my-erp-backend-staging)` があれば、Staging の Backend につながっています。
 
 ### 3-5. Staging で確認する

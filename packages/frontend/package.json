@@ -3,18 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next build && wrangler dev",
-    "build": "next build",
+    "dev": "npm run build && wrangler dev",
+    "build": "next build && node scripts/csp/generate-csp-headers.mjs",
     "start": "next start",
     "lint": "eslint",
-    "preview": "next build && wrangler dev",
-    "deploy:prod": "next build && wrangler deploy",
+    "preview": "npm run build && wrangler dev",
+    "deploy:prod": "npm run build && wrangler deploy",
     "test": "vitest run --config vitest.config.mts && vitest run --config vitest.config.react.mts",
     "test:watch": "vitest --config vitest.config.react.mts",
     "test:browser": "vitest run --config vitest.config.browser.mts"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",
+    "dompurify": "^3.4.17",
     "jsbarcode": "^3.12.3",
     "next": "16.2.6",
     "qrcode-generator": "^2.0.4",

@@ -148,6 +148,25 @@ describe("RichHtml", () => {
     );
   });
 
+  // BUG-083: 画面側でも描画の直前に無害化する(サーバーを通らない値が渡っても実行されない)
+  it("描画の直前に無害化する(script・イベント属性・javascript: を落とす)", () => {
+    const { container } = render(
+      <RichHtml html={'<p onclick="alert(1)">本文</p><script>alert(1)</script><img src="x" onerror="alert(1)"><a href="javascript:alert(1)">x</a>'} />,
+    );
+    const html = container.innerHTML;
+    expect(html).not.toMatch(/<script|onclick|onerror|javascript:/i);
+    expect(screen.getByText("本文")).toBeInTheDocument();
+  });
+
+  it("外部リンクの target・rel は残す", () => {
+    render(
+      <RichHtml html='<a href="https://e.example" target="_blank" rel="noopener noreferrer">外部</a>' />,
+    );
+    const link = screen.getByRole("link", { name: "外部" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
   it("rich-html クラスを持つ(リスト・見出し等の見た目を補う)", () => {
     const { container } = render(
       <RichHtml html="<ul><li>a</li></ul>" className="mt-2" />,

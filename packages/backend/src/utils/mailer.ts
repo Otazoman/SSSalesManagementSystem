@@ -1,4 +1,6 @@
-import { connect } from "cloudflare:sockets";
+import { createTransport } from "nodemailer";
+import net from "node:net";
+import tls from "node:tls";
 
 // 💡 添付ファイルの構造体定義
 interface Attachment {
@@ -45,23 +47,123 @@ function parseAddresses(input: string | string[] | undefined): string[] {
 }
 
 // SMTP通信全体(接続〜QUIT)のタイムアウト(ms)。相手サーバーが応答不能になった場合、
-// ソケット読み取りループ(readResponse)には従来タイムアウトが無く無期限に待ち続けてしまい、
-// Cron Trigger(processNotificationOutbox)のctx.waitUntil()が永久に解決しなくなる不具合があった。
+// 送信が無期限に待ち続けると、Cron Trigger(processNotificationOutbox)のctx.waitUntil()が永久に解決しなくなる。
 // 1件のメール送信のハングがoutbox全体(ひいては同一tick内の他のスケジュールタスクも巻き込む)を
-// 停止させないよう、送信処理全体に上限を設ける
+// 停止させないよう、送信処理全体(再送を含む)に上限を設ける
 const SMTP_TIMEOUT_MS = 30_000;
+// BUG-072: 一時的なエラー(4xx・接続の失敗)の再送の待ち時間(ms)。最大2回まで再送する。
+// これでも失敗した場合は、通知キュー(processNotificationOutbox)の再送(1分おき)に任せる
+const SMTP_RETRY_DELAYS_MS = [2_000, 5_000];
+// 接続・応答待ちの上限(ms)。全体の上限(SMTP_TIMEOUT_MS)の中で再送できるよう短めにする
+const SMTP_CONNECTION_TIMEOUT_MS = 8_000;
+const SMTP_SOCKET_TIMEOUT_MS = 15_000;
+
+/**
+ * BUG-072: SMTP の送受信は nodemailer に任せる(Cloudflare Workers では nodejs_compat で動く)。
+ * 465 は接続時から TLS、それ以外(587 など)は STARTTLS を必須にする(パスワードを暗号化せずに送らないため)。
+ * 本文のエスケープ・改行・日本語の件名とファイル名のエンコードは nodemailer が行う。
+ */
+export function buildSmtpTransportOptions(smtpHost: string, smtpPort: string, smtpUser: string, smtpPass: string) {
+  const host = smtpHost.trim() || "smtp.gmail.com";
+  const port = parseInt(smtpPort.trim() || "465", 10);
+  const secure = port === 465;
+  return {
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: {
+      // BUG-072(Staging で確認): 認証方式は、以前の自前の処理で実績のある LOGIN にする(nodemailer は既定で
+      // サーバーが示す先頭の方式(ASAHIネットでは PLAIN)を選び、ASAHIネットで 535 になった)
+      method: "LOGIN",
+      user: smtpUser.trim(),
+      // Gmail のアプリパスワードは4文字ごとの空白付きで表示されるため、空白を除く(従来どおり)
+      pass: smtpPass.replace(/\s/g, ""),
+    },
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+    getSocket: connectByHostname(host, port, secure),
+  };
+}
+
+// BUG-072(Staging で確認): nodemailer は送信の前にホスト名を IP アドレスに変換して、その IP アドレスへ接続する。
+// Cloudflare Workers では IP アドレスを指定した接続が失敗する(ASAHIネットの 465/587・Gmail の 465 で
+// 「proxy request failed, cannot connect to the specified address」・タイムアウト)ため、ホスト名のまま接続した
+// ソケットを nodemailer に渡す(SMTP の受け答え・STARTTLS・認証・送信は nodemailer が行う)。
+// 465 は接続時から TLS にしたソケットを渡す(接続済みのソケットを後から TLS にする方法は Workers では失敗するため)
+function connectByHostname(host: string, port: number, secure: boolean) {
+  return (
+    _options: unknown,
+    callback: (err: Error | null, socketOptions?: { connection: net.Socket; secured?: boolean }) => void,
+  ) => {
+    let settled = false;
+    const done = (err: Error | null, socketOptions?: { connection: net.Socket; secured?: boolean }) => {
+      if (settled) return;
+      settled = true;
+      callback(err, socketOptions);
+    };
+    const onError = (err: Error) => done(Object.assign(err, { code: (err as { code?: string }).code ?? "ECONNECTION" }));
+    if (secure) {
+      const socket = tls.connect({ host, port, servername: host });
+      socket.once("secureConnect", () => done(null, { connection: socket, secured: true }));
+      socket.once("error", onError);
+      return;
+    }
+    const socket = net.connect({ host, port });
+    socket.once("connect", () => done(null, { connection: socket }));
+    socket.once("error", onError);
+  };
+}
+
+type SmtpError = Error & { code?: string; responseCode?: number; response?: string };
+
+// 一時的なエラー(サーバーの 4xx 応答・接続の失敗・応答待ちの時間切れ)だけ再送する。
+// 認証の失敗(535)など 5xx は、再送しても結果が変わらないため再送しない
+export function isRetryableSmtpError(err: unknown): boolean {
+  const e = err as SmtpError;
+  if (typeof e?.responseCode === "number") return e.responseCode >= 400 && e.responseCode < 500;
+  return ["ECONNECTION", "ETIMEDOUT", "ESOCKET"].includes(e?.code ?? "");
+}
+
+// 送信ログに残すエラー文。接続先とサーバーの応答をそのまま残す(プロバイダに依らない文言にする)
+export function describeSmtpError(err: unknown, host: string, port: number): string {
+  const e = err as SmtpError;
+  const target = `${host}:${port}`;
+  const response = e?.response ? ` サーバー応答: ${e.response}` : "";
+  switch (e?.code) {
+    case "EAUTH":
+      return `SMTPの認証に失敗しました(${target})。ユーザー名・パスワードを確認してください。${response}`;
+    case "ECONNECTION":
+    case "ESOCKET":
+    case "EDNS":
+      return `SMTPサーバーに接続できませんでした(${target})。ホスト名・ポート番号を確認してください。${e.message}`;
+    case "ETIMEDOUT":
+      return `SMTPサーバーからの応答が時間内にありませんでした(${target})。${e.message}`;
+    case "EENVELOPE":
+      return `送信元または宛先のアドレスがSMTPサーバーに拒否されました(${target})。${response || e.message}`;
+    case "EMESSAGE":
+      return `メッセージ本体の配送がSMTPサーバーに拒否されました(${target})。${response || e.message}`;
+    default:
+      return `メールの送信に失敗しました(${target})。${response || e?.message || String(err)}`;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * 🚀 エンタープライズ対応：SMTP直接送信関数
  */
 export async function sendEmail(options: MailOptions): Promise<void> {
-  let socketRef: ReturnType<typeof connect> | null = null;
+  if (!options.smtpUser.trim() || !options.smtpPass.trim()) {
+    throw new Error("SMTPのユーザー名またはパスワードが設定されていません");
+  }
+  const toList = parseAddresses(options.to);
+  if (toList.length === 0) throw new Error("宛先(To)が指定されていません");
 
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      // タイムアウト時はソケットを強制クローズして接続を確実に解放する(ベストエフォート、
-      // close()はPromiseを返すため同期try/catchでは拾えない失敗を.catch()で握りつぶす)
-      socketRef?.close().catch(() => {});
+    timer = setTimeout(() => {
       reject(
         new Error(
           `SMTPサーバーからの応答が${SMTP_TIMEOUT_MS / 1000}秒以内に確認できませんでした(タイムアウト)`,
@@ -70,201 +172,55 @@ export async function sendEmail(options: MailOptions): Promise<void> {
     }, SMTP_TIMEOUT_MS);
   });
 
-  await Promise.race([performSmtpTransaction(options, (s) => (socketRef = s)), timeoutPromise]);
+  try {
+    await Promise.race([sendWithRetry(options, toList), timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-async function performSmtpTransaction(
-  options: MailOptions,
-  onSocketReady: (socket: ReturnType<typeof connect>) => void,
-): Promise<void> {
-  const {
-    smtpHost,
-    smtpPort,
-    smtpUser,
-    smtpPass,
-    smtpFrom,
-    subject,
-    text,
-    html,
-    attachments,
-  } = options;
-
-  const host = smtpHost.trim() || "smtp.gmail.com";
-  const port = parseInt(smtpPort.trim() || "465", 10);
-  const senderEmail = smtpFrom.trim() || smtpUser.trim();
-
-  if (!smtpUser.trim() || !smtpPass.trim()) {
-    throw new Error(
-      "Gmailのユーザー名または16桁アプリパスワードが設定されていません",
-    );
-  }
-
-  // 宛先グループの解析
-  const toList = parseAddresses(options.to);
+async function sendWithRetry(options: MailOptions, toList: string[]): Promise<void> {
+  const transportOptions = buildSmtpTransportOptions(
+    options.smtpHost,
+    options.smtpPort,
+    options.smtpUser,
+    options.smtpPass,
+  );
+  const senderEmail = options.smtpFrom.trim() || options.smtpUser.trim();
   const ccList = parseAddresses(options.cc);
   const bccList = parseAddresses(options.bcc);
 
-  if (toList.length === 0) throw new Error("宛先(To)が指定されていません");
-
-  // 💡 SMTPの「RCPT TO」に流し込むための全配送先リスト（BCC含む）
-  const allRecipients = [...toList, ...ccList, ...bccList];
-
-  // MIMEヘッダー用の文字列を作成
-  const toHeader = toList.join(", ");
-  const ccHeader = ccList.length > 0 ? ccList.join(", ") : undefined;
-  const base64Subject = btoa(
-    String.fromCharCode(...new TextEncoder().encode(subject)),
-  );
-
-  // MIMEマルチパートのバウンダリ生成（テキスト/HTML/添付ファイルの切り分け用）
-  const boundary = `----=_Part_${crypto.randomUUID().replace(/-/g, "")}`;
-
-  // MIMEメッセージ組み立て
-  const mimeParts: string[] = [`From: <${senderEmail}>`, `To: ${toHeader}`];
-  if (ccHeader) mimeParts.push(`Cc: ${ccHeader}`);
-  mimeParts.push(`Subject: =?UTF-8?B?${base64Subject}?=`);
-  mimeParts.push(`MIME-Version: 1.0`);
-  mimeParts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
-  mimeParts.push(``); // ヘッダーとボディの境界
-
-  // --- ボディパート（Text / HTML） ---
-  mimeParts.push(`--${boundary}`);
-  mimeParts.push(
-    `Content-Type: multipart/alternative; boundary="${boundary}_ALT"`,
-  );
-  mimeParts.push(``);
-
-  if (text) {
-    mimeParts.push(`--${boundary}_ALT`);
-    mimeParts.push(`Content-Type: text/plain; charset=UTF-8`);
-    mimeParts.push(`Content-Transfer-Encoding: 8bit`);
-    mimeParts.push(``);
-    mimeParts.push(text);
-  }
-
-  if (html) {
-    mimeParts.push(`--${boundary}_ALT`);
-    mimeParts.push(`Content-Type: text/html; charset=UTF-8`);
-    mimeParts.push(`Content-Transfer-Encoding: 8bit`);
-    mimeParts.push(``);
-    mimeParts.push(html);
-  }
-  mimeParts.push(`--${boundary}_ALT--`);
-
-  // --- 添付ファイルパート ---
-  if (attachments && attachments.length > 0) {
-    for (const attach of attachments) {
-      mimeParts.push(`--${boundary}`);
-      mimeParts.push(
-        `Content-Type: ${attach.contentType}; name="=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(attach.filename)))}?="`,
-      );
-      mimeParts.push(`Content-Transfer-Encoding: base64`);
-      mimeParts.push(
-        `Content-Disposition: attachment; filename="=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(attach.filename)))}?="`,
-      );
-      mimeParts.push(``);
-      // Base64は76文字ごとに改行を入れるのがMIMEの標準規格
-      const formattedBase64 = attach.base64Content.replace(
-        /(.{76})/g,
-        "$1\r\n",
-      );
-      mimeParts.push(formattedBase64);
-    }
-  }
-
-  mimeParts.push(`--${boundary}--`);
-  const rawMessage = mimeParts.join("\r\n");
-
-  // ソケット通信開始
-  const secureTransportSetting =
-    port === 465 ? ("on" as const) : ("off" as const);
-  const socket = connect(
-    { hostname: host, port: port },
-    { secureTransport: secureTransportSetting, allowHalfOpen: false },
-  );
-  onSocketReady(socket);
-
-  const writer = socket.writable.getWriter();
-  const reader = socket.readable.getReader();
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-
-  // 💡 修正：SMTPサーバーの「応答完了サイン（4行目のスペースなど）」を検知したら、
-  // 待ち続けずに即座にレスポンスを返して処理を次に進めます。
-  async function readResponse(): Promise<string> {
-    let result = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (value) {
-        result += decoder.decode(value);
-      }
-
-      // SMTPプロトコルの規約準拠：応答コード（220, 250等）の直後に「スペース」が来たら、それがサーバーからの応答完了のサインです
-      // 例: "250-smtp.gmail.com hello"\r\n "250 2.1.0 OK"\r\n <- 最後の行はハイフンではなくスペースになる
-      if (done || /(^|\r\n)\d{3} .*\r\n$/.test(result)) {
-        break;
-      }
-    }
-    return result;
-  }
-
-  async function sendCommand(cmd: string): Promise<string> {
-    await writer.write(encoder.encode(cmd + "\r\n"));
-    return await readResponse();
-  }
+  const transporter = createTransport(transportOptions);
 
   try {
-    await readResponse();
-    await sendCommand(`EHLO localhost`);
-    await sendCommand("AUTH LOGIN");
-    await sendCommand(btoa(smtpUser.trim()));
-    const authResult = await sendCommand(btoa(smtpPass.replace(/\s/g, "")));
-
-    if (!authResult.includes("235")) {
-      throw new Error(
-        `GmailのSMTP認証に失敗しました。サーバー応答: ${authResult}`,
-      );
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await transporter.sendMail({
+          from: senderEmail,
+          to: toList,
+          ...(ccList.length > 0 ? { cc: ccList } : {}),
+          ...(bccList.length > 0 ? { bcc: bccList } : {}),
+          subject: options.subject,
+          ...(options.text ? { text: options.text } : {}),
+          ...(options.html ? { html: options.html } : {}),
+          attachments: (options.attachments ?? []).map((attach) => ({
+            filename: attach.filename,
+            content: attach.base64Content,
+            encoding: "base64",
+            contentType: attach.contentType,
+          })),
+        });
+        return;
+      } catch (err) {
+        if (attempt < SMTP_RETRY_DELAYS_MS.length && isRetryableSmtpError(err)) {
+          await sleep(SMTP_RETRY_DELAYS_MS[attempt]);
+          continue;
+        }
+        throw new Error(describeSmtpError(err, transportOptions.host, transportOptions.port));
+      }
     }
-
-    // 配送コマンドの発行
-    await sendCommand(`MAIL FROM:<${senderEmail}>`);
-
-    // 💡 修正：To, Cc, Bcc すべての宛先に対して RCPT TO を発行する
-    for (const rcpt of allRecipients) {
-      await sendCommand(`RCPT TO:<${rcpt}>`);
-    }
-
-    // 1. DATAコマンドを送り、サーバーから「354 Start mail input」の受付返信を待つ
-    const dataResponse = await sendCommand("DATA");
-    if (!dataResponse.includes("354")) {
-      throw new Error(
-        `SMTP DATAコマンドが拒否されました。サーバー応答: ${dataResponse}`,
-      );
-    }
-
-    // 2. 💡 修正：メッセージ本体（rawMessage）と終了の合図（\r\n.\r\n）をソケットへ生書き込みします
-    await writer.write(encoder.encode(`${rawMessage}\r\n.\r\n`));
-
-    // 3. 💡 修正：Gmailが巨大なPDFデータを読み込み、処理し終わって「250 OK」を返すまで、ここで100%確実に安全に待機します
-    const mailResult = await readResponse();
-    if (!mailResult.includes("250")) {
-      throw new Error(
-        `SMTPメッセージ本体の配送がサーバーに拒否されました。サーバー応答: ${mailResult}`,
-      );
-    }
-
-    // 4. 正式にメールの受付（Queue格納）が完了したことを受けてから、安全にQUITを発行します
-    await sendCommand("QUIT");
   } finally {
-    writer.releaseLock();
-    reader.releaseLock();
-    // タイムアウト側で既に強制クローズ済みの場合、再度のclose()が例外を投げることがあるため、
-    // 呼び出し元(Promise.race)には無関係な二重クローズの例外を伝播させない
-    try {
-      await socket.close();
-    } catch {
-      // 既にクローズ済み/エラー状態の場合は無視
-    }
+    transporter.close();
   }
 }
 

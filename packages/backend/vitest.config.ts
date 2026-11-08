@@ -51,6 +51,14 @@ export default defineConfig(async () => {
       // scripts/ のテスト(DB ドキュメントの生成など)は Node 標準のテスト(node --test)で書いているため、
       // Vitest の対象から外す(実行方法は docs/development/testing.md)
       exclude: ["**/node_modules/**", "scripts/**"],
+      // BUG-083: sanitize-html(と依存の postcss)は CommonJS の require の連鎖を持ち、テストのモジュール解決では
+      // 読み込めないため、事前に1つにバンドルして読み込む(テスト専用。本番の wrangler のバンドルでは
+      // 問題なく読み込めることを確認済み)
+      deps: {
+        optimizer: {
+          ssr: { enabled: true, include: ["sanitize-html"] },
+        },
+      },
     },
     plugins: [
       // 💡 wrangler.jsoncの`main`(src/index.ts、pdf-lib等を含むアプリ全体)は読み込まない。

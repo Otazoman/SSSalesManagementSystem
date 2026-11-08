@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { plainTextToHtml, sanitizeHtml } from "./sanitize-html";
 
+// BUG-083: 無害化をライブラリ(sanitize-html)に置き換えた。出力の書式はライブラリに合わせて変わった
+// (img は <img />、style は空白を詰めた形)。独自実装より厳しく捨てる箇所(閉じていないタグ・CDATA)もある。
+// 危険な要素・属性・スキームが残らないことの確認(dangerous)は、置き換え前と同じ内容のまま
+
 describe("sanitizeHtml: 許可した書式は残す", () => {
   it("段落・強調・リスト・見出しなどをそのまま通す", () => {
     const html = "<h3>見出し</h3><p>本文 <b>太字</b> <i>斜体</i> <u>下線</u></p><ul><li>項目1</li><li>項目2</li></ul>";
@@ -30,19 +34,20 @@ describe("sanitizeHtml: 許可した書式は残す", () => {
 
   it("画像: http(s)・相対の src、alt、数字の width/height を通す", () => {
     expect(sanitizeHtml('<img src="https://example.com/a.png" alt="説明" width="100" height="50">')).toBe(
-      '<img src="https://example.com/a.png" alt="説明" width="100" height="50">',
+      '<img src="https://example.com/a.png" alt="説明" width="100" height="50" />',
     );
   });
 
   it("style: 見た目に関する安全なプロパティだけ残す", () => {
     expect(sanitizeHtml('<span style="color: #c00; font-weight: bold; position: fixed; top: 0">x</span>')).toBe(
-      '<span style="color: #c00; font-weight: bold">x</span>',
+      '<span style="color:#c00;font-weight:bold">x</span>',
     );
   });
 
   it("閉じ忘れのタグは補い、対応しない閉じタグは捨てる", () => {
     expect(sanitizeHtml("<p><b>太字")).toBe("<p><b>太字</b></p>");
-    expect(sanitizeHtml("文字</p></div>")).toBe("文字");
+    // 対応しない </p> は、HTML の仕様どおり空の段落として扱う(文字・属性は増えない)
+    expect(sanitizeHtml("文字</p></div>")).toBe("文字<p></p>");
     expect(sanitizeHtml("<b><i>a</b>b")).toBe("<b><i>a</i></b>b");
   });
 
@@ -82,7 +87,7 @@ describe("sanitizeHtml: 危険な入力(XSS)を無害化する", () => {
   });
 
   it("イベント属性(onerror/onclick/onload)を落とす", () => {
-    expect(dangerous("<img src=x onerror=alert(1)>")).toBe("<img>");
+    expect(dangerous("<img src=x onerror=alert(1)>")).toBe("<img />");
     expect(dangerous('<a href="https://e.example" onclick="alert(1)">x</a>')).toBe(
       '<a href="https://e.example" target="_blank" rel="noopener noreferrer">x</a>',
     );
@@ -109,14 +114,14 @@ describe("sanitizeHtml: 危険な入力(XSS)を無害化する", () => {
   });
 
   it("img の src に javascript:/data: は通さない", () => {
-    expect(dangerous('<img src="javascript:alert(1)">')).toBe("<img>");
-    expect(dangerous('<img src="data:image/svg+xml;base64,AAAA">')).toBe("<img>");
+    expect(dangerous('<img src="javascript:alert(1)">')).toBe("<img />");
+    expect(dangerous('<img src="data:image/svg+xml;base64,AAAA">')).toBe("<img />");
   });
 
   it("style の url()・expression・@import・未許可プロパティを捨てる", () => {
     expect(sanitizeHtml('<div style="background: url(javascript:alert(1))">x</div>')).toBe("<div>x</div>");
     expect(sanitizeHtml('<div style="width: expression(alert(1))">x</div>')).toBe("<div>x</div>");
-    expect(sanitizeHtml('<div style="color: red; behavior: url(x.htc)">x</div>')).toBe('<div style="color: red">x</div>');
+    expect(sanitizeHtml('<div style="color: red; behavior: url(x.htc)">x</div>')).toBe('<div style="color:red">x</div>');
     expect(sanitizeHtml('<div style="color: red\\; background: red">x</div>')).toBe("<div>x</div>");
   });
 
@@ -131,15 +136,15 @@ describe("sanitizeHtml: 危険な入力(XSS)を無害化する", () => {
 
   it("コメント・DOCTYPE・CDATA・処理命令に隠した攻撃を消す", () => {
     expect(dangerous("<!--<script>alert(1)</script>-->表示")).toBe("表示");
-    // CDATA の中のタグは実行されない。残るのは無害な文字だけ(要素にはならない)
-    expect(dangerous("<!DOCTYPE html><![CDATA[<script>alert(1)</script>]]>x")).toBe("alert(1)]]&gt;x");
+    // CDATA は中身ごと捨てる
+    expect(dangerous("<!DOCTYPE html><![CDATA[<script>alert(1)</script>]]>x")).toBe("x");
     expect(dangerous("<?xml version='1.0'?>x")).toBe("x");
   });
 
   it("タグの入れ子・崩れを使った回避(<<script>、引用符内の > など)", () => {
     expect(dangerous("<<script>script>alert(1)<</script>/script>")).not.toContain("<script");
     expect(dangerous('<a title="x>y" href="javascript:alert(1)">z</a>')).toBe('<a title="x&gt;y">z</a>');
-    expect(dangerous("<img/src=x/onerror=alert(1)>")).toBe("<img>");
+    expect(dangerous("<img/src=x/onerror=alert(1)>")).toBe("<img />");
     expect(dangerous('<div/onclick="alert(1)">x</div>')).toBe("<div>x</div>");
     expect(dangerous("<scr<script>ipt>alert(1)</scr</script>ipt>")).not.toContain("<script");
   });
@@ -147,8 +152,8 @@ describe("sanitizeHtml: 危険な入力(XSS)を無害化する", () => {
   it("引用符を閉じない属性・閉じていないタグでも、以降を文字として無害化する", () => {
     const out = dangerous('<a href="https://e.example>リンク<script>alert(1)</script>');
     expect(out).not.toContain("<script");
-    // 閉じていないタグは、タグとして扱わず文字になる(要素・属性にはならない)
-    expect(sanitizeHtml("<b onmouseover=alert(1)")).toBe("&lt;b onmouseover=alert(1)");
+    // 閉じていないタグは捨てる(要素・属性にはならない)
+    expect(sanitizeHtml("<b onmouseover=alert(1)")).toBe("");
   });
 
   it("属性値の中の < > \" は無害化して出力する(属性の外へ出せない)", () => {
@@ -162,6 +167,25 @@ describe("sanitizeHtml: 危険な入力(XSS)を無害化する", () => {
     const out = sanitizeHtml(deep);
     expect((out.match(/<div>/g) ?? []).length).toBeLessThanOrEqual(30);
     expect(out.match(/<div>/g)?.length).toBe(out.match(/<\/div>/g)?.length);
+  });
+
+  it("既知の攻撃パターン(mXSS・名前空間・エンコードの偽装など)を無害化する", () => {
+    for (const html of [
+      '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+      '<math><mi xlink:href="javascript:alert(1)">x</mi></math>',
+      '<svg><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>',
+      '<a href="&#0000106&#0000097&#0000118&#0000097&#0000115&#0000099&#0000114&#0000105&#0000112&#0000116&#0000058alert(1)">x</a>',
+      '<a href="jav&#x09;ascript:alert(1)">x</a>',
+      '<img src="x" onerror="alert(1)"//>',
+      '<details open ontoggle=alert(1)>',
+      '<p style="background-image: url(javascript:alert(1))">x</p>',
+      '<a href="  javascript:alert(1)">x</a>',
+      "<IMG SRC=`javascript:alert(1)`>",
+      '<base href="javascript:alert(1)//">',
+      '<table background="javascript:alert(1)"><tr><td>x</td></tr></table>',
+    ]) {
+      dangerous(html);
+    }
   });
 
   it("再度サニタイズしても結果が変わらない(冪等)", () => {
