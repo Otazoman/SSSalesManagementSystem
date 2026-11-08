@@ -1193,3 +1193,58 @@ describe("購買申請の明細ID・添付の行を保ったままの更新", ()
     expect(atts[0].uploadedAt).toEqual(uploadedAt);
   });
 });
+
+// REQ-005: 受注から作る購買申請の「直送」の指定(発注に引き継ぐ)
+describe("購買申請の直送の指定", () => {
+  beforeEach(async () => {
+    await db.insert(schema.partners).values({
+      id: "P-SO",
+      name: "得意先",
+      creditLimit: 0,
+      createdBy: "system",
+      createdAt: now,
+      updatedBy: "system",
+      updatedAt: now,
+    });
+    await db.insert(schema.salesOrders).values({
+      id: "SO-1",
+      partnerId: "P-SO",
+      orderDate: now,
+      status: "APPROVED",
+      createdBy: "system",
+      createdAt: now,
+      updatedBy: "system",
+      updatedAt: now,
+    });
+  });
+
+  // 共通の beforeEach が取引先を消せるよう、受注を参照する購買申請・受注を先に消す
+  afterEach(async () => {
+    await db.delete(schema.purchaseRequestItems);
+    await db.delete(schema.purchaseRequests);
+    await db.delete(schema.salesOrders);
+  });
+
+  it("直送と受注を指定して登録すると、その値で保存される。受注が見つからなければ400", async () => {
+    const base = { title: "直送の申請", departmentSurrogateId: "dept-a", requestType: "ONE_TIME", items: [] };
+    const res = await callCreateRequisition("applicant-1", {
+      ...base,
+      id: "PR-D1",
+      isDirectShipment: true,
+      directSalesOrderId: "SO-1",
+    });
+    expect(res.status).toBe(200);
+    const requisition = await findRequisition("PR-D1");
+    expect(requisition?.isDirectShipment).toBe(true);
+    expect(requisition?.directSalesOrderId).toBe("SO-1");
+
+    const unknown = await callCreateRequisition("applicant-1", {
+      ...base,
+      id: "PR-D2",
+      isDirectShipment: true,
+      directSalesOrderId: "SO-X",
+    });
+    expect(unknown.status).toBe(400);
+    expect(await findRequisition("PR-D2")).toBeNull();
+  });
+});

@@ -51,6 +51,10 @@ interface PurchaseOrderFormProps {
   moveItemDown: (index: number) => void;
   projectId: string;
   setProjectId: (v: string) => void;
+  // REQ-005: 直送の指定(受注から作成した時だけ設定される。外すことはできる)
+  isDirectShipment?: boolean;
+  setIsDirectShipment?: (v: boolean) => void;
+  directSalesOrderId?: string | null;
   purchasePersonEmployeeNumber: string;
   setPurchasePersonEmployeeNumber: (v: string) => void;
   inputPersonEmployeeNumber: string;
@@ -147,6 +151,9 @@ export function PurchaseOrderForm({
   moveItemDown,
   projectId,
   setProjectId,
+  isDirectShipment = false,
+  setIsDirectShipment,
+  directSalesOrderId = null,
   purchasePersonEmployeeNumber,
   setPurchasePersonEmployeeNumber,
   inputPersonEmployeeNumber,
@@ -346,6 +353,21 @@ export function PurchaseOrderForm({
               disabled={isLocked}
             />
           </FormField>
+
+          {directSalesOrderId && (
+            <FormField label="直送" hint="仕入先から得意先へ直接納品する発注">
+              <label className="flex items-center gap-2 text-xs text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDirectShipment}
+                  onChange={(e) => setIsDirectShipment?.(e.target.checked)}
+                  disabled={isLocked}
+                  className="cursor-pointer"
+                />
+                受注[{directSalesOrderId}]の得意先へ直送する
+              </label>
+            </FormField>
+          )}
 
           <FormField label="納品場所">
             <input

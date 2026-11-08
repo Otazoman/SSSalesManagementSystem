@@ -125,6 +125,14 @@ async function applyApproved({
     partnerName: header.partnerName ?? null,
     partnerInputType: header.partnerInputType ?? "MASTER",
     projectId: header.projectId ?? null,
+    // REQ-005: 直送の指定。申請内容に無ければ(以前の申請)変えない
+    isDirectShipment: header.isDirectShipment === undefined ? undefined : header.isDirectShipment === true,
+    directSalesOrderId:
+      header.isDirectShipment === undefined
+        ? undefined
+        : header.isDirectShipment === true
+          ? header.directSalesOrderId || null
+          : null,
     applicantId: header.applicantId ?? undefined,
     inputPersonEmployeeNumber: header.inputPersonEmployeeNumber ?? undefined,
     totalAmount: totals.totalAmount || 0,

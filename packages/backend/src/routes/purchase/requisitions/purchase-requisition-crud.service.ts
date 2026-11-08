@@ -27,6 +27,7 @@ import { DEFAULT_TAX_ROUNDING_MODE, type TaxRoundingMode } from "../../../platfo
 import { getTaxRoundingMode } from "../../../platform/tax/get-tax-rounding-mode";
 import { recordWritesForBatch } from "../../../platform/repository/record-writes-for-batch";
 import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
+import { resolveDirectShipment } from "../../../platform/purchase/direct-shipment";
 
 // Phase3フォローアップ: 見積との項目整合。quote-pdf.service.ts/resolve-quote-placeholders.tsと
 // 同じcomputeQuoteAmountBreakdown()を使い、明細のtaxCategoryCode別に消費税を算出する
@@ -170,6 +171,7 @@ export class PurchaseRequisitionCrudService {
       partnerName: body.partnerName || null,
       partnerInputType: body.partnerInputType || "MASTER",
       projectId: body.projectId || null,
+      ...(await resolveDirectShipment(c.env.DB, body)),
       totalAmount,
       taxAmount,
       memo: body.memo || null,
@@ -283,6 +285,7 @@ export class PurchaseRequisitionCrudService {
       partnerName: body.partnerName || null,
       partnerInputType: body.partnerInputType || "MASTER",
       projectId: body.projectId || null,
+      ...(await resolveDirectShipment(c.env.DB, body)),
       applicantId: body.applicantId || oldSnapshot.applicantId,
       inputPersonEmployeeNumber:
         body.inputPersonEmployeeNumber || oldSnapshot.inputPersonEmployeeNumber || opId,

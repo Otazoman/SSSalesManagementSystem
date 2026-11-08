@@ -33,7 +33,7 @@ export function FormField({ label, required, hint, children }: FormFieldProps) {
         {required && " *"}
       </label>
       {children}
-      {hint && <p className="text-[10px] text-slate-500 mt-0.5">{hint}</p>}
+      {hint && <p className="text-[10px] text-slate-600 mt-0.5">{hint}</p>}
     </div>
   );
 }

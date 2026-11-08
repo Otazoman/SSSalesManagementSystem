@@ -74,6 +74,10 @@ interface PurchaseRequisitionFormProps {
   suppliers: PartnerLookup[];
   projectId: string;
   setProjectId: (v: string) => void;
+  // REQ-005: 直送の指定(受注から作成した時だけ設定される。外すことはできる)
+  isDirectShipment?: boolean;
+  setIsDirectShipment?: (v: boolean) => void;
+  directSalesOrderId?: string | null;
   applicantId: string;
   setApplicantId: (v: string) => void;
   inputPersonEmployeeNumber: string;
@@ -147,6 +151,9 @@ export function PurchaseRequisitionForm({
   suppliers,
   projectId,
   setProjectId,
+  isDirectShipment = false,
+  setIsDirectShipment,
+  directSalesOrderId = null,
   applicantId,
   setApplicantId,
   inputPersonEmployeeNumber,
@@ -326,6 +333,21 @@ export function PurchaseRequisitionForm({
               ))}
             </select>
           </FormField>
+
+          {directSalesOrderId && (
+            <FormField label="直送" hint="発注を作る時に、直送の指定と受注の得意先・納品先を引き継ぎます">
+              <label className="flex items-center gap-2 text-xs text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDirectShipment}
+                  onChange={(e) => setIsDirectShipment?.(e.target.checked)}
+                  disabled={isLocked}
+                  className="cursor-pointer"
+                />
+                受注[{directSalesOrderId}]の得意先へ直送する
+              </label>
+            </FormField>
+          )}
 
           <FormField label="申請者">
             <select

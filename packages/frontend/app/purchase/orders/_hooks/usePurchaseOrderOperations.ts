@@ -117,6 +117,9 @@ export function usePurchaseOrderOperations({
   const [requestId, setRequestId] = useState<string | null>(null);
   const [orderDate, setOrderDate] = useState(() => todayJst());
   const [projectId, setProjectId] = useState("");
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の指定と、直送する受注。受注から作成した時に設定する
+  const [isDirectShipment, setIsDirectShipment] = useState(false);
+  const [directSalesOrderId, setDirectSalesOrderId] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [items, setItems] = useState<PurchaseOrderItemRecord[]>([]);
   const [purchasePersonEmployeeNumber, setPurchasePersonEmployeeNumber] = useState("");
@@ -280,6 +283,8 @@ export function usePurchaseOrderOperations({
     setRequestId(null);
     setOrderDate(todayJst());
     setProjectId("");
+    setIsDirectShipment(false);
+    setDirectSalesOrderId(null);
     setMemo("");
     setItems([]);
     setPurchasePersonEmployeeNumber(currentUserEmployeeNumber || "");
@@ -325,6 +330,8 @@ export function usePurchaseOrderOperations({
     setRequestId(detail.requestId || null);
     setOrderDate(detail.orderDate ? detail.orderDate.split("T")[0] : todayJst());
     setProjectId(detail.projectId || "");
+    setIsDirectShipment(detail.isDirectShipment === true);
+    setDirectSalesOrderId(detail.directSalesOrderId || null);
     setMemo(detail.memo || "");
     setItems(detail.items || []);
     setPurchasePersonEmployeeNumber(detail.purchasePersonEmployeeNumber || "");
@@ -416,6 +423,10 @@ export function usePurchaseOrderOperations({
       setItems(data.items);
       // 追加要望対応: 購買申請・過去の発注からのプロジェクト引き継ぎ
       setProjectId(data.projectId || "");
+      // REQ-005: 受注から作成した直送の指定・直送先(購買申請から作成した場合は購買申請の指定)
+      setIsDirectShipment(data.isDirectShipment === true);
+      setDirectSalesOrderId(data.isDirectShipment ? data.directSalesOrderId || null : null);
+      if (data.deliveryPlace) setDeliveryPlace(data.deliveryPlace);
       setViewMode("FORM");
     },
     [handleClearForm],
@@ -656,6 +667,8 @@ export function usePurchaseOrderOperations({
     requestId: requestId || null,
     orderDate,
     projectId: projectId || null,
+    isDirectShipment,
+    directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
     purchasePersonEmployeeNumber: purchasePersonEmployeeNumber || null,
     inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
     companyName: companyName || null,
@@ -740,6 +753,8 @@ export function usePurchaseOrderOperations({
                 partnerId: partnerId || null,
                 requestId: requestId || null,
                 projectId: projectId || null,
+                isDirectShipment,
+                directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
                 purchasePersonEmployeeNumber: purchasePersonEmployeeNumber || null,
                 inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
                 companyName: companyName || null,
@@ -1083,6 +1098,9 @@ export function usePurchaseOrderOperations({
     requestId,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     purchasePersonEmployeeNumber,
     setPurchasePersonEmployeeNumber,
     inputPersonEmployeeNumber,

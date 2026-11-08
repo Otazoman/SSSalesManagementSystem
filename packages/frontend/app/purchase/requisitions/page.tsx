@@ -92,6 +92,9 @@ export default function PurchaseRequisitionsPage() {
     onSupplierMasterSelect,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     applicantId,
     setApplicantId,
     inputPersonEmployeeNumber,
@@ -270,7 +273,7 @@ export default function PurchaseRequisitionsPage() {
                   disabled={!canCreate}
                   className="text-xs border border-slate-300 px-3 py-1.5 rounded font-bold text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  🔗 受注の欠品から購買申請を作成
+                  🔗 受注から購買申請を作成
                 </button>
                 <button
                   type="button"
@@ -383,6 +386,9 @@ export default function PurchaseRequisitionsPage() {
             suppliers={suppliers}
             projectId={projectId}
             setProjectId={setProjectId}
+            isDirectShipment={isDirectShipment}
+            setIsDirectShipment={setIsDirectShipment}
+            directSalesOrderId={directSalesOrderId}
             applicantId={applicantId}
             setApplicantId={setApplicantId}
             inputPersonEmployeeNumber={inputPersonEmployeeNumber}

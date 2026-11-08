@@ -659,6 +659,9 @@ export const purchaseRequests = sqliteTable("purchase_requests", {
   inputPersonEmployeeNumber: text("input_person_employee_number"),
   // 見積と同じく税額を保存(合計totalAmountは税込)
   taxAmount: integer("tax_amount"),
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の購買申請か、と直送元の受注。発注を作る時に引き継ぐ
+  isDirectShipment: integer("is_direct_shipment", { mode: "boolean" }).notNull().default(false),
+  directSalesOrderId: text("direct_sales_order_id").references(() => salesOrders.id),
   ...withAuditColumns(),
 });
 
@@ -755,6 +758,10 @@ export const orders = sqliteTable("orders", {
   deliveryWarehouseId: text("delivery_warehouse_id").references(
     () => warehouses.id,
   ),
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の発注か、と直送元の受注(1つの受注から作る時だけ直送にできる)。
+  // 直送先は deliveryPlace に「直送: 得意先名 受注の納品先」として入れる
+  isDirectShipment: integer("is_direct_shipment", { mode: "boolean" }).notNull().default(false),
+  directSalesOrderId: text("direct_sales_order_id").references(() => salesOrders.id),
   paymentTerms: text("payment_terms"),
   // 発行済み発注書PDFのR2キー(sales_orders.orderAcknowledgmentR2Pathと同型)
   orderDocumentR2Path: text("order_document_r2_path"),

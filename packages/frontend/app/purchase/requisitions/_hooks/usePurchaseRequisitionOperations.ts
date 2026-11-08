@@ -93,6 +93,9 @@ export function usePurchaseRequisitionOperations({
   const [partnerInputType, setPartnerInputType] = useState<"MASTER" | "DIRECT">("MASTER");
   // Phase3フォローアップ: 見積との項目整合。勘定科目はヘッダー1件につき1つ
   const [projectId, setProjectId] = useState("");
+  // REQ-005: 直送の指定と、直送する受注。受注から作成した時に設定し、発注を作る時に引き継ぐ
+  const [isDirectShipment, setIsDirectShipment] = useState(false);
+  const [directSalesOrderId, setDirectSalesOrderId] = useState<string | null>(null);
   // 見積のsalesPersonEmployeeNumber/inputPersonEmployeeNumberと同じ2担当者分離
   const [applicantId, setApplicantId] = useState("");
   const [inputPersonEmployeeNumber, setInputPersonEmployeeNumber] = useState("");
@@ -262,6 +265,8 @@ export function usePurchaseRequisitionOperations({
     setPartnerName("");
     setPartnerInputType("MASTER");
     setProjectId("");
+    setIsDirectShipment(false);
+    setDirectSalesOrderId(null);
     setApplicantId(currentUserEmployeeNumber || "");
     setInputPersonEmployeeNumber(currentUserEmployeeNumber || "");
     setAttachments([]);
@@ -297,6 +302,8 @@ export function usePurchaseRequisitionOperations({
     setPartnerName(detail.partnerName || "");
     setPartnerInputType(detail.partnerInputType || "MASTER");
     setProjectId(detail.projectId || "");
+    setIsDirectShipment(detail.isDirectShipment === true);
+    setDirectSalesOrderId(detail.directSalesOrderId || null);
     setApplicantId(detail.applicantId || "");
     setInputPersonEmployeeNumber(detail.inputPersonEmployeeNumber || "");
     setAttachments(detail.attachments || []);
@@ -317,6 +324,8 @@ export function usePurchaseRequisitionOperations({
       setProjectId(data.projectId || "");
       setMemo(data.memo || "");
       setItems(data.items);
+      setIsDirectShipment(data.isDirectShipment === true);
+      setDirectSalesOrderId(data.isDirectShipment ? data.directSalesOrderId || null : null);
       setViewMode("FORM");
     },
     [handleClearForm],
@@ -629,6 +638,8 @@ export function usePurchaseRequisitionOperations({
     partnerName: partnerName || null,
     partnerInputType,
     projectId: projectId || null,
+    isDirectShipment,
+    directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
     applicantId: applicantId || null,
     inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
     totalAmount,
@@ -702,6 +713,8 @@ export function usePurchaseRequisitionOperations({
                 partnerName: partnerName || null,
                 partnerInputType,
                 projectId: projectId || null,
+                isDirectShipment,
+                directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
                 applicantId: applicantId || null,
                 inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
                 totalAmount,
@@ -910,6 +923,9 @@ export function usePurchaseRequisitionOperations({
     onSupplierMasterSelect,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     applicantId,
     setApplicantId,
     inputPersonEmployeeNumber,

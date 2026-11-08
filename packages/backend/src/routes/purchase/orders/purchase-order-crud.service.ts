@@ -16,6 +16,7 @@ import { syncAttachments } from "../../../platform/r2/sync-attachments";
 import { deleteOrphanedR2Attachments } from "../../../platform/r2/delete-orphaned-attachments";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
+import { resolveDirectShipment } from "../../../platform/purchase/direct-shipment";
 import { PaginationParams, buildPaginationMeta } from "../../../platform/http/pagination";
 import { buildListResponse } from "../../../platform/http/response";
 import { getDocumentNumberFormatConfig } from "../../../platform/id/resolve-document-id";
@@ -177,6 +178,7 @@ export class PurchaseOrderCrudService {
     const opId = await this.repo.getFallbackOperatorId(c);
 
     await this.validateRequestReference(c, body);
+    const directShipment = await resolveDirectShipment(c.env.DB, body);
 
     let orderId = body.id;
     if (!orderId) {
@@ -205,6 +207,7 @@ export class PurchaseOrderCrudService {
       orderDate: new Date(body.orderDate),
       status: "DRAFT",
       projectId: body.projectId || null,
+      ...directShipment,
       totalAmount,
       taxAmount,
       memo: body.memo || null,
@@ -326,6 +329,7 @@ export class PurchaseOrderCrudService {
       orderDate: new Date(body.orderDate),
       status: oldSnapshot.status,
       projectId: body.projectId || null,
+      ...(await resolveDirectShipment(c.env.DB, body)),
       totalAmount,
       taxAmount,
       memo: body.memo || null,

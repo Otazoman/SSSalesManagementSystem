@@ -117,6 +117,14 @@ async function applyApproved({ db, reqParent, userId, now, c }: ApplyApprovedPar
     deliveryPlace: header.deliveryPlace ?? null,
     deliveryLocationId: header.deliveryLocationId ?? null,
     deliveryWarehouseId: header.deliveryWarehouseId ?? null,
+    // REQ-005: 直送の指定。申請内容に無ければ(以前の申請)変えない
+    isDirectShipment: header.isDirectShipment === undefined ? undefined : header.isDirectShipment === true,
+    directSalesOrderId:
+      header.isDirectShipment === undefined
+        ? undefined
+        : header.isDirectShipment === true
+          ? header.directSalesOrderId || null
+          : null,
     paymentTerms: header.paymentTerms ?? null,
     isPaid: header.isPaid ?? undefined,
     paidAt: header.paidAt ? new Date(header.paidAt) : undefined,

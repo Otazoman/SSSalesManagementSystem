@@ -50,6 +50,7 @@ erDiagram
     text project_id FK
     text delivery_location_id FK
     text delivery_warehouse_id FK
+    text direct_sales_order_id FK
   }
   payment_disbursements {
     text id PK
@@ -110,6 +111,7 @@ erDiagram
     text approval_flow_id FK
     text partner_id FK
     text project_id FK
+    text direct_sales_order_id FK
   }
   accounts {
     text _other_domain
@@ -135,6 +137,9 @@ erDiagram
   sales_order_items {
     text _other_domain
   }
+  sales_orders {
+    text _other_domain
+  }
   tax_categories {
     text _other_domain
   }
@@ -154,6 +159,7 @@ erDiagram
   projects |o--o{ orders : "project_id"
   business_locations |o--o{ orders : "delivery_location_id"
   warehouses |o--o{ orders : "delivery_warehouse_id"
+  sales_orders |o--o{ orders : "direct_sales_order_id"
   payment_headers ||--o{ payment_disbursements : "payment_header_id"
   payment_headers ||--o{ payment_header_items : "payment_header_id"
   purchase_recognitions |o--o{ payment_header_items : "purchase_recognition_id"
@@ -181,6 +187,7 @@ erDiagram
   approval_flows |o--o{ purchase_requests : "approval_flow_id"
   partners |o--o{ purchase_requests : "partner_id"
   projects |o--o{ purchase_requests : "project_id"
+  sales_orders |o--o{ purchase_requests : "direct_sales_order_id"
 ```
 
 ## テーブルの詳細
@@ -271,6 +278,8 @@ erDiagram
 | `delivery_place` | 文字列 |  |  |  | 納品場所 |
 | `delivery_location_id` | 文字列 |  |  | [business_locations](master.md#business_locations).id | 発注の納品場所を「拠点用」「倉庫用」の2つの独立した選択欄から選べる ようにする(あわせて上のdeliveryPlace自由入力も引き続き使える)。選択時はdeliveryPlaceへ 名称をコピーする方式(表示上の実体は従来どおりdeliveryPlace1本のまま、FK列は選択状態の 保持・再表示用)。 |
 | `delivery_warehouse_id` | 文字列 |  |  | [warehouses](master.md#warehouses).id | 納品先の倉庫 |
+| `is_direct_shipment` | 真偽値 | ○ | `false` |  | REQ-005: 直送(仕入先から得意先へ直接納品)の発注か、と直送元の受注(1つの受注から作る時だけ直送にできる)。 直送先は deliveryPlace に「直送: 得意先名 受注の納品先」として入れる |
+| `direct_sales_order_id` | 文字列 |  |  | [sales_orders](sales.md#sales_orders).id |  |
 | `payment_terms` | 文字列 |  |  |  | 支払条件 |
 | `order_document_r2_path` | 文字列 |  |  |  | 発行済み発注書PDFのR2キー(sales_orders.orderAcknowledgmentR2Pathと同型) |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
@@ -532,6 +541,8 @@ erDiagram
 | `project_id` | 文字列 |  |  | [projects](master.md#projects).id | プロジェクト |
 | `input_person_employee_number` | 文字列 |  |  |  | 入力担当者(従業員番号) |
 | `tax_amount` | 整数 |  |  |  | 消費税額 |
+| `is_direct_shipment` | 真偽値 | ○ | `false` |  | REQ-005: 直送(仕入先から得意先へ直接納品)の購買申請か、と直送元の受注。発注を作る時に引き継ぐ |
+| `direct_sales_order_id` | 文字列 |  |  | [sales_orders](sales.md#sales_orders).id |  |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 | `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |

@@ -56,6 +56,9 @@ export interface PurchaseOrderRecord {
   orderDate: string;
   status: PurchaseOrderStatus;
   projectId?: string | null;
+  // REQ-005: 直送の指定と、直送する受注
+  isDirectShipment?: boolean;
+  directSalesOrderId?: string | null;
   totalAmount: number;
   taxAmount?: number | null;
   memo: string | null;
@@ -174,4 +177,8 @@ export interface PurchaseOrderPrefillData {
   items: PurchaseOrderItemRecord[];
   // 追加要望対応: 引き継ぎ元(購買申請・過去の発注)のプロジェクトを新規発注へ引き継ぐ
   projectId?: string | null;
+  // REQ-005: 受注から作成した場合の直送の指定と、直送先(発注書の納品場所に入れる)
+  isDirectShipment?: boolean;
+  directSalesOrderId?: string | null;
+  deliveryPlace?: string | null;
 }

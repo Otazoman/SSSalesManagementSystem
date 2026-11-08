@@ -126,6 +126,9 @@ export const PurchaseOrderPayloadSchema = v.looseObject({
   orderDate: v.string(),
   status: optionalString,
   projectId: optionalString,
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の指定と、直送する受注
+  isDirectShipment: v.optional(v.boolean()),
+  directSalesOrderId: optionalString,
   totalAmount: optionalNumber,
   taxAmount: optionalNumber,
   memo: optionalString,

@@ -10,6 +10,7 @@ import {
 } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { todayJst } from "../../../_shared/jst-date";
+import { fetchDirectShipmentPlace } from "../_hooks/direct-shipment-place";
 
 interface PurchaseRequisitionPickerModalProps {
   onClose: () => void;
@@ -49,6 +50,8 @@ export function PurchaseRequisitionPickerModal({
     Record<string, RequisitionItemSelectionState>
   >({});
   const [error, setError] = useState("");
+  // REQ-005: 選んだ購買申請が直送の場合の、直送する受注
+  const [directSalesOrderId, setDirectSalesOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,8 +83,14 @@ export function PurchaseRequisitionPickerModal({
     setError("");
     setSelectedRequisition(requisition);
     try {
-      const detail = await apiFetch<{ items: SourceRequisitionItem[] }>(
-        `/api/purchase-requisitions/${requisition.id}`,
+      const detail = await apiFetch<{
+        items: SourceRequisitionItem[];
+        isDirectShipment?: boolean;
+        directSalesOrderId?: string | null;
+      }>(`/api/purchase-requisitions/${requisition.id}`);
+      // REQ-005: 購買申請の直送の指定は、発注に引き継ぐ
+      setDirectSalesOrderId(
+        detail.isDirectShipment && detail.directSalesOrderId ? detail.directSalesOrderId : null,
       );
       const items = detail.items || [];
       setRequisitionItems(items);
@@ -113,7 +122,7 @@ export function PurchaseRequisitionPickerModal({
     }));
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedRequisition) return;
     setError("");
 
@@ -139,6 +148,15 @@ export function PurchaseRequisitionPickerModal({
       purchaseRequestItemId: item.id,
     }));
 
+    let deliveryPlace: string | null = null;
+    if (directSalesOrderId) {
+      try {
+        deliveryPlace = await fetchDirectShipmentPlace(directSalesOrderId);
+      } catch (err) {
+        console.error("直送先(受注の得意先・納品先)の取得に失敗しました", err);
+        deliveryPlace = "直送";
+      }
+    }
     onPrefill({
       title: selectedRequisition.title,
       partnerId: selectedRequisition.partnerId,
@@ -146,6 +164,9 @@ export function PurchaseRequisitionPickerModal({
       orderDate: todayJst(),
       items,
       projectId: selectedRequisition.projectId,
+      isDirectShipment: directSalesOrderId !== null,
+      directSalesOrderId,
+      deliveryPlace,
     });
     onClose();
   };
@@ -176,7 +197,7 @@ export function PurchaseRequisitionPickerModal({
             placeholder="件名で絞り込み検索..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:outline-none"
+            className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900 placeholder-slate-500 focus:border-indigo-600 focus:outline-none"
           />
           {loading ? (
             <p className="text-xs text-slate-600 text-center py-6">
@@ -216,20 +237,20 @@ export function PurchaseRequisitionPickerModal({
       {step === "PICK_ITEMS" && (
         <div className="flex-1 overflow-y-auto space-y-3">
           <div className="flex justify-between items-center">
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-slate-600">
               選択した明細(数量は変更可能)を発注フォームへコピーします。まだ保存はされません。内容を確認・調整してから画面下部の保存操作で確定してください。
             </p>
             <button
               type="button"
               onClick={() => setStep("PICK_REQUISITION")}
-              className="text-[11px] font-bold text-slate-500 hover:text-slate-700 shrink-0 ml-2"
+              className="text-[11px] font-bold text-slate-700 hover:text-slate-900 shrink-0 ml-2"
             >
               ← 購買申請を選び直す
             </button>
           </div>
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 border-b font-bold text-slate-500">
+              <thead className="bg-slate-50 border-b font-bold text-slate-700">
                 <tr>
                   <th className="p-2 w-10 text-center">選択</th>
                   <th className="p-2">品目</th>
@@ -284,11 +305,11 @@ export function PurchaseRequisitionPickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 border border-slate-300 text-slate-600 font-bold text-xs rounded hover:bg-slate-50"
+            className="px-3 py-1.5 border border-slate-300 bg-white text-slate-800 font-bold text-xs rounded hover:bg-slate-50"
           >
             キャンセル
           </button>
-          <Button size="sm" onClick={handleConfirm}>
+          <Button size="sm" onClick={() => void handleConfirm()}>
             発注フォームへ内容をコピー
           </Button>
         </div>

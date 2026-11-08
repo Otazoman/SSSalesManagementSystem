@@ -82,6 +82,9 @@ export default function PurchaseOrdersPage() {
     moveItemDown,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     purchasePersonEmployeeNumber,
     setPurchasePersonEmployeeNumber,
     inputPersonEmployeeNumber,
@@ -332,7 +335,7 @@ export default function PurchaseOrdersPage() {
                       : "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed opacity-60"
                   }`}
                 >
-                  🚨 受注欠品から発注を作成
+                  🚨 受注から発注を作成
                 </button>
                 <button
                   type="button"
@@ -453,6 +456,9 @@ export default function PurchaseOrdersPage() {
             moveItemDown={moveItemDown}
             projectId={projectId}
             setProjectId={setProjectId}
+            isDirectShipment={isDirectShipment}
+            setIsDirectShipment={setIsDirectShipment}
+            directSalesOrderId={directSalesOrderId}
             purchasePersonEmployeeNumber={purchasePersonEmployeeNumber}
             setPurchasePersonEmployeeNumber={setPurchasePersonEmployeeNumber}
             inputPersonEmployeeNumber={inputPersonEmployeeNumber}
