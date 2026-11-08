@@ -227,3 +227,59 @@ describe("useStockReceiptForm: BUG-071 入荷指示・発注明細との紐づ�
     expect(body.items[0].orderItemId).toBe("POI-1");
   });
 });
+
+// BUG-079: 発注を選んでいるのに発注明細と紐づかない明細がある場合は、確定の前に確かめる
+describe("useStockReceiptForm: BUG-079 発注明細と紐づかない明細の確認", () => {
+  function stubOrders() {
+    const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+      void init;
+      const u = url.toString();
+      if (u.includes("/api/stock-receipts/register")) return jsonResponse({ message: "OK" });
+      if (u.includes("/api/purchase-orders/PO-1/receipt-progress")) {
+        // 発注には ITEM-1 しか無い(ITEM-9 を追加すると紐づかない)
+        return jsonResponse([{ orderItemId: "POI-1", itemId: "ITEM-1", itemName: "部品", remainingQuantity: 10 }]);
+      }
+      if (u.includes("/api/purchase-orders?")) {
+        return jsonResponse({ data: [{ id: "PO-1", status: "APPROVED", partnerId: "SUPP-2" }] });
+      }
+      if (u.includes("/api/receipt-instructions")) return jsonResponse({ data: [] });
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    return fetchSpy;
+  }
+
+  async function addUnlinkedLineAndSubmit() {
+    const { result } = renderHook(() => useStockReceiptForm(vi.fn()));
+    await waitFor(() => expect(result.current.orderOptions).toHaveLength(1));
+    act(() => result.current.setOrderId("PO-1"));
+    await waitFor(() => expect(result.current.orderItems).toHaveLength(1));
+    act(() => {
+      result.current.setSelectedLocation({ id: "LOC-1", warehouseId: "WH-1", name: "A-1" } as never);
+      result.current.setSelectedProduct({ id: "ITEM-9", name: "別の品目" } as never);
+      result.current.setQuantity("1");
+    });
+    act(() => result.current.addLine());
+    await act(async () => {
+      await result.current.submit();
+    });
+  }
+
+  it("確認で「やめる」を選ぶと確定しない", async () => {
+    const fetchSpy = stubOrders();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await addUnlinkedLineAndSubmit();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(String(confirmSpy.mock.calls[0][0])).toContain("別の品目");
+    expect(fetchSpy.mock.calls.some(([u]) => u.toString().includes("/api/stock-receipts/register"))).toBe(false);
+    confirmSpy.mockRestore();
+  });
+
+  it("確認で「このまま確定する」を選ぶと確定する", async () => {
+    const fetchSpy = stubOrders();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await addUnlinkedLineAndSubmit();
+    expect(fetchSpy.mock.calls.some(([u]) => u.toString().includes("/api/stock-receipts/register"))).toBe(true);
+    confirmSpy.mockRestore();
+  });
+});

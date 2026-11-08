@@ -49,7 +49,8 @@ export function QuoteStatusAndActions({
     isQuoteWfEnabled &&
     (status === "PENDING_APPROVAL" || status === "PENDING_DELETION");
   const isApprovedEdit = status === "APPROVED" && isQuoteWfEnabled;
-  const badge = getDocumentLifecycleStatus(status);
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する
+  const badge = getDocumentLifecycleStatus(status, { approvalEnabled: isQuoteWfEnabled });
   // Item4-e: 承認機能が無効な場合はpartners(取引先マスタ)と同様、ステータスを画面から直接変更できる
   // (承認機能が有効な場合のみ、変更にワークフロー審査を必須とする)
   // BUG-058: 新規登録は必ず下書きで保存される(Backend)ため、ステータスを選べるのは編集時だけにする

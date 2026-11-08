@@ -13,6 +13,7 @@ import {
 } from "../_types";
 import type { ApplicantDepartmentOption } from "../../../types";
 import { todayJst } from "../../../_shared/jst-date";
+import { useConfirm } from "../../../_shared/hooks/use-confirm";
 
 export interface ReceiptEditTarget {
   headerId: string;
@@ -128,6 +129,7 @@ export function useStockReceiptForm(
   );
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const confirm = useConfirm();
 
   useEffect(() => {
     void (async () => {
@@ -367,6 +369,20 @@ export function useStockReceiptForm(
       setError("明細を1件以上追加してください");
       return;
     }
+    // BUG-079: 発注を選んでいるのに発注明細と紐づかない明細(発注の明細のボタン・入荷指示の明細のボタンを使わず、発注に同じ品目が
+    // 無いか複数ある)は、発注の入荷済数量に数えられない(仕入の「発注から選択」で計上できない)ため、確定の前に確かめる
+    const unlinked = orderId ? lines.filter((l) => !l.orderItemId) : [];
+    if (
+      unlinked.length > 0 &&
+      !(await confirm(
+        `発注[${orderId}]の明細と紐づかない明細があります(${unlinked.map((l) => l.itemName || l.itemId).join("・")})。` +
+          "この明細は発注の入荷済数量に数えられず、仕入の「発注から選択」で計上できません。このまま確定しますか？" +
+          "(紐づける場合は、明細を削除して、発注の明細のボタンから追加し直してください)",
+        { confirmLabel: "このまま確定する" },
+      ))
+    ) {
+      return;
+    }
     setSubmitting(true);
     try {
       const url = editTarget ? `/api/stock-receipts/${editTarget.headerId}` : "/api/stock-receipts/register";
@@ -422,6 +438,7 @@ export function useStockReceiptForm(
     setPartnerId,
     setSourceWarehouseId,
     setOrderId,
+    confirm,
   ]);
 
   return {

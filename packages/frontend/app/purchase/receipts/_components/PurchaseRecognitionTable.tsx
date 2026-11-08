@@ -9,6 +9,8 @@ import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 
 interface PurchaseRecognitionTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   recognitions: PurchaseRecognitionRecord[];
   partners: PartnerMaster[];
   userMaster: UserOption[];
@@ -100,6 +102,7 @@ function SortableTh({
 }
 
 export function PurchaseRecognitionTable({
+  approvalEnabled,
   recognitions,
   partners,
   userMaster,
@@ -278,7 +281,7 @@ export function PurchaseRecognitionTable({
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
                       <StatusBadge
-                        {...getDocumentLifecycleStatus(rec.status)}
+                        {...getDocumentLifecycleStatus(rec.status, { approvalEnabled })}
                       />
                     </td>
                     <td

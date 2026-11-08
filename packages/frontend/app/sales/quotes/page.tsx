@@ -297,6 +297,7 @@ export default function QuotesPage() {
           />
 
           <QuoteTable
+            approvalEnabled={isQuoteWfEnabled}
             quotes={quotes}
             partners={partners}
             userMaster={userMaster}

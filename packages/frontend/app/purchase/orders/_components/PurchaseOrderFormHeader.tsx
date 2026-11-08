@@ -8,6 +8,8 @@ interface PurchaseOrderFormHeaderProps {
   isSubmitting: boolean;
   onGeneratePdf: () => void;
   onOpenMailModal: (orderId: string) => void;
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
 }
 
 // J-2-b: sales/quotes/_components/QuoteFormHeader.tsx・sales/orders/_components/OrderFormHeader.tsxと
@@ -19,8 +21,9 @@ export function PurchaseOrderFormHeader({
   isSubmitting,
   onGeneratePdf,
   onOpenMailModal,
+  approvalEnabled,
 }: PurchaseOrderFormHeaderProps) {
-  const badge = editingStatus ? getDocumentLifecycleStatus(editingStatus) : null;
+  const badge = editingStatus ? getDocumentLifecycleStatus(editingStatus, { approvalEnabled }) : null;
   const isApproved = editingStatus === "APPROVED";
 
   return (

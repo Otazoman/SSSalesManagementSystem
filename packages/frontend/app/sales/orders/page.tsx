@@ -321,6 +321,7 @@ export default function SalesOrdersPage() {
           />
 
           <OrderTable
+            approvalEnabled={isSalesOrderWfEnabled}
             orders={orders}
             partners={partners}
             userMaster={userMaster}

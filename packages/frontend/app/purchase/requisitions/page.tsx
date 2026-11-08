@@ -308,6 +308,7 @@ export default function PurchaseRequisitionsPage() {
           </div>
 
           <PurchaseRequisitionTable
+            approvalEnabled={isPurchaseRequisitionWfEnabled}
             requisitions={requisitions}
             canCreate={canCreate}
             canUpdate={canUpdate}

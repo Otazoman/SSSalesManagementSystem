@@ -12,6 +12,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 interface PurchaseRequisitionTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   requisitions: PurchaseRequisitionRecord[];
   canCreate: boolean;
   canUpdate: boolean;
@@ -28,6 +30,7 @@ interface PurchaseRequisitionTableProps {
 }
 
 export function PurchaseRequisitionTable({
+  approvalEnabled,
   requisitions,
   canCreate,
   canUpdate,
@@ -69,7 +72,7 @@ export function PurchaseRequisitionTable({
             {CATEGORY_LABEL[r.requestType] || r.requestType}
           </td>
           <td className="px-4 py-3">
-            <StatusBadge {...getDocumentLifecycleStatus(r.status)} />
+            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
           </td>
           <td className="px-4 py-3 text-right text-xs font-mono text-slate-700">
             ¥{Number(r.totalAmount || 0).toLocaleString()}

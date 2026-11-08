@@ -184,7 +184,7 @@ export function PurchaseRequisitionForm({
   onCancel,
 }: PurchaseRequisitionFormProps) {
   const badge = editingStatus
-    ? getDocumentLifecycleStatus(editingStatus)
+    ? getDocumentLifecycleStatus(editingStatus, { approvalEnabled: isPurchaseRequisitionWfEnabled })
     : null;
   const selectedCategory = CATEGORY_OPTIONS.find(
     (c) => c.value === requestType,

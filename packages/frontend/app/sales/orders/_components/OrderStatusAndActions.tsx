@@ -48,7 +48,8 @@ export function OrderStatusAndActions({
     isSalesOrderWfEnabled &&
     (status === "PENDING_APPROVAL" || status === "PENDING_DELETION");
   const isApprovedEdit = status === "APPROVED" && isSalesOrderWfEnabled;
-  const badge = getDocumentLifecycleStatus(status);
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する
+  const badge = getDocumentLifecycleStatus(status, { approvalEnabled: isSalesOrderWfEnabled });
   const canEditStatusDirectly = !isSalesOrderWfEnabled && !isLocked;
 
   return (

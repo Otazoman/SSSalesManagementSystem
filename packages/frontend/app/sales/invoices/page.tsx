@@ -275,6 +275,7 @@ export default function SalesInvoicesPage() {
           />
 
           <SalesInvoiceTable
+            approvalEnabled={isSalesInvoiceWfEnabled}
             invoices={invoices}
             partners={partners}
             userMaster={userMaster}

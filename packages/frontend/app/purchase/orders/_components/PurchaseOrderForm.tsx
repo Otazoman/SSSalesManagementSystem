@@ -219,6 +219,7 @@ export function PurchaseOrderForm({
           isSubmitting={isSubmitting}
           onGeneratePdf={onGeneratePdf}
           onOpenMailModal={onOpenMailModal}
+          approvalEnabled={isPurchaseOrderWfEnabled}
         />
 
         {/* 進捗確認(閲覧専用)に表示される完了/進行中の手動設定。この画面の更新権限がある場合のみ変更できる */}

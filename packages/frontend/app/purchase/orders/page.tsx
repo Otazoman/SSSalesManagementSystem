@@ -393,6 +393,7 @@ export default function PurchaseOrdersPage() {
           </div>
 
           <PurchaseOrderTable
+            approvalEnabled={isPurchaseOrderWfEnabled}
             orders={orders}
             partners={suppliers}
             selectedOrderIds={selectedOrderIds}

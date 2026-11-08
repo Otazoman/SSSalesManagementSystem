@@ -6,6 +6,8 @@ import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 
 interface PurchaseOrderTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   orders: PurchaseOrderRecord[];
   partners: PartnerLookup[];
   selectedOrderIds: string[];
@@ -25,6 +27,7 @@ interface PurchaseOrderTableProps {
 }
 
 export function PurchaseOrderTable({
+  approvalEnabled,
   orders,
   partners,
   selectedOrderIds,
@@ -79,7 +82,7 @@ export function PurchaseOrderTable({
           <td className="px-4 py-3 font-semibold text-slate-900">{r.title || "-"}</td>
           <td className="px-4 py-3 text-xs text-slate-600">{partnerName(r.partnerId)}</td>
           <td className="px-4 py-3">
-            <StatusBadge {...getDocumentLifecycleStatus(r.status)} />
+            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
           </td>
           <td className="px-4 py-3 whitespace-nowrap">
             {r.attachments && r.attachments.length > 0 ? (

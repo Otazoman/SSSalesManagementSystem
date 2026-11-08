@@ -5,6 +5,8 @@ import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 
 interface QuoteTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   quotes: QuoteRecord[];
   partners: PartnerMaster[];
   userMaster: UserOption[];
@@ -94,6 +96,7 @@ function SortableTh({
 }
 
 export function QuoteTable({
+  approvalEnabled,
   quotes,
   partners,
   userMaster,
@@ -332,7 +335,7 @@ export function QuoteTable({
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
                       <StatusBadge
-                        {...getDocumentLifecycleStatus(mainQuote.status)}
+                        {...getDocumentLifecycleStatus(mainQuote.status, { approvalEnabled })}
                       />
                     </td>
                     <td

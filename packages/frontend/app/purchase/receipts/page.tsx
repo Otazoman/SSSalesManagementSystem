@@ -264,6 +264,7 @@ export default function PurchaseRecognitionsPage() {
           />
 
           <PurchaseRecognitionTable
+            approvalEnabled={isPurchaseRecognitionWfEnabled}
             recognitions={recognitions}
             partners={partners}
             userMaster={userMaster}
