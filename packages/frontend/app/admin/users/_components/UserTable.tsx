@@ -75,8 +75,17 @@ export function UserTable({
                 </span>
               )}
               {!u.isActive && (
-                <span className="ml-2 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-bold inline-block">
+                <span className="ml-2 text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold inline-block">
                   無効
+                </span>
+              )}
+              {/* REQ-004: ログイン時に確認コード(OTP)を使うユーザー */}
+              {u.loginOtpEnabled && (
+                <span
+                  className="ml-2 text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded font-bold inline-block"
+                  title="ログイン時に確認コード(OTP)を使う"
+                >
+                  OTP
                 </span>
               )}
             </td>

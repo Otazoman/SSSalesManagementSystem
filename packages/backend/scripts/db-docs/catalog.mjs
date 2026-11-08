@@ -143,6 +143,7 @@ export const TABLES = {
   audit_logs: { domain: "other", label: "監査ログ", description: "登録・更新・削除などの操作の記録(変更前後の値を含む)(DB_LOG)" },
   mail_delivery_logs: { domain: "other", label: "メール送信ログ・送信待ち", description: "メール・Slack の送信待ちと送信結果。Cron が1分ごとに送信する(DB_LOG)" },
   otp_challenges: { domain: "other", label: "OTP", description: "取引先向けダウンロードの確認コードと、有効期限・試行回数(DB_OTP)" },
+  login_otp_challenges: { domain: "other", label: "ログインのOTP", description: "ログイン時の確認コード(ハッシュ)と、有効期限・試行回数・送信日時(DB_OTP)" },
   announcements: { domain: "other", label: "お知らせ", description: "ダッシュボードの「システムからのお知らせ」(DB_UI)" },
   screen_descriptions: { domain: "other", label: "画面説明", description: "画面ごとに見出しの下に表示する説明文(DB_UI)" },
   user_preferences: { domain: "other", label: "ユーザーの表示設定", description: "ユーザーごとの色・ダークモードの設定(DB_UI)" },

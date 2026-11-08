@@ -42,6 +42,9 @@ async function readSecret(secret: SecretsStoreSecret): Promise<string | null> {
 const PUBLIC_API_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/logout",
+  // REQ-004: ログイン時の OTP の確認・再送(パスワードの確認の後、セッションを発行する前に使う)
+  "/api/auth/login/otp/verify",
+  "/api/auth/login/otp/resend",
   "/api/users/count",
   "/api/users/setup-admin",
   "/api/users/forgot-password",

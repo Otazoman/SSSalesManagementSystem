@@ -16,6 +16,13 @@ export class AuthRepository {
     });
   }
 
+  // REQ-004: OTP の確認・再送で、チャレンジのユーザーを読む
+  async findUserById(id: string) {
+    return await this.db.query.users.findFirst({
+      where: eq(schema.users.id, id),
+    });
+  }
+
   async findUserByEmployeeNumber(employeeNumber: string) {
     return await this.db.query.users.findFirst({
       where: eq(schema.users.employeeNumber, employeeNumber),

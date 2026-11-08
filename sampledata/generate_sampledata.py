@@ -187,8 +187,11 @@ user_rows = []
 for emp, name, dept, role in USERS:
     first = emp not in seen
     seen.add(emp)
-    user_rows.append((emp, name, f"{emp.lower()}@example.com", dept, role, PW if first else ""))
-write("users_import.csv", ["employeeNumber", "name", "email", "departmentId", "roleId", "passwordRaw"], user_rows)
+    # 通知方法はメール。ログイン時の OTP(REQ-004)は OFF(ON にするには会社設定のメール送信の設定が必要なため)
+    user_rows.append((emp, name, f"{emp.lower()}@example.com", dept, role, PW if first else "", "", "email", "false"))
+write("users_import.csv",
+      ["employeeNumber", "name", "email", "departmentId", "roleId", "passwordRaw",
+       "slackUserId", "notificationChannel", "loginOtpEnabled"], user_rows)
 
 # ---------------------------------------------------------------- 倉庫・ロケーション
 WAREHOUSES = [
@@ -377,20 +380,23 @@ write("approval_flows_import_sample.csv",
       ["name", "requestType", "minAmount", "maxAmount", "isActive", "matchField", "matchValue", "approverRoleId", "targetDepartmentId", "stepName", "stepMemo"], FLOWS)
 
 # ---------------------------------------------------------------- 在庫(入庫 → 出庫 → 棚卸 → 廃棄 → 返品)。数量は整合する範囲で
-RECEIPTS = [  # headerId, date, invoiceNo, memo, item, wh, loc, lot, qty
-    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "ITEM-1001", "WH-002", "LOC-C-01", "LOT-260803", 400),
-    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "ITEM-1002", "WH-002", "LOC-C-02", "LOT-260803", 150),
-    ("RCPT-0002", "2026-08-04", "INV-B-0802", "部品の入庫", "ITEM-1003", "WH-001", "LOC-A-01", "LOT-260804", 300),
-    ("RCPT-0002", "2026-08-04", "INV-B-0802", "部品の入庫", "ITEM-1004", "WH-002", "LOC-C-03", "LOT-260804", 600),
-    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "ITEM-3001", "WH-001", "LOC-A-02", "LOT-260805", 100),
-    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "ITEM-3002", "WH-001", "LOC-A-03", "LOT-260805", 60),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品X)", "ITEM-2001", "WH-001", "LOC-B-01", "LOT-260810", 120),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Y)", "ITEM-2002", "WH-001", "LOC-B-01", "LOT-260810", 60),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Z)", "ITEM-2003", "WH-001", "LOC-A-03", "LOT-260810", 80),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(オプション)", "ITEM-2004", "WH-001", "LOC-A-03", "LOT-260810", 40),
+# 仕入先(partnerId)は伝票ごとに1つ(ヘッダーの項目。同じ headerId の行には同じ仕入先を入れる)。
+# 仕入先からの入荷は、仕入の「対象検収」・検収書の宛先に使うため、発注・仕入単価の見本と同じ仕入先を入れる。
+# 組立完成品(社内で作ったもの)は仕入先なし。仕入先が異なる品目は伝票を分ける(RCPT-0002 と RCPT-0005)
+RECEIPTS = [  # headerId, date, invoiceNo, memo, partner, item, wh, loc, lot, qty
+    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "SUPP-0001", "ITEM-1001", "WH-002", "LOC-C-01", "LOT-260803", 400),
+    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "SUPP-0001", "ITEM-1002", "WH-002", "LOC-C-02", "LOT-260803", 150),
+    ("RCPT-0002", "2026-08-04", "INV-B-0802", "部品の入庫", "SUPP-0002", "ITEM-1003", "WH-001", "LOC-A-01", "LOT-260804", 300),
+    ("RCPT-0005", "2026-08-04", "INV-C-0802", "部品の入庫", "SUPP-0003", "ITEM-1004", "WH-002", "LOC-C-03", "LOT-260804", 600),
+    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "SUPP-0004", "ITEM-3001", "WH-001", "LOC-A-02", "LOT-260805", 100),
+    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "SUPP-0004", "ITEM-3002", "WH-001", "LOC-A-03", "LOT-260805", 60),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品X)", "", "ITEM-2001", "WH-001", "LOC-B-01", "LOT-260810", 120),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Y)", "", "ITEM-2002", "WH-001", "LOC-B-01", "LOT-260810", 60),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Z)", "", "ITEM-2003", "WH-001", "LOC-A-03", "LOT-260810", 80),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(オプション)", "", "ITEM-2004", "WH-001", "LOC-A-03", "LOT-260810", 40),
 ]
 write("stock_receipts_import_sample.csv",
-      ["headerId", "receivedDate", "supplierInvoiceNumber", "memo", "itemId", "warehouseId", "locationId", "lotNumber", "quantity"], RECEIPTS)
+      ["headerId", "receivedDate", "supplierInvoiceNumber", "memo", "partnerId", "itemId", "warehouseId", "locationId", "lotNumber", "quantity"], RECEIPTS)
 
 SHIPMENTS = [  # headerId, date, memo, loc, item, qty, lot, quality, partner
     ("SHIP-0001", "2026-08-20", "得意先Aへの出荷", "LOC-B-01", "ITEM-2001", 30, "", "", "CUST-0001"),

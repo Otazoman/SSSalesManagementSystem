@@ -31,11 +31,27 @@ import {
   isPurchaseRecognitionWorkflowGloballyEnabled,
 } from "../../workflow-engine/settings";
 import { Env } from "../../types/env";
-import { LoginInput, UpdateNotificationSettingsInput } from "./auth.schema";
+import {
+  LoginInput,
+  ResendLoginOtpInput,
+  UpdateNotificationSettingsInput,
+  VerifyLoginOtpInput,
+} from "./auth.schema";
 import { SessionPayload } from "../../platform/auth/session-token";
 import { setSessionCookie, clearSessionCookie, getSession } from "../../platform/auth/get-session";
 import { LoginStateRepository, LoginState } from "../../platform/auth/login-state.repository";
 import { getCompanySettings } from "../../platform/kv/company-settings-cache";
+import { generateOtpCode } from "../../platform/otp/generate-otp-code";
+import { LoginOtpRepository } from "../../platform/auth/login-otp.repository";
+import {
+  deliverLoginOtp,
+  hashLoginOtpCode,
+  LoginOtpDeliveryError,
+  readLoginOtpSettings,
+  timingSafeEqualHex,
+} from "../../platform/auth/login-otp";
+
+type LoginUser = NonNullable<Awaited<ReturnType<AuthRepository["findUserByEmail"]>>>;
 
 const RESOURCE_KEY = "auth";
 
@@ -185,14 +201,32 @@ export class AuthService {
       };
     }
 
-    // ログインに成功したら、続けて失敗した回数を0に戻す
-    if (loginState && (loginState.failedCount > 0 || loginState.lockedUntil)) {
-      await loginStates.resetFailures(user.id);
-    }
-
     // BUG-021: 古い形(全ユーザー共通の固定ソルト)で保存されていれば、ユーザーごとのソルトの形へ書き換える
     if (verified.needsRehash) {
       await this.repo.updatePasswordHash(user.id, await hashPassword(password));
+    }
+
+    // REQ-004: ログイン時の OTP を使うユーザーは、ここではセッションを発行せず、OTP を送って入力を待つ。
+    // 失敗の回数は、OTP も合ってセッションを発行する時に0に戻す(パスワードが合うたびに戻すと、OTP を何度でも試せてしまうため)
+    if (user.loginOtpEnabled) {
+      return await this.startLoginOtp(c, user, clientIp, now);
+    }
+
+    return await this.completeLogin(c, user, clientIp, now);
+  }
+
+  // パスワード(OTP を使うユーザーは OTP も)を確かめた後に、セッションを発行する
+  private async completeLogin(
+    c: Context<{ Bindings: Env }>,
+    user: LoginUser,
+    clientIp: string,
+    now: Date,
+  ) {
+    // ログインに成功したら、続けて失敗した回数を0に戻す
+    const loginStates = new LoginStateRepository(this.env.DB);
+    const loginState = await loginStates.find(user.id);
+    if (loginState && (loginState.failedCount > 0 || loginState.lockedUntil)) {
+      await loginStates.resetFailures(user.id);
     }
 
     // 所属・権限関係の読み込み
@@ -283,6 +317,197 @@ export class AuthService {
           companyName: companyName,
           mustChangePassword: isFirstLogin,
         },
+      },
+    };
+  }
+
+  // REQ-004: OTP を作って送り、チャレンジ(OTP の確認・再送に使うID)を返す。送れなかった場合は 503(失敗の回数には数えない)
+  private async startLoginOtp(
+    c: Context<{ Bindings: Env }>,
+    user: LoginUser,
+    clientIp: string,
+    now: Date,
+  ) {
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS).catch(() => null)) ?? {};
+    const settings = readLoginOtpSettings(config);
+    const challengeId = crypto.randomUUID();
+    const code = generateOtpCode(settings.digitCount);
+
+    let channel: "email" | "slack";
+    try {
+      channel = await deliverLoginOtp({ env: this.env, config, user, code, expiryMinutes: settings.expiryMinutes });
+    } catch (err) {
+      if (!(err instanceof LoginOtpDeliveryError)) throw err;
+      await writeAuditLog(c, "LOGIN_OTP_DELIVERY_FAILED", RESOURCE_KEY, user.id, null, {
+        email: user.email,
+        ipAddress: clientIp,
+        reason: err.message,
+      });
+      return { status: 503, data: { success: false, message: err.message } };
+    }
+
+    await new LoginOtpRepository(this.env.DB_OTP).insert({
+      id: challengeId,
+      userId: user.id,
+      codeHash: await hashLoginOtpCode(challengeId, code),
+      channel,
+      expiresAt: new Date(now.getTime() + settings.expiryMinutes * 60_000),
+      lastSentAt: now,
+      createdAt: now,
+    });
+    await writeAuditLog(c, "LOGIN_OTP_SENT", RESOURCE_KEY, user.id, null, {
+      email: user.email,
+      ipAddress: clientIp,
+      channel,
+    });
+
+    return {
+      status: 200,
+      data: {
+        success: true,
+        otpRequired: true,
+        challengeId,
+        channel,
+        digitCount: settings.digitCount,
+        expiresInMinutes: settings.expiryMinutes,
+        resendIntervalSeconds: settings.resendIntervalSeconds,
+      },
+    };
+  }
+
+  // REQ-004: OTP のチャレンジを確かめる(期限・使用済み・ユーザーの状態)。使えない場合はその応答を返す
+  private async loadActiveChallenge(challengeId: string, now: Date) {
+    const otpRepo = new LoginOtpRepository(this.env.DB_OTP);
+    const challenge = await otpRepo.findById(challengeId);
+    const restart = (message: string) => ({
+      error: { status: 400, data: { success: false, restart: true, message } },
+    });
+    if (!challenge || challenge.verifiedAt || challenge.expiresAt <= now) {
+      return restart("確認コードの有効期限が切れたか、無効です。もう一度ログインしてください");
+    }
+    const user = await this.repo.findUserById(challenge.userId);
+    if (!user || !user.isActive || !user.loginOtpEnabled) {
+      await otpRepo.delete(challenge.id);
+      return restart("もう一度ログインしてください");
+    }
+    const loginStates = new LoginStateRepository(this.env.DB);
+    const loginState = await loginStates.find(user.id);
+    if (loginState?.lockedUntil && loginState.lockedUntil > now) {
+      return {
+        error: {
+          status: 403,
+          data: {
+            success: false,
+            restart: true,
+            message: "ログインの失敗が続いたため、一時的にログインを止めています。しばらくしてからお試しください",
+          },
+        },
+      };
+    }
+    return { otpRepo, challenge, user, loginState };
+  }
+
+  // REQ-004: OTP を確かめて、合っていればセッションを発行する。間違いはパスワードの失敗と同じく数え、上限でロックする
+  async verifyLoginOtp(c: Context<{ Bindings: Env }>, input: VerifyLoginOtpInput) {
+    const now = new Date();
+    const clientIp = c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "UNKNOWN_IP";
+    const loaded = await this.loadActiveChallenge(input.challengeId, now);
+    if ("error" in loaded) return loaded.error!;
+    const { otpRepo, challenge, user, loginState } = loaded;
+
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS).catch(() => null)) ?? {};
+    const settings = readLoginOtpSettings(config);
+    if (challenge.attemptCount >= settings.maxAttempts) {
+      await otpRepo.delete(challenge.id);
+      return {
+        status: 400,
+        data: { success: false, restart: true, message: "確認コードの入力の回数が上限に達しました。もう一度ログインしてください" },
+      };
+    }
+
+    const matched = timingSafeEqualHex(await hashLoginOtpCode(challenge.id, input.code), challenge.codeHash);
+    if (!matched) {
+      const attemptCount = challenge.attemptCount + 1;
+      await otpRepo.recordFailedAttempt(challenge.id, attemptCount);
+      await writeAuditLog(c, "LOGIN_FAILED_WRONG_OTP", RESOURCE_KEY, user.id, null, {
+        email: user.email,
+        ipAddress: clientIp,
+        reason: "確認コード(OTP)が一致しません。",
+      });
+      const locked = await this.recordLoginFailure(c, user, loginState, now, clientIp);
+      if (locked) {
+        await otpRepo.delete(challenge.id);
+        return { status: locked.status, data: { ...locked.data, restart: true } };
+      }
+      const remaining = settings.maxAttempts - attemptCount;
+      if (remaining <= 0) {
+        await otpRepo.delete(challenge.id);
+        return {
+          status: 400,
+          data: { success: false, restart: true, message: "確認コードの入力の回数が上限に達しました。もう一度ログインしてください" },
+        };
+      }
+      return {
+        status: 401,
+        data: { success: false, message: `確認コードが正しくありません(あと${remaining}回入力できます)` },
+      };
+    }
+
+    await otpRepo.markVerified(challenge.id, now);
+    return await this.completeLogin(c, user, clientIp, now);
+  }
+
+  // REQ-004: OTP を送り直す。会社設定の間隔より早い場合は 429。送り直すと、コード・有効期限・入力の回数を振り直す
+  async resendLoginOtp(c: Context<{ Bindings: Env }>, input: ResendLoginOtpInput) {
+    const now = new Date();
+    const clientIp = c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "UNKNOWN_IP";
+    const loaded = await this.loadActiveChallenge(input.challengeId, now);
+    if ("error" in loaded) return loaded.error!;
+    const { otpRepo, challenge, user } = loaded;
+
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS).catch(() => null)) ?? {};
+    const settings = readLoginOtpSettings(config);
+    const waitSeconds = Math.ceil(
+      (challenge.lastSentAt.getTime() + settings.resendIntervalSeconds * 1000 - now.getTime()) / 1000,
+    );
+    if (waitSeconds > 0) {
+      return {
+        status: 429,
+        data: { success: false, retryAfterSeconds: waitSeconds, message: `確認コードの再送は、あと${waitSeconds}秒お待ちください` },
+      };
+    }
+
+    const code = generateOtpCode(settings.digitCount);
+    let channel: "email" | "slack";
+    try {
+      channel = await deliverLoginOtp({ env: this.env, config, user, code, expiryMinutes: settings.expiryMinutes });
+    } catch (err) {
+      if (!(err instanceof LoginOtpDeliveryError)) throw err;
+      await writeAuditLog(c, "LOGIN_OTP_DELIVERY_FAILED", RESOURCE_KEY, user.id, null, {
+        email: user.email,
+        ipAddress: clientIp,
+        reason: err.message,
+      });
+      return { status: 503, data: { success: false, message: err.message } };
+    }
+    await otpRepo.replaceCode(challenge.id, {
+      codeHash: await hashLoginOtpCode(challenge.id, code),
+      channel,
+      expiresAt: new Date(now.getTime() + settings.expiryMinutes * 60_000),
+      lastSentAt: now,
+    });
+    await writeAuditLog(c, "LOGIN_OTP_RESENT", RESOURCE_KEY, user.id, null, {
+      email: user.email,
+      ipAddress: clientIp,
+      channel,
+    });
+    return {
+      status: 200,
+      data: {
+        success: true,
+        channel,
+        expiresInMinutes: settings.expiryMinutes,
+        resendIntervalSeconds: settings.resendIntervalSeconds,
       },
     };
   }

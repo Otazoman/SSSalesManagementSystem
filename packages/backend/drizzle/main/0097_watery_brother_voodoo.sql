@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `login_otp_enabled` integer DEFAULT false NOT NULL;

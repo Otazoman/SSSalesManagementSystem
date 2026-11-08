@@ -768,3 +768,75 @@ describe("追加要望B: ユーザーCSVのSlack列", () => {
     expect(text).toContain('"UEXP","slack"');
   });
 });
+
+// REQ-004: ログイン時の OTP の ON/OFF(ユーザー管理・CSV取込)。メールで送れない設定では ON にできない
+describe("ログイン時の OTP の設定(REQ-004)", () => {
+  const SMTP_CONFIG = JSON.stringify({ smtp_user: "mailer@example.com", smtp_pass: "secret" });
+
+  async function bulkRegister(csv: string) {
+    const formData = new FormData();
+    formData.set("file", new File([csv], "users.csv", { type: "text/csv" }));
+    return usersRouter.request("/bulk-register", { method: "POST", body: formData }, env);
+  }
+
+  it("メールの送信(SMTP)が設定されていなければ、OTP を ON にして登録できない", async () => {
+    await env.COMPANY_SETTINGS.delete("config");
+    const res = await reqJson("/register", "POST", {
+      employeeNumber: "EMP-O1",
+      name: "OTPユーザー",
+      email: "o1@example.com",
+      loginOtpEnabled: true,
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("ログイン時のOTP");
+  });
+
+  it("メールの送信が設定されていれば、OTP を ON にして登録・更新でき、一覧にも出る", async () => {
+    await env.COMPANY_SETTINGS.put("config", SMTP_CONFIG);
+    const res = await reqJson("/register", "POST", {
+      employeeNumber: "EMP-O2",
+      name: "OTPユーザー",
+      email: "o2@example.com",
+      loginOtpEnabled: true,
+    });
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.employeeNumber, "EMP-O2"));
+    expect(row.loginOtpEnabled).toBe(true);
+
+    const off = await reqJson(`/${row.id}`, "PUT", { name: row.name, email: row.email, loginOtpEnabled: false });
+    expect(off.status).toBe(200);
+    const [updated] = await db.select().from(schema.users).where(eq(schema.users.id, row.id));
+    expect(updated.loginOtpEnabled).toBe(false);
+    await env.COMPANY_SETTINGS.delete("config");
+  });
+
+  it("OTP を指定しない更新では、OTP の設定を変えない", async () => {
+    await seedUser("u-otp", "EMP-O3", { loginOtpEnabled: true });
+    const res = await reqJson("/u-otp", "PUT", { name: "名前変更", email: "u-otp@example.com" });
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, "u-otp"));
+    expect(row.loginOtpEnabled).toBe(true);
+  });
+
+  it("CSV の loginOtpEnabled 列で設定できる。メールの送信が設定されていなければ、その行の番号付きでエラーにする", async () => {
+    const header = "employeeNumber,name,email,departmentId,roleId,passwordRaw,slackUserId,notificationChannel,loginOtpEnabled";
+    const csv = [header, "EMP-C1,CSV1,c1@example.com,,,,,email,true", "EMP-C2,CSV2,c2@example.com,,,,,email,false"].join("\n");
+
+    await env.COMPANY_SETTINGS.delete("config");
+    const ng = await bulkRegister(csv);
+    expect(ng.status).toBe(400);
+    expect(((await ng.json()) as { message: string }).message).toContain("2行目");
+    expect(await db.select().from(schema.users).where(eq(schema.users.employeeNumber, "EMP-C2"))).toHaveLength(0);
+
+    await env.COMPANY_SETTINGS.put("config", SMTP_CONFIG);
+    const ok = await bulkRegister(csv);
+    expect(ok.status).toBe(200);
+    const rows = await db.select().from(schema.users);
+    expect(rows.find((r) => r.employeeNumber === "EMP-C1")?.loginOtpEnabled).toBe(true);
+    expect(rows.find((r) => r.employeeNumber === "EMP-C2")?.loginOtpEnabled).toBe(false);
+
+    const bad = await bulkRegister([header, "EMP-C3,CSV3,c3@example.com,,,,,email,maybe"].join("\n"));
+    expect(bad.status).toBe(400);
+    await env.COMPANY_SETTINGS.delete("config");
+  });
+});

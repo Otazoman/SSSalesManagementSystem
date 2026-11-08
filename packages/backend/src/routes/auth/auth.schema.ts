@@ -36,8 +36,23 @@ export const updateNotificationSettingsSchema = v.object({
   notificationChannel: v.optional(v.picklist(["email", "slack"])),
 });
 
+// REQ-004: ログイン時の OTP の確認・再送
+export const verifyLoginOtpSchema = v.object({
+  challengeId: v.pipe(v.string(), v.nonEmpty("もう一度ログインしてください"), v.maxLength(64)),
+  code: v.pipe(
+    v.string("確認コードを入力してください"),
+    v.transform((val) => val.trim()),
+    v.regex(/^\d{4,8}$/, "確認コードは4〜8桁の数字で入力してください"),
+  ),
+});
+export const resendLoginOtpSchema = v.object({
+  challengeId: v.pipe(v.string(), v.nonEmpty("もう一度ログインしてください"), v.maxLength(64)),
+});
+
 // 型定義の抽出
 export type LoginInput = v.InferOutput<typeof loginSchema>;
 export type UpdateNotificationSettingsInput = v.InferOutput<
   typeof updateNotificationSettingsSchema
 >;
+export type VerifyLoginOtpInput = v.InferOutput<typeof verifyLoginOtpSchema>;
+export type ResendLoginOtpInput = v.InferOutput<typeof resendLoginOtpSchema>;

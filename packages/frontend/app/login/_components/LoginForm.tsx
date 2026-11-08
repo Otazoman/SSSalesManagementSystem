@@ -21,7 +21,72 @@ export function LoginForm() {
     loading,
     handleSignIn,
     router,
+    otpChallenge,
+    otpCode,
+    setOtpCode,
+    info,
+    resendWaitSeconds,
+    handleVerifyOtp,
+    handleResendOtp,
+    backToPassword,
   } = useAuth();
+
+  // REQ-004: パスワードが合った後、確認コード(OTP)の入力を待つ画面
+  if (otpChallenge) {
+    const sentTo = otpChallenge.channel === "slack" ? "Slack" : "登録済みのメールアドレス";
+    return (
+      <PublicCard
+        onSubmit={handleVerifyOtp}
+        badge={
+          <div className="mx-auto w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-xl font-black mb-4 shadow-sm border border-indigo-100 select-none">
+            OTP
+          </div>
+        }
+        title="確認コードの入力"
+        description={`${sentTo}に送った${otpChallenge.digitCount}桁の確認コードを入力してください(${otpChallenge.expiresInMinutes}分間有効)`}
+      >
+        <MessageBanner message={info || undefined} error={error ? `⚠️ ${error}` : undefined} />
+
+        <PublicField label="確認コード">
+          <input
+            type="text"
+            required
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern={`\\d{${otpChallenge.digitCount}}`}
+            maxLength={otpChallenge.digitCount}
+            className={`${publicInputClass} tracking-[0.3em] font-mono`}
+            placeholder={"0".repeat(otpChallenge.digitCount)}
+            value={otpCode}
+            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+            autoFocus
+          />
+        </PublicField>
+
+        <button type="submit" disabled={loading} className={publicButtonClass.primary}>
+          {loading ? "確認中..." : "確認してログイン"}
+        </button>
+
+        <div className="flex items-center justify-between gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => backToPassword()}
+            className="text-xs sm:text-[11px] text-slate-700 font-bold hover:underline cursor-pointer py-2 sm:py-1"
+          >
+            ← 最初からやり直す
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleResendOtp()}
+            disabled={loading || resendWaitSeconds > 0}
+            className="text-xs sm:text-[11px] text-indigo-700 font-bold hover:underline cursor-pointer py-2 sm:py-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+          >
+            {resendWaitSeconds > 0 ? `確認コードを再送(あと${resendWaitSeconds}秒)` : "確認コードを再送"}
+          </button>
+        </div>
+      </PublicCard>
+    );
+  }
 
   const modeButtonClass = (mode: typeof loginMode) =>
     `flex-1 py-2.5 sm:py-1.5 rounded-lg transition-colors cursor-pointer ${

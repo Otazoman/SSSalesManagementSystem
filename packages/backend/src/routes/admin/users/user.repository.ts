@@ -222,8 +222,9 @@ export class UserRepository {
     passwordRaw: string,
     clearedUserIds: Set<string>,
     now: Date,
-    // 追加要望B: CSVにSlack列がある場合のみ渡す(旧形式CSVでは undefined = 既存の値を変更しない)
-    slack?: { slackUserId: string | null; notificationChannel: "email" | "slack" },
+    // 追加要望B: CSVにSlack列がある場合のみ渡す(旧形式CSVでは undefined = 既存の値を変更しない)。
+    // REQ-004: OTP の列がある場合は loginOtpEnabled も渡す
+    slack?: { slackUserId: string | null; notificationChannel: "email" | "slack"; loginOtpEnabled?: boolean },
   ): Promise<string> {
     const existingUser = await this.findByEmployeeNumber(employeeNumber);
     let uid: string;

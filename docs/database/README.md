@@ -9,9 +9,9 @@
 
 | バインディング | 本番の DB 名 | 内容 | テーブル数 | 最新の migration |
 |---|---|---|---:|---|
-| `DB` | `my-erp-db` | 業務データ | 96 | `0095_true_black_tarantula` |
+| `DB` | `my-erp-db` | 業務データ | 96 | `0097_watery_brother_voodoo` |
 | `DB_LOG` | `my-erp-log-db` | 監査ログ・メール送信ログ | 2 | `0002_wealthy_smasher` |
-| `DB_OTP` | `my-erp-otp-db` | OTP | 1 | `0000_complex_plazm` |
+| `DB_OTP` | `my-erp-otp-db` | OTP | 2 | `0001_red_santa_claus` |
 | `DB_JOURNAL` | `my-erp-journal-db` | 仕訳データ | 2 | `0002_lame_piledriver` |
 | `DB_DEALS` | `my-erp-deals-db` | 商談 | 6 | `0000_greedy_dust` |
 | `DB_UI` | `my-erp-ui-db` | お知らせ・画面説明・表示設定 | 3 | `0000_flashy_nebula` |
@@ -33,7 +33,7 @@
 | [会計(仕訳)](accounting.md) | 仕訳ルール・仕訳の起票イベントと、仕訳データ(DB_JOURNAL) | 6 |
 | [進捗管理](progress.md) | 進捗確認の工程の担当と、完了/進行中の手動設定 | 4 |
 | [商談](deals.md) | 商談・面談者・タスク・見込み客の担当者(DB_DEALS) | 6 |
-| [ログ・OTP・画面表示](logs-otp-ui.md) | 監査ログ・メール送信ログ(DB_LOG)、OTP(DB_OTP)、お知らせ・画面説明・表示設定(DB_UI) | 6 |
+| [ログ・OTP・画面表示](logs-otp-ui.md) | 監査ログ・メール送信ログ(DB_LOG)、OTP(DB_OTP)、お知らせ・画面説明・表示設定(DB_UI) | 7 |
 
 ## テーブルの索引
 
@@ -79,6 +79,7 @@
 | [journal_posting_patterns](accounting.md#journal_posting_patterns) | 仕訳パターン | 会計(仕訳) | `DB` |
 | [journal_posting_rules](accounting.md#journal_posting_rules) | 仕訳ルール | 会計(仕訳) | `DB` |
 | [locations](master.md#locations) | ロケーション | 業務マスタ | `DB` |
+| [login_otp_challenges](logs-otp-ui.md#login_otp_challenges) | ログインのOTP | ログ・OTP・画面表示 | `DB_OTP` |
 | [mail_delivery_logs](logs-otp-ui.md#mail_delivery_logs) | メール送信ログ・送信待ち | ログ・OTP・画面表示 | `DB_LOG` |
 | [mail_template_settings](system.md#mail_template_settings) | メール送信・帳票の設定 | システム管理 | `DB` |
 | [master_approval_contexts](workflow.md#master_approval_contexts) | 承認申請の審査情報 | 承認ワークフロー | `DB` |

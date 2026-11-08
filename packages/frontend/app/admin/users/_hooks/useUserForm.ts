@@ -30,6 +30,8 @@ export function useUserForm({
   const [sendEmail, setSendEmail] = useState(false);
   const [slackUserId, setSlackUserId] = useState("");
   const [notificationChannel, setNotificationChannel] = useState<"email" | "slack">("email");
+  // REQ-004: ログイン時の OTP
+  const [loginOtpEnabled, setLoginOtpEnabled] = useState(false);
   const [formRelations, setFormRelations] = useState<
     { departmentId: string; roleId: string }[]
   >([{ departmentId: "", roleId: "" }]);
@@ -45,6 +47,7 @@ export function useUserForm({
         setUserPass("");
         setSlackUserId(u.slackUserId || "");
         setNotificationChannel(u.notificationChannel || "email");
+        setLoginOtpEnabled(Boolean(u.loginOtpEnabled));
         setFormRelations(
           u.relations.map((r) => ({
             departmentId: r.departmentId || "",
@@ -60,6 +63,7 @@ export function useUserForm({
       setSendEmail(false);
       setSlackUserId("");
       setNotificationChannel("email");
+      setLoginOtpEnabled(false);
       setFormRelations([{ departmentId: "", roleId: "" }]);
     }
   }, [editingUserId, users]);
@@ -125,6 +129,7 @@ export function useUserForm({
       const payload = {
         slackUserId: slackUserId.trim() || null,
         notificationChannel,
+        loginOtpEnabled,
         name: userName,
         email: userEmail,
         relations: formRelations.filter((r) => r.roleId !== ""),
@@ -173,6 +178,8 @@ export function useUserForm({
     setSlackUserId,
     notificationChannel,
     setNotificationChannel,
+    loginOtpEnabled,
+    setLoginOtpEnabled,
     formRelations,
     addRelationRow,
     removeRelationRow,

@@ -10,6 +10,7 @@
 |---|---|---|---|
 | [announcements](#announcements) | お知らせ | `DB_UI` | ダッシュボードの「システムからのお知らせ」(DB_UI) |
 | [audit_logs](#audit_logs) | 監査ログ | `DB_LOG` | 登録・更新・削除などの操作の記録(変更前後の値を含む)(DB_LOG) |
+| [login_otp_challenges](#login_otp_challenges) | ログインのOTP | `DB_OTP` | ログイン時の確認コード(ハッシュ)と、有効期限・試行回数・送信日時(DB_OTP) |
 | [mail_delivery_logs](#mail_delivery_logs) | メール送信ログ・送信待ち | `DB_LOG` | メール・Slack の送信待ちと送信結果。Cron が1分ごとに送信する(DB_LOG) |
 | [otp_challenges](#otp_challenges) | OTP | `DB_OTP` | 取引先向けダウンロードの確認コードと、有効期限・試行回数(DB_OTP) |
 | [screen_descriptions](#screen_descriptions) | 画面説明 | `DB_UI` | 画面ごとに見出しの下に表示する説明文(DB_UI) |
@@ -25,6 +26,9 @@ erDiagram
     text id PK
   }
   audit_logs {
+    text id PK
+  }
+  login_otp_challenges {
     text id PK
   }
   mail_delivery_logs {
@@ -85,6 +89,26 @@ erDiagram
 | `old_values` | 文字列 |  |  |  | 変更前の値(JSON) |
 | `new_values` | 文字列 |  |  |  | 変更後の値(JSON) |
 | `performed_at` | 日時 | ○ |  |  | 実施日時 |
+
+<a id="login_otp_challenges"></a>
+
+### login_otp_challenges(ログインのOTP)
+
+ログイン時の確認コード(ハッシュ)と、有効期限・試行回数・送信日時(DB_OTP)
+
+- DB: `DB_OTP`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `user_id` | 文字列 | ○ |  |  | ユーザー |
+| `code_hash` | 文字列 | ○ |  |  | OTP のハッシュ(SHA-256。チャレンジのIDと合わせて計算する) |
+| `channel` | 文字列 | ○ |  |  | 送った方法(email / slack) |
+| `expires_at` | 日時 | ○ |  |  | 有効期限 |
+| `attempt_count` | 整数 | ○ | `0` |  | 試行回数 |
+| `last_sent_at` | 日時 | ○ |  |  | 最後に送った日時(再送の間隔の判定に使う) |
+| `verified_at` | 日時 |  |  |  | 確認できた日時(一度だけ使える) |
+| `created_at` | 日時 | ○ |  |  | 作成日時 |
 
 <a id="mail_delivery_logs"></a>
 

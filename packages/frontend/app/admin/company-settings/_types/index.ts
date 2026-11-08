@@ -61,6 +61,11 @@ export interface SystemSettings {
   otp_expiry_minutes: string; // OTPコードの有効期限(分)
   otp_max_attempts: string; // OTPコードの最大試行回数
   login_max_failed_attempts: string; // BUG-022: ログインの失敗回数の上限(続けて失敗したらロック。0は制限なし)
+  // REQ-004: ログイン時の OTP(帳票ダウンロード用の otp_* とは別)
+  login_otp_digit_count: string; // 桁数(4〜8)
+  login_otp_expiry_minutes: string; // 有効期限(分。1〜60)
+  login_otp_max_attempts: string; // 入力の試行回数の上限(1〜10)
+  login_otp_resend_interval_seconds: string; // 再送の間隔(秒。0〜3600)
   // BUG-046: パスワードのルール(本人が設定する時に確かめる。管理者がユーザー管理で設定する時は確かめない)
   password_min_length?: string;
   password_require_uppercase?: boolean;

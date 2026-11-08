@@ -75,6 +75,43 @@ export function SecuritySettings({
           </p>
         </div>
 
+        {/* REQ-004: ログイン時の確認コード(OTP)。使うかどうかはユーザーごとに「ユーザー管理」で設定する */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+          <p className="text-xs font-bold text-slate-900">ログイン時の確認コード(OTP)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(
+              [
+                { key: "login_otp_digit_count", label: "桁数", min: 4, max: 8 },
+                { key: "login_otp_expiry_minutes", label: "有効期限(分)", min: 1, max: 60 },
+                { key: "login_otp_max_attempts", label: "入力の回数の上限(回)", min: 1, max: 10 },
+                { key: "login_otp_resend_interval_seconds", label: "再送の間隔(秒)", min: 0, max: 3600 },
+              ] as const
+            ).map(({ key, label, min, max }) => (
+              <div key={key} className="space-y-1">
+                <label htmlFor={key} className="block text-xs font-bold text-slate-800">
+                  {label}
+                </label>
+                <input
+                  id={key}
+                  type="number"
+                  min={min}
+                  max={max}
+                  inputMode="numeric"
+                  disabled={!canWrite}
+                  className="w-full border border-slate-300 p-2 text-base sm:text-xs bg-white text-slate-900 placeholder-slate-500 rounded focus:border-indigo-500 focus:outline-none disabled:opacity-60"
+                  value={settings[key]}
+                  onChange={(e) => setSettings({ ...settings, [key]: e.target.value })}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-600">
+            確認コードを使うかどうかは、ユーザーごとに「ユーザー管理」で設定します。コードは通知方法(メール/Slack)に送り、Slack に送れない場合はメールに送ります。
+            入力の回数の上限に達したら、ログインからやり直しです。コードの間違いは「ログインの失敗回数の上限」にも数えます。
+            帳票ダウンロードの確認コードの設定(メール設定)とは別の設定です。既定は 6桁・10分・5回・60秒です。
+          </p>
+        </div>
+
         {/* BUG-046: パスワードのルール */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
           <div className="space-y-2">

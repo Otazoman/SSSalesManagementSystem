@@ -206,6 +206,7 @@ erDiagram
 | `is_active` | 真偽値 | ○ | `true` |  | 有効かどうか |
 | `slack_user_id` | 文字列 |  |  |  | SlackメンバーID。BotがこのIDへDM送信する(channel指定にuser IDをそのまま使える)。 |
 | `notification_channel` | 文字列 | ○ | `email` |  | 通知方法('email'／'slack')。プロフィール画面で本人が選択。 |
+| `login_otp_enabled` | 真偽値 | ○ | `false` |  | REQ-004: ログイン時の OTP を使うか(管理者がユーザー管理・CSV取込で設定する)。OTP は通知方法(メール/Slack)に従って送る |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 | `updated_at` | 日時 | ○ |  |  | 更新日時 |
 
