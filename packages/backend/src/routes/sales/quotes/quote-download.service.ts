@@ -4,17 +4,12 @@ import { getCompanySettings } from "../../../platform/kv/company-settings-cache"
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { OtpRepository } from "../../../platform/otp/otp-repository";
 import { generateOtpCode } from "../../../platform/otp/generate-otp-code";
+import {
+  OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES,
+  MAX_OTP_REQUESTS_PER_WINDOW,
+  readDownloadOtpSettings,
+} from "../../../platform/otp/download-otp-settings";
 import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
-
-// Item4-c: OTP発行連打による悪用(実在の取引先メールアドレスへのメール爆撃等)を防ぐための
-// レート制限。桁数・有効期限・試行回数とは異なりユーザー向けの設定項目ではないため固定値とする。
-const OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES = 60;
-const MAX_OTP_REQUESTS_PER_WINDOW = 5;
-
-function toPositiveInt(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 // Item4-f: quote.service.tsから分割。添付ファイルダウンロード・OTP付きダウンロードリンクを担当
 export class QuoteDownloadService {
@@ -90,11 +85,8 @@ export class QuoteDownloadService {
       );
 
       if (recentCount < MAX_OTP_REQUESTS_PER_WINDOW) {
-        const otpDigitCount = toPositiveInt(systemConfig.otp_digit_count, 4);
-        const otpExpiryMinutes = toPositiveInt(
-          systemConfig.otp_expiry_minutes,
-          10,
-        );
+        const otpDigitCount = readDownloadOtpSettings(systemConfig).digitCount;
+        const otpExpiryMinutes = readDownloadOtpSettings(systemConfig).expiryMinutes;
         const otpCode = generateOtpCode(otpDigitCount);
         const expiresAt = new Date(now.getTime() + otpExpiryMinutes * 60_000);
 
@@ -147,7 +139,7 @@ export class QuoteDownloadService {
     const now = new Date();
     const normalizedEmail = email.trim().toLowerCase();
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const maxAttempts = toPositiveInt(systemConfig.otp_max_attempts, 5);
+    const maxAttempts = readDownloadOtpSettings(systemConfig).maxAttempts;
 
     const challenge = await otpRepo.findLatestActiveChallenge(
       "sales_quote",

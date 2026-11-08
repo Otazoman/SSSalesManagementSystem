@@ -8,16 +8,14 @@ import { getCompanySettings } from "../../../platform/kv/company-settings-cache"
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { OtpRepository } from "../../../platform/otp/otp-repository";
 import { generateOtpCode } from "../../../platform/otp/generate-otp-code";
+import {
+  OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES,
+  MAX_OTP_REQUESTS_PER_WINDOW,
+  readDownloadOtpSettings,
+} from "../../../platform/otp/download-otp-settings";
 import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
 
-const OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES = 60;
-const MAX_OTP_REQUESTS_PER_WINDOW = 5;
 const DOCUMENT_TYPE = "shipment_instruction";
-
-function toPositiveInt(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 // Item6 Phase6-4: 出荷指示書のOTPダウンロード。quote-download.service.tsと同じOTPコア
 // (OtpRepository/generateOtpCode/enqueueNotification)を使うが、宛先メールアドレスは
@@ -73,8 +71,8 @@ export class ShipmentInstructionDownloadService {
     );
 
     if (recentCount < MAX_OTP_REQUESTS_PER_WINDOW) {
-      const otpDigitCount = toPositiveInt((systemConfig as any).otp_digit_count, 4);
-      const otpExpiryMinutes = toPositiveInt((systemConfig as any).otp_expiry_minutes, 10);
+      const otpDigitCount = readDownloadOtpSettings(systemConfig).digitCount;
+      const otpExpiryMinutes = readDownloadOtpSettings(systemConfig).expiryMinutes;
       const otpCode = generateOtpCode(otpDigitCount);
       const expiresAt = new Date(now.getTime() + otpExpiryMinutes * 60_000);
 
@@ -126,7 +124,7 @@ export class ShipmentInstructionDownloadService {
     const otpRepo = new OtpRepository(c.env.DB_OTP);
     const now = new Date();
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const maxAttempts = toPositiveInt((systemConfig as any).otp_max_attempts, 5);
+    const maxAttempts = readDownloadOtpSettings(systemConfig).maxAttempts;
 
     const challenge = await otpRepo.findLatestActiveChallengeAny(
       DOCUMENT_TYPE,

@@ -517,6 +517,10 @@ export class ShipmentsService {
     if (header.status !== "REMANDED") {
       throw new BadRequestError("差戻し状態の出庫のみ修正して再申請できます");
     }
+    // REQ-005: 直送完了の出庫は、入庫の承認に合わせて確定するため、出庫だけで再提出しない
+    if (header.directReceiptHeaderId) {
+      throw new BadRequestError("直送完了の出庫は修正して再提出できません。発注の画面から直送完了をやり直してください");
+    }
 
     const { resolvedItems, warehouseType, effectivePartnerId, destinationWarehouseId, salesOrderId } =
       await this.resolveShipmentItems(c, input);

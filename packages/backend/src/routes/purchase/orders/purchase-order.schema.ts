@@ -105,6 +105,20 @@ export const UpdateDeliveryDatesSchema = v.object({
 });
 export type UpdateDeliveryDatesInput = v.InferOutput<typeof UpdateDeliveryDatesSchema>;
 
+// REQ-005 第2段階: 直送の発注の「直送完了」(直送用の倉庫への入庫と、得意先への出庫を同時に確定する)
+export const DirectShipmentCompletionSchema = v.object({
+  completedDate: v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, "完了日はYYYY-MM-DD形式で入力してください")),
+  items: v.array(
+    v.object({
+      orderItemId: v.string(),
+      quantity: v.pipe(v.number(), v.minValue(0, "数量は0以上で入力してください")),
+    }),
+  ),
+  memo: optionalString,
+  applicantDepartmentSurrogateId: optionalString,
+});
+export type DirectShipmentCompletionInput = v.InferOutput<typeof DirectShipmentCompletionSchema>;
+
 // 添付ファイルの型。quote_attachments/purchase_request_attachmentsと同じR2/外部URL(共有リンク)両対応
 export const PurchaseOrderAttachmentInputSchema = v.looseObject({
   // 2026-10-18: 既存の添付のID(保存時に行を保ったまま更新するため。新しい添付は無し)

@@ -5,17 +5,15 @@ import { getCompanySettings } from "../../../platform/kv/company-settings-cache"
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { OtpRepository } from "../../../platform/otp/otp-repository";
 import { generateOtpCode } from "../../../platform/otp/generate-otp-code";
+import {
+  OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES,
+  MAX_OTP_REQUESTS_PER_WINDOW,
+  readDownloadOtpSettings,
+} from "../../../platform/otp/download-otp-settings";
 import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
 
 // purchase-order-download.service.tsと同じ方針(OTP発行連打による悪用防止のレート制限含む)
-const OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES = 60;
-const MAX_OTP_REQUESTS_PER_WINDOW = 5;
 const DOCUMENT_TYPE = "acceptance_inspection";
-
-function toPositiveInt(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 export class AcceptanceInspectionDownloadService {
   constructor(private repo: ReceiptsRepository) {}
@@ -68,8 +66,8 @@ export class AcceptanceInspectionDownloadService {
       );
 
       if (recentCount < MAX_OTP_REQUESTS_PER_WINDOW) {
-        const otpDigitCount = toPositiveInt(systemConfig.otp_digit_count, 4);
-        const otpExpiryMinutes = toPositiveInt(systemConfig.otp_expiry_minutes, 10);
+        const otpDigitCount = readDownloadOtpSettings(systemConfig).digitCount;
+        const otpExpiryMinutes = readDownloadOtpSettings(systemConfig).expiryMinutes;
         const otpCode = generateOtpCode(otpDigitCount);
         const expiresAt = new Date(now.getTime() + otpExpiryMinutes * 60_000);
 
@@ -113,7 +111,7 @@ export class AcceptanceInspectionDownloadService {
     const now = new Date();
     const normalizedEmail = email.trim().toLowerCase();
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const maxAttempts = toPositiveInt(systemConfig.otp_max_attempts, 5);
+    const maxAttempts = readDownloadOtpSettings(systemConfig).maxAttempts;
 
     const challenge = await otpRepo.findLatestActiveChallenge(
       DOCUMENT_TYPE,

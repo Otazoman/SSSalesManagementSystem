@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, ne } from "drizzle-orm";
+import { DIRECT_SHIPMENT_WAREHOUSE_TYPE } from "../../../platform/inventory/direct-shipment-warehouse";
 import { Context } from "hono";
 import * as schema from "../../../db/schema";
 import { Env } from "../../../types/env";
@@ -10,7 +11,7 @@ import { PaginationParams, toOffset } from "../../../platform/http/pagination";
 import { buildOrderBy, SortQuery } from "../../../platform/http/sort";
 import { containsText } from "../../../platform/repository/text-search";
 
-type WarehouseSearchParams = { id?: string; name?: string; status?: string };
+type WarehouseSearchParams = { id?: string; name?: string; status?: string; includeDirect?: string };
 
 // ヘッダクリックソート(追加要望D)の許可カラム
 const WAREHOUSES_SORT_COLUMNS = {
@@ -38,6 +39,9 @@ export class WarehousesRepository {
       conditions.push(containsText(schema.warehouses.name, searchParams.name));
     if (searchParams.status && searchParams.status !== "all")
       conditions.push(eq(schema.warehouses.status, searchParams.status));
+    // REQ-005: 直送用の倉庫は、入出庫・在庫照会・指示などの倉庫の選択肢に出さない
+    if (searchParams.includeDirect !== "true")
+      conditions.push(ne(schema.warehouses.warehouseType, DIRECT_SHIPMENT_WAREHOUSE_TYPE));
     return conditions;
   }
 

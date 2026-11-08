@@ -4,18 +4,16 @@ import { getCompanySettings } from "../../../platform/kv/company-settings-cache"
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { OtpRepository } from "../../../platform/otp/otp-repository";
 import { generateOtpCode } from "../../../platform/otp/generate-otp-code";
+import {
+  OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES,
+  MAX_OTP_REQUESTS_PER_WINDOW,
+  readDownloadOtpSettings,
+} from "../../../platform/otp/download-otp-settings";
 import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
 
 // K-4-1: quote-download.service.tsと同じ方針(OTPダウンロード用documentTypeは
 // "sales_invoice"で新規、既存の納品書メール機能が使うmail_template_settingsのid
 // "sales_invoice"とは別名前空間のため衝突しない)
-const OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES = 60;
-const MAX_OTP_REQUESTS_PER_WINDOW = 5;
-
-function toPositiveInt(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 export class SalesInvoiceDownloadService {
   private repo: SalesInvoiceRepository;
@@ -75,8 +73,8 @@ export class SalesInvoiceDownloadService {
       );
 
       if (recentCount < MAX_OTP_REQUESTS_PER_WINDOW) {
-        const otpDigitCount = toPositiveInt(systemConfig.otp_digit_count, 4);
-        const otpExpiryMinutes = toPositiveInt(systemConfig.otp_expiry_minutes, 10);
+        const otpDigitCount = readDownloadOtpSettings(systemConfig).digitCount;
+        const otpExpiryMinutes = readDownloadOtpSettings(systemConfig).expiryMinutes;
         const otpCode = generateOtpCode(otpDigitCount);
         const expiresAt = new Date(now.getTime() + otpExpiryMinutes * 60_000);
 
@@ -127,7 +125,7 @@ export class SalesInvoiceDownloadService {
     const now = new Date();
     const normalizedEmail = email.trim().toLowerCase();
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const maxAttempts = toPositiveInt(systemConfig.otp_max_attempts, 5);
+    const maxAttempts = readDownloadOtpSettings(systemConfig).maxAttempts;
 
     const challenge = await otpRepo.findLatestActiveChallenge(
       "sales_invoice",

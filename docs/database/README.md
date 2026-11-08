@@ -9,7 +9,7 @@
 
 | バインディング | 本番の DB 名 | 内容 | テーブル数 | 最新の migration |
 |---|---|---|---:|---|
-| `DB` | `my-erp-db` | 業務データ | 96 | `0099_skinny_dakota_north` |
+| `DB` | `my-erp-db` | 業務データ | 96 | `0100_white_betty_ross` |
 | `DB_LOG` | `my-erp-log-db` | 監査ログ・メール送信ログ | 2 | `0002_wealthy_smasher` |
 | `DB_OTP` | `my-erp-otp-db` | OTP | 2 | `0001_red_santa_claus` |
 | `DB_JOURNAL` | `my-erp-journal-db` | 仕訳データ | 2 | `0002_lame_piledriver` |

@@ -56,6 +56,8 @@ export class ShipmentsRepository {
     shipmentInstructionId: string | null = null,
     salesOrderId: string | null = null,
     destinationWarehouseId: string | null = null,
+    // REQ-005: 直送完了の出庫の場合、対になる入庫
+    directReceiptHeaderId: string | null = null,
   ) {
     const batchQueries: [any, ...any[]] = [
       this.db.insert(schema.itemShipmentHeaders).values({
@@ -67,6 +69,7 @@ export class ShipmentsRepository {
         shipmentInstructionId,
         salesOrderId,
         destinationWarehouseId,
+        directReceiptHeaderId,
         createdBy: operatorId,
         createdAt: now,
       }),
@@ -165,6 +168,16 @@ export class ShipmentsRepository {
       .select()
       .from(schema.itemShipmentHeaders)
       .where(eq(schema.itemShipmentHeaders.id, id))
+      .limit(1);
+    return res[0] || null;
+  }
+
+  // REQ-005: 直送完了の入庫と対になる出庫
+  async findHeaderByDirectReceiptId(receiptHeaderId: string) {
+    const res = await this.db
+      .select()
+      .from(schema.itemShipmentHeaders)
+      .where(eq(schema.itemShipmentHeaders.directReceiptHeaderId, receiptHeaderId))
       .limit(1);
     return res[0] || null;
   }

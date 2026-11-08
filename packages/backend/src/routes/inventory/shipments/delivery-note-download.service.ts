@@ -7,17 +7,15 @@ import { getCompanySettings } from "../../../platform/kv/company-settings-cache"
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { OtpRepository } from "../../../platform/otp/otp-repository";
 import { generateOtpCode } from "../../../platform/otp/generate-otp-code";
+import {
+  OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES,
+  MAX_OTP_REQUESTS_PER_WINDOW,
+  readDownloadOtpSettings,
+} from "../../../platform/otp/download-otp-settings";
 import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
 import { resolveDocumentFileName } from "../../../platform/documents/document-file-name";
 
-const OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES = 60;
-const MAX_OTP_REQUESTS_PER_WINDOW = 5;
 const DOCUMENT_TYPE = "delivery_note";
-
-function toPositiveInt(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 // Item7残課題7: 納品書PDF/納品予定データCSVのOTPダウンロード。shipment-instruction-download.service.ts
 // と同じOTPコア(OtpRepository/generateOtpCode/enqueueNotification)・同じ「複数連絡先へ同一OTPを
@@ -55,8 +53,8 @@ export class DeliveryNoteDownloadService {
     const recentCount = await otpRepo.countRecentChallengesAny(DOCUMENT_TYPE, headerId, attachmentId, windowStart);
 
     if (recentCount < MAX_OTP_REQUESTS_PER_WINDOW) {
-      const otpDigitCount = toPositiveInt((systemConfig as any).otp_digit_count, 4);
-      const otpExpiryMinutes = toPositiveInt((systemConfig as any).otp_expiry_minutes, 10);
+      const otpDigitCount = readDownloadOtpSettings(systemConfig).digitCount;
+      const otpExpiryMinutes = readDownloadOtpSettings(systemConfig).expiryMinutes;
       const otpCode = generateOtpCode(otpDigitCount);
       const expiresAt = new Date(now.getTime() + otpExpiryMinutes * 60_000);
 
@@ -103,7 +101,7 @@ export class DeliveryNoteDownloadService {
     const otpRepo = new OtpRepository(c.env.DB_OTP);
     const now = new Date();
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const maxAttempts = toPositiveInt((systemConfig as any).otp_max_attempts, 5);
+    const maxAttempts = readDownloadOtpSettings(systemConfig).maxAttempts;
 
     const challenge = await otpRepo.findLatestActiveChallengeAny(DOCUMENT_TYPE, headerId, attachmentId, now);
     if (!challenge) {

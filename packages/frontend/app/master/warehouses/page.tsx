@@ -88,6 +88,8 @@ export default function AdminWarehousesPage() {
     status: filterStatus,
     id: searchId,
     name: searchName,
+    // REQ-005: 倉庫マスタでは直送用の倉庫(区分「直送」)も出す(他の画面の倉庫の選択肢には出ない)
+    includeDirect: "true",
   });
 
   const {

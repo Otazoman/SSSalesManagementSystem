@@ -25,6 +25,10 @@ import {
   releaseReservationForShippedQuantity,
 } from "../../platform/inventory/warehouse-stock-reservation.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import {
+  confirmDirectShipmentOfReceipt,
+  syncDirectShipmentStatusOfReceipt,
+} from "../../routes/purchase/orders/purchase-order-direct-shipment-confirm";
 import { SCREEN_MASTER } from "../../constants/screens";
 import type {
   TargetAdapter,
@@ -87,6 +91,8 @@ async function applyApproved({
       const receiptInstructionsRepo = ReceiptInstructionsRepository.fromDb(db);
       await receiptInstructionsRepo.recalculateFulfillment(receiptHeader.receiptInstructionId);
     }
+    // REQ-005: 直送完了の入庫なら、対になる出庫(直送用の倉庫から得意先へ)も確定する
+    await confirmDirectShipmentOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now, c as any);
     return;
   }
 
@@ -253,6 +259,8 @@ async function applyRemanded({
   const receiptHeader = await receiptsRepo.findHeaderById(reqParent.targetId);
   if (receiptHeader) {
     await receiptsRepo.updateHeaderStatus(reqParent.targetId, status);
+    // REQ-005: 直送完了の入庫なら、対になる出庫も同じ状態にする
+    await syncDirectShipmentStatusOfReceipt(db, reqParent.targetId, status);
     return;
   }
 

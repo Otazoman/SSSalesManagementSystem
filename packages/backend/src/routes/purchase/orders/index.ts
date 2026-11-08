@@ -18,7 +18,9 @@ import {
   RequestDownloadOtpSchema,
   VerifyDownloadOtpSchema,
   UpdateDeliveryDatesSchema,
+  DirectShipmentCompletionSchema,
 } from "./purchase-order.schema";
+import { PurchaseOrderDirectShipmentService } from "./purchase-order-direct-shipment.service";
 import { todayJst } from "../../../platform/date/format-jst-date";
 
 type Variables = {
@@ -230,6 +232,32 @@ purchaseOrdersRouter.put(
       return respondValidationError(c, parsed.issues);
     }
     const result = await getService(c).updateDeliveryDates(c, id, parsed.output);
+    return c.json(result);
+  },
+);
+
+// ==========================================
+// REQ-005 第2段階: 直送完了(直送用の倉庫への入庫と、得意先への出庫を同時に確定。承認機能が有効なら入出庫の承認を申請)
+// ==========================================
+purchaseOrdersRouter.post(
+  "/:id/direct-shipment-completion",
+  describeApiRoute({
+    summary: "直送の発注の直送完了(入庫・出庫の同時確定、または承認申請)",
+    tags: ["purchase-orders"],
+    responses: {
+      200: { description: "確定または承認申請の成功" },
+      400: { description: "バリデーションエラー、直送の発注ではない、確定前、残数量の超過、承認待ちの直送完了がある" },
+      404: { description: "発注・受注・品目が見つからない" },
+    },
+  }),
+  async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => null);
+    const parsed = v.safeParse(DirectShipmentCompletionSchema, body);
+    if (!parsed.success) {
+      return respondValidationError(c, parsed.issues);
+    }
+    const result = await new PurchaseOrderDirectShipmentService().completeDirectShipment(c as any, id, parsed.output);
     return c.json(result);
   },
 );

@@ -74,6 +74,7 @@ erDiagram
     text sales_order_id FK
     text destination_warehouse_id FK
     text approval_flow_id FK
+    text direct_receipt_header_id FK
   }
   item_shipment_instruction_items {
     text id PK
@@ -197,6 +198,7 @@ erDiagram
   sales_orders |o--o{ item_shipment_headers : "sales_order_id"
   warehouses |o--o{ item_shipment_headers : "destination_warehouse_id"
   approval_flows |o--o{ item_shipment_headers : "approval_flow_id"
+  item_receipt_headers |o--o{ item_shipment_headers : "direct_receipt_header_id"
   item_shipment_instructions |o--o{ item_shipment_instruction_items : "instruction_header_id"
   items ||--o{ item_shipment_instruction_items : "item_id"
   sales_order_items |o--o{ item_shipment_instruction_items : "sales_order_item_id"
@@ -367,6 +369,7 @@ erDiagram
 | `approval_flow_id` | 文字列 |  |  | [approval_flows](workflow.md#approval_flows).id | 使用中の承認フロー |
 | `memo` | 文字列 |  |  |  | 備考 |
 | `delivery_note_r2_path` | 文字列 |  |  |  | 自動生成された納品書PDFのR2キー(DELIVERY_NOTES_BUCKET、旧: SYSTEM_BUCKET)。partnerId設定済みの 出庫が確定(APPROVED)したタイミングで自動生成される。 |
+| `direct_receipt_header_id` | 文字列 |  |  | [item_receipt_headers](#item_receipt_headers).id | REQ-005: 直送完了で作った出庫の場合、対になる入庫(直送用の倉庫への入庫)。入庫の承認確定・差戻し・取下げに この出庫も合わせる(出庫だけで承認・再提出はしない)。 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 

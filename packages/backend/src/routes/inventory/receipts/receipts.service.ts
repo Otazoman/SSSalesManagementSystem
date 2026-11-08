@@ -2,6 +2,7 @@ import { Context } from "hono";
 import * as v from "valibot";
 import { Env } from "../../../types/env";
 import { ReceiptsRepository } from "./receipts.repository";
+import { ShipmentsRepository } from "../shipments/shipments.repository";
 import { CreateReceiptInput, GetReceiptsQuery, createReceiptSchema } from "./receipts.schema";
 import { parseCsv } from "../../../platform/csv/csv-parser";
 import { PaginationParams, buildPaginationMeta } from "../../../platform/http/pagination";
@@ -438,6 +439,10 @@ export class ReceiptsService {
     if (!header) throw new NotFoundError("対象の入庫が見つかりません");
     if (header.status !== "REMANDED") {
       throw new BadRequestError("差戻し状態の入庫のみ修正して再申請できます");
+    }
+    // REQ-005: 直送完了の入庫は、出庫と対のため修正して再提出しない(発注の画面から直送完了をやり直す)
+    if (await ShipmentsRepository.fromDb(db).findHeaderByDirectReceiptId(headerId)) {
+      throw new BadRequestError("直送完了の入庫は修正して再提出できません。発注の画面から直送完了をやり直してください");
     }
 
     const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(

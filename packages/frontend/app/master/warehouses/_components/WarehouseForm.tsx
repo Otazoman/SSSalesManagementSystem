@@ -102,6 +102,10 @@ export function WarehouseForm({
         >
           <option value="INTERNAL">🏭 自社倉庫</option>
           <option value="EXTERNAL">🚚 外部倉庫(指示書発行+実績入力)</option>
+          {/* REQ-005: 直送用の倉庫(システムが自動で作る)を編集する時だけ出す */}
+          {form.formData.warehouseType === "DIRECT" && (
+            <option value="DIRECT">📦 直送(直送完了の記録用・在庫は常に0)</option>
+          )}
         </select>
       </div>
 

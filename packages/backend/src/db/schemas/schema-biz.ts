@@ -926,6 +926,11 @@ export const itemShipmentHeaders = sqliteTable("item_shipment_headers", {
   // Item6 Phase6-4: 自動生成された納品書PDFのR2キー(DELIVERY_NOTES_BUCKET、旧: SYSTEM_BUCKET)。partnerId設定済みの
   // 出庫が確定(APPROVED)したタイミングで自動生成される。null=未生成(partnerId未設定等)
   deliveryNoteR2Path: text("delivery_note_r2_path"),
+  // REQ-005: 直送完了で作った出庫の場合、対になる入庫(直送用の倉庫への入庫)。入庫の承認確定・差戻し・取下げに
+  // この出庫も合わせる(出庫だけで承認・再提出はしない)。null=通常の出庫
+  directReceiptHeaderId: text("direct_receipt_header_id").references(
+    (): AnySQLiteColumn => itemReceiptHeaders.id,
+  ),
   createdBy: text("created_by").notNull(), // Item1: employeeNumberを保存(FK制約は意図的に外している)
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

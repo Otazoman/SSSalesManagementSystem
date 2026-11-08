@@ -575,7 +575,13 @@ export function PurchaseOrderForm({
         />
 
         {editingId && editingStatus === "APPROVED" && (
-          <PurchaseOrderReceiptProgress orderId={editingId} />
+          <PurchaseOrderReceiptProgress
+            orderId={editingId}
+            directSalesOrderId={isDirectShipment ? directSalesOrderId : null}
+            directLinkedOrderItemIds={items
+              .filter((item) => item.id && item.salesOrderItemId)
+              .map((item) => item.id as string)}
+          />
         )}
 
         {!isLocked && (

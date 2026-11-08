@@ -9,7 +9,7 @@ import { useConfirm } from "../../../_shared/hooks/use-confirm";
 export const initialWarehouseFormState = {
   id: "",
   name: "",
-  warehouseType: "INTERNAL" as "INTERNAL" | "EXTERNAL",
+  warehouseType: "INTERNAL" as "INTERNAL" | "EXTERNAL" | "DIRECT",
   postalCode: "",
   address: "",
   phoneNumber: "",
