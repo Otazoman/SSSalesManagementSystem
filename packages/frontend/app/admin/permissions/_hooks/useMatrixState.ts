@@ -135,48 +135,31 @@ export function useMatrixState({
     );
   };
 
-  // 縦一列一括チェック
-  const handleToggleColumnCheckboxes = (actionKey: string) => {
-    if (!canUpdate) return;
-    const targetActionPermissionIds = permissions
-      .filter((p) => p.action === actionKey)
-      .map((p) => p.id);
-    if (targetActionPermissionIds.length === 0) return;
-
-    const isAllColumnChecked = targetActionPermissionIds.every((id) =>
-      checkedPermissionIds.includes(id),
-    );
-    if (isAllColumnChecked) {
-      setCheckedPermissionIds((prev) =>
-        prev.filter((id) => !targetActionPermissionIds.includes(id)),
-      );
+  // BUG-082: 一括操作は「すべてON」「すべてOFF」を明示して指定する(現在の状態で切り替えない)。
+  // 画面のチェック状態を変えるだけで、保存ボタンを押すまで確定しない
+  const setPermissionIds = (targetIds: string[], enabled: boolean) => {
+    if (!canUpdate || targetIds.length === 0) return;
+    if (enabled) {
+      setCheckedPermissionIds((prev) => Array.from(new Set([...prev, ...targetIds])));
     } else {
-      setCheckedPermissionIds((prev) =>
-        Array.from(new Set([...prev, ...targetActionPermissionIds])),
-      );
+      setCheckedPermissionIds((prev) => prev.filter((id) => !targetIds.includes(id)));
     }
   };
 
-  // 横一行一括チェック（画面単位）
-  const handleToggleRowCheckboxes = (resourceKey: string) => {
-    if (!canUpdate) return;
-    const targetRowPermissionIds = permissions
-      .filter((p) => p.resource === resourceKey)
-      .map((p) => p.id);
-    if (targetRowPermissionIds.length === 0) return;
-
-    const isAllRowChecked = targetRowPermissionIds.every((id) =>
-      checkedPermissionIds.includes(id),
+  // 縦一列一括(アクション単位・すべての画面)
+  const handleSetColumnPermissions = (actionKey: string, enabled: boolean) => {
+    setPermissionIds(
+      permissions.filter((p) => p.action === actionKey).map((p) => p.id),
+      enabled,
     );
-    if (isAllRowChecked) {
-      setCheckedPermissionIds((prev) =>
-        prev.filter((id) => !targetRowPermissionIds.includes(id)),
-      );
-    } else {
-      setCheckedPermissionIds((prev) =>
-        Array.from(new Set([...prev, ...targetRowPermissionIds])),
-      );
-    }
+  };
+
+  // 横一行一括(画面単位・すべてのアクション)
+  const handleSetRowPermissions = (resourceKey: string, enabled: boolean) => {
+    setPermissionIds(
+      permissions.filter((p) => p.resource === resourceKey).map((p) => p.id),
+      enabled,
+    );
   };
 
   // ロールへのマッピング保存
@@ -289,8 +272,8 @@ export function useMatrixState({
     hasCopiedTemplate: !!copiedTemplatePerms,
     setSelectedRoleId,
     handleMatrixCheckChange,
-    handleToggleColumnCheckboxes,
-    handleToggleRowCheckboxes,
+    handleSetColumnPermissions,
+    handleSetRowPermissions,
     handleSaveRoleMapping,
     handleCopyAsTemplate,
     handlePasteTemplate,
