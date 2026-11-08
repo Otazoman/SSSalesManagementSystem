@@ -203,6 +203,8 @@ export interface ReceiptInstructionHeaderRecord {
   instructionDocumentR2Path: string | null;
   createdBy: string;
   createdAt: string;
+  // BUG-071: 発注から作った入荷指示の元の発注(無い場合はnull)
+  orderId?: string | null;
 }
 
 export interface ReceiptInstructionItemRecord {
@@ -212,6 +214,8 @@ export interface ReceiptInstructionItemRecord {
   instructedQuantity: number;
   accountCode: string;
   memo: string | null;
+  // BUG-071: 元の発注明細(無い場合はnull)
+  orderItemId?: string | null;
   // Item6 消込データ引渡し: 指示詳細取得時のみ付与される(品目×ロット単位の消込済み・残数量)
   fulfilledQuantity?: number;
   remainingQuantity?: number;

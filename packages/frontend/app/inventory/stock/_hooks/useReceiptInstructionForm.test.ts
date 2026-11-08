@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { useReceiptInstructionForm } from "./useReceiptInstructionForm";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -34,9 +34,10 @@ afterEach(() => {
 const EMPTY_DEPARTMENTS: never[] = [];
 const PREFILL = {
   partnerId: "SUPP-1",
+  orderId: "PO-1",
   lines: [
-    { itemId: "ITEM-1", itemName: "テスト品目A", instructedQuantity: 5 },
-    { itemId: "ITEM-2", itemName: "テスト品目B", instructedQuantity: 3 },
+    { itemId: "ITEM-1", itemName: "テスト品目A", instructedQuantity: 5, orderItemId: "POI-1" },
+    { itemId: "ITEM-2", itemName: "テスト品目B", instructedQuantity: 3, orderItemId: "POI-2" },
   ],
 };
 const EDIT_TARGET = {
@@ -49,7 +50,8 @@ const EDIT_TARGET = {
 };
 const EDIT_PREFILL = {
   partnerId: "SUPP-PREFILL",
-  lines: [{ itemId: "X", itemName: "X", instructedQuantity: 1 }],
+  orderId: "PO-X",
+  lines: [{ itemId: "X", itemName: "X", instructedQuantity: 1, orderItemId: "POI-X" }],
 };
 
 // Item9: 発注画面の「入荷指示を作成する」・入荷指示画面の「発注から選ぶ」からの新規作成prefill。
@@ -81,5 +83,35 @@ describe("useReceiptInstructionForm: createPrefillによる発注からの自動
 
     await waitFor(() => expect(result.current.partnerId).toBe("SUPP-EDIT"));
     expect(result.current.warehouseId).toBe("WH-EDIT");
+  });
+});
+
+describe("useReceiptInstructionForm: BUG-071 発注から作った入荷指示", () => {
+  it("createPrefillの発注・発注明細をフォームに持ち、作成時に送る", async () => {
+    const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.toString().includes("/api/receipt-instructions/register")) {
+        return new Response(JSON.stringify({ message: "OK", body: init?.body }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { result } = renderHook(() => useReceiptInstructionForm(vi.fn(), null, EMPTY_DEPARTMENTS, PREFILL));
+    await waitFor(() => expect(result.current.orderId).toBe("PO-1"));
+    act(() => {
+      result.current.setWarehouseId("WH-EXT");
+    });
+    await act(async () => {
+      await result.current.submit();
+    });
+
+    const call = fetchSpy.mock.calls.find(([u]) => u.toString().includes("/api/receipt-instructions/register"));
+    expect(call).toBeDefined();
+    const body = JSON.parse(String(call![1]!.body));
+    expect(body.orderId).toBe("PO-1");
+    expect(body.items.map((i: { orderItemId: string }) => i.orderItemId)).toEqual(["POI-1", "POI-2"]);
   });
 });

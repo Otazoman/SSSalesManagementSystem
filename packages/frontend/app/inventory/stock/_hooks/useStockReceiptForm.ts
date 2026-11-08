@@ -21,6 +21,8 @@ export interface ReceiptEditTarget {
   orderId?: string | null;
   // 新規要望(2026-09-23): 倉庫間移動。仕入先の代わりに移動元倉庫が設定されている場合がある
   sourceWarehouseId?: string | null;
+  // BUG-070: 仕入先の復元用(再申請の保存でヘッダーの仕入先が上書きされるため)
+  partnerId?: string | null;
 }
 
 interface ReceiptInstructionOption {
@@ -35,6 +37,8 @@ interface ReceiptInstructionItemOption {
   lotNumber: string;
   instructedQuantity: number;
   accountCode: string;
+  // BUG-071: 発注から作った入荷指示の明細の元の発注明細
+  orderItemId?: string | null;
 }
 
 interface PurchaseOrderOption {
@@ -53,8 +57,8 @@ interface PurchaseOrderItemOption {
 }
 
 // Item6 Phase6-4: 自社倉庫の入庫(/inventory/stock)と外部倉庫の実績入力(/inventory/instructions)の
-// 両方でこのフォームを共有する。warehouseTypeで倉庫選択肢を絞り込み、EXTERNALの場合のみ
-// 仕入先・入荷指示の紐付け(消込)入力を追加で有効にする
+// 両方でこのフォームを共有する。warehouseTypeで倉庫選択肢を絞り込む。
+// 仕入先・入荷指示・発注の紐付け(消込)は倉庫種別を問わず入力できる(仕入先は BUG-070 から)
 export function useStockReceiptForm(
   onSuccess: (message: string) => void,
   editTarget?: ReceiptEditTarget | null,
@@ -89,7 +93,7 @@ export function useStockReceiptForm(
   const [inspectionStatus, setInspectionStatus] = useState("PASSED");
   const [inspectionMemo, setInspectionMemo] = useState("");
   const [lines, setLines] = useState<ReceiptLineDraft[]>([]);
-  // Item6 Phase6-4: 仕入先(任意)。外部倉庫実績入力でのみ使う
+  // Item6 Phase6-4: 仕入先(任意)。BUG-070: 自社倉庫の入庫でも入力できる(発注を選んだ場合は発注の仕入先)
   const [partnerId, setPartnerIdState] = useState("");
   // 新規要望(2026-09-23): 倉庫間移動の移動元倉庫(任意、仕入先と排他)
   const [sourceWarehouseId, setSourceWarehouseIdState] = useState("");
@@ -110,9 +114,18 @@ export function useStockReceiptForm(
   const [orders, setOrders] = useState<PurchaseOrderOption[]>([]);
   // BUG-062: 「発注から選ぶ」の選択肢に仕入先名を添えるための取引先名(倉庫種別を問わず取得する)
   const [partnerNames, setPartnerNames] = useState<Record<string, string>>({});
-  const [orderId, setOrderId] = useState("");
+  const [orderId, setOrderIdState] = useState("");
   const [orderItems, setOrderItems] = useState<PurchaseOrderItemOption[]>([]);
   const [selectedOrderItemId, setSelectedOrderItemId] = useState<string | null>(null);
+  // BUG-070: 発注を選んだら、仕入先を発注の仕入先にする(移動元倉庫は排他のためクリアされる)
+  const setOrderId = useCallback(
+    (value: string) => {
+      setOrderIdState(value);
+      const order = orders.find((o) => o.id === value);
+      if (order?.partnerId) setPartnerId(order.partnerId);
+    },
+    [orders, setPartnerId],
+  );
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -156,10 +169,9 @@ export function useStockReceiptForm(
           .then((list) => setPartnerNames(Object.fromEntries(list.map((p) => [p.id, p.name]))))
           .catch((err) => console.error("取引先名の取得に失敗しました", err));
 
-        if (warehouseType === "EXTERNAL") {
-          const partnerList = await apiFetch<PartnerRecord[]>("/api/partners?status=active");
-          setPartners(partnerList.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH"));
-        }
+        // BUG-070: 仕入先は倉庫種別を問わず選べる(自社倉庫の入庫でも検収・仕入計上の対象にするため)
+        const partnerList = await apiFetch<PartnerRecord[]>("/api/partners?status=active");
+        setPartners(partnerList.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH"));
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "マスタ情報の取得に失敗しました");
       }
@@ -171,9 +183,11 @@ export function useStockReceiptForm(
     if (!editTarget) return;
     if (locations.length === 0 || products.length === 0 || warehouses.length === 0) return;
     void (async () => {
-      setOrderId(editTarget.orderId || "");
+      setOrderIdState(editTarget.orderId || "");
       // 新規要望(2026-09-23): 倉庫間移動の移動元倉庫を復元する
       setSourceWarehouseIdState(editTarget.sourceWarehouseId || "");
+      // BUG-070: 仕入先を復元する
+      setPartnerIdState(editTarget.partnerId || "");
       setLines(
         editTarget.items.map((item) => {
           const location = locations.find((l) => l.id === item.locationId);
@@ -207,15 +221,22 @@ export function useStockReceiptForm(
         return;
       }
       try {
-        const detail = await apiFetch<{ items: ReceiptInstructionItemOption[] }>(
-          `/api/receipt-instructions/${receiptInstructionId}`,
-        );
+        const detail = await apiFetch<{
+          header?: { partnerId: string; orderId?: string | null };
+          items: ReceiptInstructionItemOption[];
+        }>(`/api/receipt-instructions/${receiptInstructionId}`);
         setInstructionItems(detail.items);
+        // BUG-071: 発注から作った入荷指示なら、発注を引き継ぐ(入庫を発注の入荷済数量に数えるため)。
+        // 入荷指示の仕入先は発注の仕入先と同じ(作成時に検証している)
+        if (detail.header?.orderId) {
+          setOrderIdState(detail.header.orderId);
+          setPartnerId(detail.header.partnerId);
+        }
       } catch {
         setInstructionItems([]);
       }
     })();
-  }, [receiptInstructionId]);
+  }, [receiptInstructionId, setPartnerId]);
 
   const applyInstructionItem = useCallback(
     (item: ReceiptInstructionItemOption) => {
@@ -223,6 +244,8 @@ export function useStockReceiptForm(
       if (product) setSelectedProduct(product);
       setLotNumber(item.lotNumber === "NONE" ? "" : item.lotNumber);
       setQuantity(String(item.instructedQuantity));
+      // BUG-071: 発注から作った明細なら、発注明細と紐づける
+      setSelectedOrderItemId(item.orderItemId || null);
     },
     [products],
   );
@@ -282,6 +305,16 @@ export function useStockReceiptForm(
       return;
     }
     const warehouse = warehouses.find((w) => w.id === selectedLocation.warehouseId);
+    // BUG-071: 発注明細との紐づけ。明細のボタンで選んだ発注明細が別の品目なら使わない。
+    // ボタンを使わずに品目を選んだ場合も、選んだ発注に同じ品目の明細が1つだけあれば紐づける
+    const selectedOrderItem = orderItems.find((o) => o.orderItemId === selectedOrderItemId);
+    const sameItemOrderItems = orderItems.filter((o) => o.itemId === selectedProduct.id);
+    const orderItemId =
+      selectedOrderItemId && (!selectedOrderItem || selectedOrderItem.itemId === selectedProduct.id)
+        ? selectedOrderItemId
+        : orderId && sameItemOrderItems.length === 1
+          ? sameItemOrderItems[0].orderItemId
+          : null;
     setLines((prev) => [
       ...prev,
       {
@@ -296,7 +329,7 @@ export function useStockReceiptForm(
         quantity: qty,
         inspectionStatus,
         inspectionMemo,
-        orderItemId: selectedOrderItemId,
+        orderItemId,
       },
     ]);
     setSelectedProduct(null);
@@ -314,6 +347,8 @@ export function useStockReceiptForm(
     inspectionMemo,
     warehouses,
     selectedOrderItemId,
+    orderItems,
+    orderId,
   ]);
 
   const removeLine = useCallback((key: string) => {
@@ -356,7 +391,8 @@ export function useStockReceiptForm(
           // Item9: 発注→入荷の消込連携(倉庫種別を問わず送る、消込対象の入荷指示と同じ方針)
           orderId: orderId || null,
           applicantDepartmentSurrogateId,
-          ...(warehouseType === "EXTERNAL" ? { partnerId: partnerId || null } : {}),
+          // BUG-070: 仕入先は倉庫種別を問わず送る(発注を選んだ場合は発注の仕入先が入っている)
+          partnerId: partnerId || null,
           // 新規要望(2026-09-23): 倉庫間移動の移動元倉庫(仕入先と排他、倉庫種別を問わず送る)
           sourceWarehouseId: sourceWarehouseId || null,
         },
@@ -378,7 +414,6 @@ export function useStockReceiptForm(
     lines,
     onSuccess,
     editTarget,
-    warehouseType,
     partnerId,
     sourceWarehouseId,
     receiptInstructionId,
@@ -386,6 +421,7 @@ export function useStockReceiptForm(
     applicantDepartmentSurrogateId,
     setPartnerId,
     setSourceWarehouseId,
+    setOrderId,
   ]);
 
   return {

@@ -27,6 +27,7 @@ import {
 import {
   ReceiptItemRecord,
   ReceiptHeaderRecord,
+  WarehouseRecord,
   ReceiptInstructionHeaderRecord,
   ReceiptInstructionItemRecord,
 } from "../stock/_types";
@@ -104,10 +105,12 @@ export default function InventoryReceivingPage() {
       if (remaining.length > 0 && order.partnerId) {
         setReceiptInstructionCreatePrefill({
           partnerId: order.partnerId,
+          orderId,
           lines: remaining.map((item) => ({
             itemId: item.itemId as string,
             itemName: item.itemName || (item.itemId as string),
             instructedQuantity: item.remainingQuantity,
+            orderItemId: item.orderItemId,
           })),
         });
       }
@@ -146,6 +149,7 @@ export default function InventoryReceivingPage() {
             setReceiptInstructionEditTarget({
               headerId: urlEditId,
               partnerId: receiptInstructionDetail.header.partnerId,
+              orderId: receiptInstructionDetail.header.orderId,
               warehouseId: receiptInstructionDetail.header.warehouseId,
               instructedReceiveDate:
                 receiptInstructionDetail.header.instructedReceiveDate,
@@ -168,13 +172,27 @@ export default function InventoryReceivingPage() {
 
         if (receiptDetail) {
           if (receiptDetail.header.status === "REMANDED") {
-            setReceiptEditTarget({
+            const target = {
               headerId: urlEditId,
               items: receiptDetail.items,
               orderId: receiptDetail.header.orderId,
               sourceWarehouseId: receiptDetail.header.sourceWarehouseId,
-            });
-            setTab("receipt");
+              partnerId: receiptDetail.header.partnerId,
+            };
+            // BUG-085: 明細の倉庫が外部倉庫なら、入荷実績入力タブで修正する
+            const warehouses = await apiFetch<WarehouseRecord[]>("/api/warehouses").catch(
+              () => [] as WarehouseRecord[],
+            );
+            const warehouseType = warehouses.find(
+              (w) => w.id === receiptDetail.items[0]?.warehouseId,
+            )?.warehouseType;
+            if (warehouseType === "EXTERNAL") {
+              setReceiptActualEditTarget(target);
+              setTab("actual");
+            } else {
+              setReceiptEditTarget(target);
+              setTab("receipt");
+            }
           } else {
             setMessage(
               "この入庫は現在差戻し状態ではないため、修正して再申請できません",
@@ -324,16 +342,26 @@ export default function InventoryReceivingPage() {
       {tab === "history" && (
         <InventoryHistoryPanel
           lockedType="receipt"
-          onEdit={(_type, headerId, items, partnerId, transferWarehouseId) => {
+          onEdit={(_type, headerId, items, partnerId, transferWarehouseId, meta) => {
             // lockedType="receipt"のため、items は常に ReceiptItemRecord[] で渡ってくる
             const receiptItems = items as ReceiptItemRecord[];
             // 新規要望(2026-09-23): 倉庫間移動の移動元倉庫も修正フォームへ引き継ぐ
             const sourceWarehouseId = transferWarehouseId;
-            if (partnerId) {
-              setReceiptActualEditTarget({ headerId, items: receiptItems, sourceWarehouseId });
+            // BUG-084: 発注・仕入先も引き継ぐ(再申請の保存でヘッダーが上書きされるため)
+            const target = {
+              headerId,
+              items: receiptItems,
+              sourceWarehouseId,
+              partnerId,
+              orderId: meta?.orderId ?? null,
+            };
+            // BUG-085: 明細の倉庫の種類で開くタブを分ける(外部倉庫は入荷実績入力タブ)。
+            // 自社倉庫の入庫にも仕入先が入るため(BUG-070)、仕入先の有無では分けない
+            if (meta?.warehouseType === "EXTERNAL") {
+              setReceiptActualEditTarget(target);
               setTab("actual");
             } else {
-              setReceiptEditTarget({ headerId, items: receiptItems, sourceWarehouseId });
+              setReceiptEditTarget(target);
               setTab("receipt");
             }
           }}

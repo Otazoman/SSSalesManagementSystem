@@ -15,6 +15,8 @@ const db = drizzle(env.DB, { schema });
 beforeEach(async () => {
   await db.delete(schema.itemReceiptInstructionItems);
   await db.delete(schema.itemReceiptInstructions);
+  await db.delete(schema.orderItems);
+  await db.delete(schema.orders);
   await db.delete(schema.warehouses);
   await db.delete(schema.items);
   await db.delete(schema.accounts);
@@ -133,6 +135,95 @@ describe("POST / (入荷指示作成)", () => {
 
   it("存在しない取引先を指定すると404を返す", async () => {
     const res = await postInstruction({ ...validBody, partnerId: "NOPE" });
+    expect(res.status).toBe(404);
+  });
+});
+
+// BUG-071: 発注から作った入荷指示は、発注・発注明細とのつながりを記録する
+describe("POST / (発注から作った入荷指示)", () => {
+  beforeEach(async () => {
+    const now = new Date();
+    await db.insert(schema.partners).values({
+      id: "PARTNER2",
+      name: "別の仕入先",
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    for (const [orderId, orderItemId] of [
+      ["PO-1", "POI-1"],
+      ["PO-2", "POI-2"],
+    ]) {
+      await db.insert(schema.orders).values({
+        id: orderId,
+        title: "テスト発注",
+        partnerId: "PARTNER1",
+        orderDate: now,
+        status: "APPROVED",
+        totalAmount: 10000,
+        taxAmount: 0,
+        createdBy: "EMP001",
+        createdAt: now,
+        updatedBy: "EMP001",
+        updatedAt: now,
+      });
+      await db.insert(schema.orderItems).values({
+        id: orderItemId,
+        orderId,
+        itemId: "ITEM1",
+        itemName: "テスト品目",
+        inputType: "MASTER",
+        quantity: 10,
+        unitPrice: 1000,
+        sortOrder: 0,
+      });
+    }
+  });
+
+  const fromOrderBody = {
+    ...validBody,
+    orderId: "PO-1",
+    items: [{ itemId: "ITEM1", instructedQuantity: 10, orderItemId: "POI-1" }],
+  };
+
+  it("発注・発注明細を記録する", async () => {
+    const res = await postInstruction(fromOrderBody);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { headerId: string };
+
+    const header = await db
+      .select()
+      .from(schema.itemReceiptInstructions)
+      .where(eq(schema.itemReceiptInstructions.id, body.headerId));
+    expect(header[0].orderId).toBe("PO-1");
+    const items = await db
+      .select()
+      .from(schema.itemReceiptInstructionItems)
+      .where(eq(schema.itemReceiptInstructionItems.instructionHeaderId, body.headerId));
+    expect(items[0].orderItemId).toBe("POI-1");
+  });
+
+  it("仕入先が発注の仕入先と異なると400を返す", async () => {
+    const res = await postInstruction({ ...fromOrderBody, partnerId: "PARTNER2" });
+    expect(res.status).toBe(400);
+  });
+
+  it("別の発注の明細を指定すると400を返す", async () => {
+    const res = await postInstruction({
+      ...fromOrderBody,
+      items: [{ itemId: "ITEM1", instructedQuantity: 10, orderItemId: "POI-2" }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("発注を指定せずに発注明細を指定すると400を返す", async () => {
+    const res = await postInstruction({ ...fromOrderBody, orderId: undefined });
+    expect(res.status).toBe(400);
+  });
+
+  it("存在しない発注を指定すると404を返す", async () => {
+    const res = await postInstruction({ ...fromOrderBody, orderId: "PO-NOPE" });
     expect(res.status).toBe(404);
   });
 });

@@ -1007,6 +1007,8 @@ export const itemReceiptInstructions = sqliteTable("item_receipt_instructions", 
   memo: text("memo"),
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  // BUG-071: 「発注から選ぶ」で作った入荷指示の元の発注(任意)。入庫へ引き継ぎ、発注の入荷済数量に数える
+  orderId: text("order_id").references(() => orders.id),
 });
 
 export const itemReceiptInstructionItems = sqliteTable("item_receipt_instruction_items", {
@@ -1023,6 +1025,8 @@ export const itemReceiptInstructionItems = sqliteTable("item_receipt_instruction
     .notNull()
     .references(() => accounts.code),
   memo: text("memo"),
+  // BUG-071: 元の発注明細(任意)。この明細から入庫した明細に引き継ぐ
+  orderItemId: text("order_item_id").references(() => orderItems.id),
 });
 
 // Item6 Phase6-4: 出荷指示書PDF(quote_attachmentsと同型、専用R2バケットSHIPMENT_INSTRUCTIONS_BUCKET+

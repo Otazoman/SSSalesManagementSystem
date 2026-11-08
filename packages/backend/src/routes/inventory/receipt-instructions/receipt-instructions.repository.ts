@@ -24,6 +24,8 @@ export type ResolvedReceiptInstructionItem = {
   instructedQuantity: number;
   accountCode: string;
   memo: string | null;
+  // BUG-071: 元の発注明細(任意)
+  orderItemId: string | null;
 };
 
 export class ReceiptInstructionsRepository {
@@ -46,6 +48,7 @@ export class ReceiptInstructionsRepository {
   async createInstruction(
     headerId: string,
     partnerId: string,
+    orderId: string | null,
     warehouseId: string,
     instructedReceiveDate: Date,
     memo: string | null,
@@ -58,6 +61,7 @@ export class ReceiptInstructionsRepository {
       this.db.insert(schema.itemReceiptInstructions).values({
         id: headerId,
         partnerId,
+        orderId,
         warehouseId,
         instructedReceiveDate,
         memo,
@@ -77,6 +81,7 @@ export class ReceiptInstructionsRepository {
           instructedQuantity: item.instructedQuantity,
           accountCode: item.accountCode,
           memo: item.memo,
+          orderItemId: item.orderItemId,
         }),
       );
     });
@@ -87,6 +92,7 @@ export class ReceiptInstructionsRepository {
   async replaceInstructionItems(
     headerId: string,
     partnerId: string,
+    orderId: string | null,
     warehouseId: string,
     instructedReceiveDate: Date,
     memo: string | null,
@@ -96,7 +102,7 @@ export class ReceiptInstructionsRepository {
     const batchQueries: [any, ...any[]] = [
       this.db
         .update(schema.itemReceiptInstructions)
-        .set({ partnerId, warehouseId, instructedReceiveDate, memo, status })
+        .set({ partnerId, orderId, warehouseId, instructedReceiveDate, memo, status })
         .where(eq(schema.itemReceiptInstructions.id, headerId)),
       this.db
         .delete(schema.itemReceiptInstructionItems)
@@ -113,6 +119,7 @@ export class ReceiptInstructionsRepository {
           instructedQuantity: item.instructedQuantity,
           accountCode: item.accountCode,
           memo: item.memo,
+          orderItemId: item.orderItemId,
         }),
       );
     });

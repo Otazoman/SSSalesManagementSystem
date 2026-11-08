@@ -216,6 +216,8 @@ export class ReceiptsService {
     // 入荷指示を指定した場合、発行済み(APPROVED/PARTIALLY_FULFILLED)の指示であることを検証し、
     // partnerId未指定なら指示側の仕入先を自動コピーする(明細内容の一致までは強制しない)
     let effectivePartnerId = input.partnerId || null;
+    // BUG-071: 発注から作った入荷指示から入庫する場合、入庫の発注は入荷指示の発注にする(未指定の場合)
+    let effectiveOrderId = input.orderId || null;
     if (input.receiptInstructionId) {
       const db = createDb(c.env.DB);
       const instructionsRepo = ReceiptInstructionsRepository.fromDb(db);
@@ -231,6 +233,26 @@ export class ReceiptsService {
       if (!effectivePartnerId) {
         effectivePartnerId = instruction.partnerId;
       }
+      if (!effectiveOrderId && instruction.orderId) {
+        effectiveOrderId = instruction.orderId;
+      }
+    }
+
+    // BUG-070: 発注を指定した場合、仕入先は発注の仕入先とする(未指定なら発注からコピーする)。
+    // 仕入先が空のままだと、検収書・入庫の仕入先での検索・仕入計上の対象検収に出てこないため。
+    // 仕入先・移動元倉庫と同じく、発注と移動元倉庫は同時に指定できない(BUG-078)
+    if (effectiveOrderId) {
+      if (input.sourceWarehouseId) {
+        throw new BadRequestError("発注と移動元倉庫は同時に指定できません");
+      }
+      const order = await PurchaseOrderRepository.fromDb(createDb(c.env.DB)).findOrderById(effectiveOrderId);
+      if (!order) throw new NotFoundError(`発注が見つかりません: ${effectiveOrderId}`);
+      if (input.partnerId && input.partnerId !== order.partnerId) {
+        throw new BadRequestError(
+          `入庫の仕入先[${input.partnerId}]が、発注[${effectiveOrderId}]の仕入先[${order.partnerId}]と異なります`,
+        );
+      }
+      effectivePartnerId = order.partnerId;
     }
 
     // Item9: 「発注から選ぶ」で紐付けた明細は、発注数量の残数量を超えていないか検証する
@@ -287,16 +309,21 @@ export class ReceiptsService {
       resolvedItems,
       warehouseType: warehouseType || "INTERNAL",
       effectivePartnerId,
+      effectiveOrderId,
     };
   }
 
   async createReceipt(c: Context<{ Bindings: Env }>, input: CreateReceiptInput) {
     const db = createDb(c.env.DB);
-    const { resolvedItems, warehouseType, effectivePartnerId } = await this.validateAndResolveItems(
+    const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(
       c,
       input,
     );
-    const persistedInput: CreateReceiptInput = { ...input, partnerId: effectivePartnerId };
+    const persistedInput: CreateReceiptInput = {
+      ...input,
+      partnerId: effectivePartnerId,
+      orderId: effectiveOrderId,
+    };
 
     const operatorId = await resolveOperatorEmployeeNumber(c, db);
     const headerId = await resolveConfiguredDocumentId(
@@ -413,11 +440,15 @@ export class ReceiptsService {
       throw new BadRequestError("差戻し状態の入庫のみ修正して再申請できます");
     }
 
-    const { resolvedItems, warehouseType, effectivePartnerId } = await this.validateAndResolveItems(
+    const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(
       c,
       input,
     );
-    const persistedInput: CreateReceiptInput = { ...input, partnerId: effectivePartnerId };
+    const persistedInput: CreateReceiptInput = {
+      ...input,
+      partnerId: effectivePartnerId,
+      orderId: effectiveOrderId,
+    };
     const operatorId = await resolveOperatorEmployeeNumber(c, db);
     const now = new Date();
 

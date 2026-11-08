@@ -52,11 +52,13 @@ erDiagram
     text instruction_header_id FK
     text item_id FK
     text account_code FK
+    text order_item_id FK
   }
   item_receipt_instructions {
     text id PK
     text partner_id FK
     text approval_flow_id FK
+    text order_id FK
   }
   item_receipt_items {
     text id PK
@@ -182,8 +184,10 @@ erDiagram
   item_receipt_instructions |o--o{ item_receipt_instruction_items : "instruction_header_id"
   items ||--o{ item_receipt_instruction_items : "item_id"
   accounts ||--o{ item_receipt_instruction_items : "account_code"
+  order_items |o--o{ item_receipt_instruction_items : "order_item_id"
   partners ||--o{ item_receipt_instructions : "partner_id"
   approval_flows |o--o{ item_receipt_instructions : "approval_flow_id"
+  orders |o--o{ item_receipt_instructions : "order_id"
   item_receipt_headers |o--o{ item_receipt_items : "receipt_header_id"
   order_items |o--o{ item_receipt_items : "order_item_id"
   items ||--o{ item_receipt_items : "item_id"
@@ -291,6 +295,7 @@ erDiagram
 | `instructed_quantity` | 数値 | ○ |  |  | 指示数量 |
 | `account_code` | 文字列 | ○ |  | [accounts](master.md#accounts).code | 勘定科目 |
 | `memo` | 文字列 |  |  |  | 備考 |
+| `order_item_id` | 文字列 |  |  | [order_items](purchase.md#order_items).id | 発注明細 |
 
 <a id="item_receipt_instructions"></a>
 
@@ -313,6 +318,7 @@ erDiagram
 | `memo` | 文字列 |  |  |  | 備考 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `order_id` | 文字列 |  |  | [orders](purchase.md#orders).id | 発注 |
 
 <a id="item_receipt_items"></a>
 

@@ -222,6 +222,7 @@ export function ReceiptInstructionPanel({
       setEditTarget({
         headerId: id,
         partnerId: detail.header.partnerId,
+        orderId: detail.header.orderId,
         warehouseId: detail.header.warehouseId,
         instructedReceiveDate: detail.header.instructedReceiveDate,
         memo: detail.header.memo,
@@ -265,7 +266,7 @@ export function ReceiptInstructionPanel({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {!editTarget && (
             <div>
-              <label className="text-sm text-slate-600 block mb-1">
+              <label className="text-sm text-slate-700 block mb-1">
                 管理番号(任意・未入力なら自動採番)
               </label>
               <input
@@ -278,11 +279,15 @@ export function ReceiptInstructionPanel({
             </div>
           )}
           <div>
-            <label className="text-sm text-slate-600 block mb-1">仕入先</label>
+            <label className="text-sm text-slate-700 block mb-1">
+              {/* BUG-071: 発注から作った入荷指示は、仕入先を発注の仕入先に固定する */}
+              {form.orderId ? `仕入先(発注 ${form.orderId} の仕入先)` : "仕入先"}
+            </label>
             <select
               value={form.partnerId}
               onChange={(e) => form.setPartnerId(e.target.value)}
-              className={`${inputClass} cursor-pointer`}
+              disabled={!!form.orderId}
+              className={`${inputClass} cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
             >
               <option value="">選択してください</option>
               {form.partners.map((p) => (
@@ -293,7 +298,7 @@ export function ReceiptInstructionPanel({
             </select>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               外部倉庫
             </label>
             <select
@@ -310,7 +315,7 @@ export function ReceiptInstructionPanel({
             </select>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               入荷予定日
             </label>
             <input
@@ -323,7 +328,7 @@ export function ReceiptInstructionPanel({
         </div>
 
         <div>
-          <label className="text-sm text-slate-600 block mb-1">
+          <label className="text-sm text-slate-700 block mb-1">
             備考(指示書全体・任意)
           </label>
           <textarea
@@ -349,7 +354,7 @@ export function ReceiptInstructionPanel({
             </p>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               ロット番号(任意)
             </label>
             <input
@@ -360,7 +365,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">数量</label>
+            <label className="text-sm text-slate-700 block mb-1">数量</label>
             <input
               type="number"
               value={form.quantity}
@@ -369,7 +374,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               備考(明細・任意)
             </label>
             <input
@@ -469,7 +474,7 @@ export function ReceiptInstructionPanel({
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               日付(From)
             </label>
             <input
@@ -480,7 +485,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               日付(To)
             </label>
             <input
@@ -491,7 +496,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">作成者</label>
+            <label className="text-sm text-slate-700 block mb-1">作成者</label>
             <select
               value={history.createdBy}
               onChange={(e) => history.setCreatedBy(e.target.value)}
@@ -555,7 +560,7 @@ export function ReceiptInstructionPanel({
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
-              className="text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer underline"
+              className="text-xs font-bold text-slate-700 hover:text-slate-900 cursor-pointer underline"
             >
               選択解除
             </button>
@@ -692,11 +697,11 @@ export function ReceiptInstructionPanel({
                     documentId={i.id}
                   />
                   {expandLoading ? (
-                    <p className="text-xs text-slate-500">読み込み中...</p>
+                    <p className="text-xs text-slate-600">読み込み中...</p>
                   ) : (
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-slate-500">
+                        <tr className="text-slate-700">
                           <th className="text-left py-1 font-bold">品目</th>
                           <th className="text-left py-1 font-bold">ロット</th>
                           <th className="text-right py-1 font-bold">

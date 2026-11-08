@@ -1,0 +1,2 @@
+ALTER TABLE `item_receipt_instruction_items` ADD `order_item_id` text REFERENCES order_items(id);--> statement-breakpoint
+ALTER TABLE `item_receipt_instructions` ADD `order_id` text REFERENCES orders(id);

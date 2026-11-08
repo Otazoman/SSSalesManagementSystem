@@ -192,20 +192,28 @@ export function OrderPickerModal({
         <>
           <div className="flex-1 overflow-y-auto">
             <div className="flex justify-between items-center mb-2">
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-600">
                 数量(初期値は残数量)を確認・調整してから反映してください。
               </p>
               <button
                 type="button"
                 onClick={() => setStep("PICK_ORDER")}
-                className="text-[11px] font-bold text-slate-500 hover:text-slate-700 shrink-0 ml-2"
+                className="text-[11px] font-bold text-slate-700 hover:text-slate-900 shrink-0 ml-2"
               >
                 ← 発注を選び直す
               </button>
             </div>
+            {/* BUG-071: 入荷済数量が0で計上できない明細がある場合、理由と対処を示す */}
+            {orderProgress.some((p) => p.basis === "RECEIVED" && p.basisQuantity <= 0) && (
+              <p className="mb-2 text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded p-2">
+                入荷済数量が0の明細は計上できません(会社設定「仕入は入荷実績が必要」)。入荷済数量に数えるのは、
+                この発注と紐づいた承認済みの入庫だけです。入荷で「発注から選ぶ」、または発注から作った入荷指示を選んで入庫し、
+                承認機能を使う場合は承認されてから計上してください。
+              </p>
+            )}
             {orderProgress.length > 0 && (
               <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 border-b font-bold text-slate-500 sticky top-0">
+                <thead className="bg-slate-50 border-b font-bold text-slate-700 sticky top-0">
                   <tr>
                     <th className="p-2">品目</th>
                     <th className="p-2 text-right">
@@ -242,7 +250,7 @@ export function OrderPickerModal({
                           min={0}
                           max={p.remainingQuantity}
                           disabled={p.remainingQuantity <= 0}
-                          className="w-24 border border-slate-300 p-1.5 text-base sm:text-xs rounded bg-slate-50 text-slate-900 text-right font-mono disabled:bg-slate-100 disabled:text-slate-500"
+                          className="w-24 border border-slate-300 p-1.5 text-base sm:text-xs rounded bg-white text-slate-900 text-right font-mono disabled:bg-slate-100 disabled:text-slate-500"
                           value={quantities[p.sourceOrderItemId] ?? 0}
                           onChange={(e) =>
                             setQuantities((prev) => ({

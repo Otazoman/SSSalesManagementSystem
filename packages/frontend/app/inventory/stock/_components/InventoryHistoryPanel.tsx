@@ -62,6 +62,9 @@ interface InventoryHistoryPanelProps {
     partnerId: string | null,
     // 新規要望(2026-09-23): 倉庫間移動の移動元(入庫)/移動先(出庫)倉庫。未設定の場合はnull
     transferWarehouseId: string | null,
+    // BUG-084: 入庫の発注(再申請で発注とのつながりを保つため)。BUG-085: 明細の倉庫の種類
+    // (自社倉庫の入庫か、外部倉庫の入荷実績かで、修正に使うタブを分けるため)。出庫は orderId が常にnull
+    meta?: { orderId: string | null; warehouseType: string | null },
   ) => void;
   // 業務機能別ページ(入荷/出荷)から使う場合に指定する。指定時は入庫/出庫の切替ボタンを隠し、
   // 該当タイプに固定表示する(未指定時は従来通り両方を切替表示、既存呼び出し元は無変更)
@@ -537,10 +540,21 @@ export function InventoryHistoryPanel({
                               history.historyType,
                               h.id,
                               detail.items,
+                              // BUG-070: 入庫も仕入先を渡す(再申請の保存で仕入先が消えないように)
                               history.historyType === "shipment"
                                 ? (h as ShipmentHeaderRecord).partnerId
-                                : null,
+                                : (h as ReceiptHeaderRecord).partnerId,
                               transferWarehouseId,
+                              {
+                                orderId:
+                                  history.historyType === "receipt"
+                                    ? (h as ReceiptHeaderRecord).orderId
+                                    : null,
+                                warehouseType:
+                                  history.warehouses.find(
+                                    (w) => w.id === detail.items[0]?.warehouseId,
+                                  )?.warehouseType ?? null,
+                              },
                             );
                           }}
                         >

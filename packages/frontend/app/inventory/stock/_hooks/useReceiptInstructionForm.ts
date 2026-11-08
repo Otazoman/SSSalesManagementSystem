@@ -18,11 +18,15 @@ export interface ReceiptInstructionLineDraft {
   lotNumber: string;
   instructedQuantity: number;
   memo: string;
+  // BUG-071: 発注から作った明細の元の発注明細
+  orderItemId?: string | null;
 }
 
 export interface ReceiptInstructionEditTarget {
   headerId: string;
   partnerId: string;
+  // BUG-071: 発注から作った入荷指示の元の発注
+  orderId?: string | null;
   warehouseId: string;
   instructedReceiveDate: string;
   memo: string | null;
@@ -34,10 +38,13 @@ export interface ReceiptInstructionEditTarget {
 // 倉庫引当(reservation)が無いため、warehouseIdは含めずユーザーに選択させる
 export interface ReceiptInstructionCreatePrefill {
   partnerId: string;
+  // BUG-071: 元の発注・発注明細(入庫へ引き継ぎ、発注の入荷済数量に数えるため)
+  orderId: string;
   lines: Array<{
     itemId: string;
     itemName: string;
     instructedQuantity: number;
+    orderItemId: string;
   }>;
 }
 
@@ -67,6 +74,8 @@ export function useReceiptInstructionForm(
   // Item6 Phase6-4: 見積書と同様、管理番号を任意入力できるようにする(空欄なら自動採番)
   const [customId, setCustomId] = useState("");
   const [partnerId, setPartnerId] = useState("");
+  // BUG-071: 発注から作った場合の元の発注(発注から選ぶ・修正して再申請で入る。画面からは変更しない)
+  const [orderId, setOrderId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [instructedReceiveDate, setInstructedReceiveDate] = useState(
     todayJst(),
@@ -103,6 +112,7 @@ export function useReceiptInstructionForm(
     if (products.length === 0) return;
     void (async () => {
       setPartnerId(editTarget.partnerId);
+      setOrderId(editTarget.orderId || "");
       setWarehouseId(editTarget.warehouseId);
       setInstructedReceiveDate(editTarget.instructedReceiveDate.slice(0, 10));
       setMemo(editTarget.memo || "");
@@ -116,6 +126,7 @@ export function useReceiptInstructionForm(
             lotNumber: item.lotNumber,
             instructedQuantity: item.instructedQuantity,
             memo: item.memo || "",
+            orderItemId: item.orderItemId || null,
           };
         }),
       );
@@ -128,6 +139,7 @@ export function useReceiptInstructionForm(
     if (editTarget || !createPrefill) return;
     void (async () => {
       setPartnerId(createPrefill.partnerId);
+      setOrderId(createPrefill.orderId);
       setLines(
         createPrefill.lines.map((line) => ({
           key: crypto.randomUUID(),
@@ -136,6 +148,7 @@ export function useReceiptInstructionForm(
           lotNumber: "NONE",
           instructedQuantity: line.instructedQuantity,
           memo: "",
+          orderItemId: line.orderItemId,
         })),
       );
     })();
@@ -184,6 +197,7 @@ export function useReceiptInstructionForm(
   const resetForm = () => {
     setCustomId("");
     setPartnerId("");
+    setOrderId("");
     setWarehouseId("");
     setInstructedReceiveDate(todayJst());
     setMemo("");
@@ -217,6 +231,8 @@ export function useReceiptInstructionForm(
         json: {
           ...(!editTarget && customId ? { id: customId } : {}),
           partnerId,
+          // BUG-071: 発注から作った場合は、発注・発注明細とのつながりを送る
+          orderId: orderId || null,
           warehouseId,
           instructedReceiveDate,
           memo: memo || undefined,
@@ -225,6 +241,7 @@ export function useReceiptInstructionForm(
             lotNumber: l.lotNumber,
             instructedQuantity: l.instructedQuantity,
             memo: l.memo || undefined,
+            orderItemId: l.orderItemId || null,
           })),
           applicantDepartmentSurrogateId,
         },
@@ -252,6 +269,7 @@ export function useReceiptInstructionForm(
     setCustomId,
     partnerId,
     setPartnerId,
+    orderId,
     warehouseId,
     setWarehouseId,
     instructedReceiveDate,

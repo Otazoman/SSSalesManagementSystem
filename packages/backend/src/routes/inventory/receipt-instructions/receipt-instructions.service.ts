@@ -14,6 +14,7 @@ import { ProductsRepository } from "../../master/products/products.repository";
 import { WarehousesRepository } from "../../master/warehouses/warehouses.repository";
 import { AccountsRepository } from "../../master/accounts/accounts.repository";
 import { PartnersRepository } from "../../master/partners/partners.repository";
+import { PurchaseOrderRepository } from "../../purchase/orders/purchase-order.repository";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { resolveOperatorEmployeeNumber } from "../../../platform/repository/fallback-operator";
@@ -165,10 +166,36 @@ export class ReceiptInstructionsService {
       throw new BadRequestError("入荷指示は外部倉庫向けのみ作成できます");
     }
 
+    // BUG-071: 発注から作った入荷指示は、発注・発注明細とのつながりを記録する(入庫へ引き継ぎ、
+    // 発注の入荷済数量に数えるため)。仕入先は発注の仕入先と一致させ、明細は同じ発注・同じ品目の発注明細に限る
+    const orderRepo = PurchaseOrderRepository.fromDb(createDb(c.env.DB));
+    if (input.orderId) {
+      const order = await orderRepo.findOrderById(input.orderId);
+      if (!order) throw new NotFoundError(`発注が見つかりません: ${input.orderId}`);
+      if (order.partnerId !== input.partnerId) {
+        throw new BadRequestError(
+          `入荷指示の仕入先[${input.partnerId}]が、発注[${input.orderId}]の仕入先[${order.partnerId}]と異なります`,
+        );
+      }
+    }
+
     const resolvedItems: ResolvedReceiptInstructionItem[] = [];
     for (const item of input.items) {
       const product = await productsRepo.findProductById(item.itemId);
       if (!product) throw new NotFoundError(`品目が見つかりません: ${item.itemId}`);
+
+      if (item.orderItemId) {
+        if (!input.orderId) {
+          throw new BadRequestError("発注明細を指定する場合は、発注も指定してください");
+        }
+        const orderItem = await orderRepo.findOrderItemById(item.orderItemId);
+        if (!orderItem) throw new NotFoundError(`発注明細が見つかりません: ${item.orderItemId}`);
+        if (orderItem.orderId !== input.orderId || orderItem.itemId !== item.itemId) {
+          throw new BadRequestError(
+            `発注明細[${item.orderItemId}]は、発注[${input.orderId}]の品目[${item.itemId}]の明細ではありません`,
+          );
+        }
+      }
 
       const accountCode = item.accountCode || product.accountCode;
       if (!accountCode) {
@@ -186,6 +213,7 @@ export class ReceiptInstructionsService {
         instructedQuantity: item.instructedQuantity,
         accountCode,
         memo: item.memo || null,
+        orderItemId: item.orderItemId || null,
       });
     }
     return resolvedItems;
@@ -207,6 +235,7 @@ export class ReceiptInstructionsService {
     await this.repo.createInstruction(
       headerId,
       input.partnerId,
+      input.orderId || null,
       input.warehouseId,
       new Date(input.instructedReceiveDate),
       input.memo || null,
@@ -297,6 +326,7 @@ export class ReceiptInstructionsService {
       await this.repo.replaceInstructionItems(
         headerId,
         input.partnerId,
+        input.orderId || null,
         input.warehouseId,
         new Date(input.instructedReceiveDate),
         input.memo || null,
@@ -320,6 +350,7 @@ export class ReceiptInstructionsService {
     await this.repo.replaceInstructionItems(
       headerId,
       input.partnerId,
+      input.orderId || null,
       input.warehouseId,
       new Date(input.instructedReceiveDate),
       input.memo || null,
