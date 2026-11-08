@@ -34,7 +34,7 @@ export function SalesInvoiceFormHeader({
             onClick={onOpenMailModal}
             title={
               status !== "APPROVED"
-                ? "ステータスが承認済みの場合のみメール送信が可能です"
+                ? "ステータスが承認済み・確定の場合のみメール送信が可能です"
                 : ""
             }
             className={`font-bold text-xs px-3 py-2 rounded-lg shadow transition-colors ${
@@ -54,7 +54,7 @@ export function SalesInvoiceFormHeader({
             onClick={() => onGeneratePDF(invoiceId)}
             title={
               status !== "APPROVED"
-                ? "ステータスが承認済みの場合のみPDF発行が可能です"
+                ? "ステータスが承認済み・確定の場合のみPDF発行が可能です"
                 : ""
             }
             className={`font-bold text-xs px-4 py-2 rounded-lg shadow transition-colors ${

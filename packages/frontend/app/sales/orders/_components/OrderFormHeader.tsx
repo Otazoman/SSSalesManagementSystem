@@ -32,7 +32,7 @@ export function OrderFormHeader({
               type="button"
               disabled={status !== "APPROVED" || isMailSending}
               onClick={onOpenMailModal}
-              title={status !== "APPROVED" ? "ステータスが承認済みの場合のみメール送信が可能です" : ""}
+              title={status !== "APPROVED" ? "ステータスが承認済み・確定の場合のみメール送信が可能です" : ""}
               className={`font-bold text-xs px-3 py-2 rounded-lg shadow transition-colors ${
                 status === "APPROVED"
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
@@ -46,7 +46,7 @@ export function OrderFormHeader({
               type="button"
               disabled={status !== "APPROVED"}
               onClick={() => onGeneratePDF(orderId)}
-              title={status !== "APPROVED" ? "ステータスが承認済みの場合のみPDF発行が可能です" : ""}
+              title={status !== "APPROVED" ? "ステータスが承認済み・確定の場合のみPDF発行が可能です" : ""}
               className={`font-bold text-xs px-4 py-2 rounded-lg shadow transition-colors ${
                 status === "APPROVED"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"

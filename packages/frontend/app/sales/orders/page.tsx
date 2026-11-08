@@ -239,7 +239,7 @@ export default function SalesOrdersPage() {
                   { value: "all", label: "🌐 すべて" },
                   { value: "DRAFT", label: "⚪ 下書き" },
                   { value: "PENDING_APPROVAL", label: "🟡 承認申請中" },
-                  { value: "APPROVED", label: "🟢 承認済み" },
+                  { value: "APPROVED", label: "🟢 承認済み・確定" },
                   { value: "PENDING_DELETION", label: "🔴 削除申請中" },
                 ]}
                 value={filterStatus}

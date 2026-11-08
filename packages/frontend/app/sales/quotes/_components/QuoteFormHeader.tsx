@@ -61,7 +61,7 @@ export function QuoteFormHeader({
               onClick={onOpenMailModal}
               title={
                 !isApproved
-                  ? "ステータスが承認済みの場合のみメール送信が可能です"
+                  ? "ステータスが承認済み・確定の場合のみメール送信が可能です"
                   : ""
               }
             >
@@ -76,7 +76,7 @@ export function QuoteFormHeader({
               onClick={() => onGeneratePDF(quoteId)}
               title={
                 !isApproved
-                  ? "ステータスが承認済みの場合のみPDF発行が可能です"
+                  ? "ステータスが承認済み・確定の場合のみPDF発行が可能です"
                   : ""
               }
             >

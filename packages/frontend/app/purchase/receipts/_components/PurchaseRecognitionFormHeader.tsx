@@ -29,7 +29,7 @@ export function PurchaseRecognitionFormHeader({
             onClick={() => onGeneratePDF(recognitionId)}
             title={
               status !== "APPROVED"
-                ? "ステータスが承認済みの場合のみPDF発行が可能です"
+                ? "ステータスが承認済み・確定の場合のみPDF発行が可能です"
                 : ""
             }
             className={`font-bold text-xs px-4 py-2 rounded-lg shadow transition-colors ${
