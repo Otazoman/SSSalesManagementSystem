@@ -259,3 +259,26 @@ describe("D1編集: 商談DB(2026-09-21 閲覧専用から編集・削除可へ�
     expect(dbs.find((d) => d.key === "journal")?.writable).toBe(false);
   });
 });
+
+// REQ-001: DB ごとの大きさと総容量
+describe("GET /usage", () => {
+  it("DB ごとの大きさ(バイト)を返し、OTP DB も大きさだけ含める。総容量は各 DB の合計(共有している DB は1回だけ)", async () => {
+    const body = (await (await call("/usage")).json()) as {
+      databases: { key: string; sizeBytes: number | null; sharedWith: string[] }[];
+      totalBytes: number;
+    };
+    const keys = body.databases.map((d) => d.key);
+    expect(keys).toEqual(expect.arrayContaining(["main", "otp"]));
+    for (const d of body.databases) expect(d.sizeBytes).toBeGreaterThan(0);
+    // 共有しているもの(sharedWith を持つもの)は、同じ大きさを2回数えない
+    const counted = new Set<string>();
+    let expected = 0;
+    for (const d of body.databases) {
+      if (counted.has(d.key)) continue;
+      expected += d.sizeBytes ?? 0;
+      counted.add(d.key);
+      d.sharedWith.forEach((k) => counted.add(k));
+    }
+    expect(body.totalBytes).toBe(expected);
+  });
+});

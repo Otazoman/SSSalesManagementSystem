@@ -20,6 +20,37 @@ export class R2ExplorerService {
     return R2_BUCKET_REGISTRY.map((b) => ({ key: b.key, label: b.label }));
   }
 
+  // REQ-001: バケットごとのファイル数・合計の大きさ(バイト)と総容量。R2 には使用量を返す API が無いため、
+  // 全ファイルを一覧して合計する(1回の一覧で最大1,000件。ファイルが多いと時間がかかるため、画面のボタンを押した時だけ呼ぶ)
+  async getUsage(env: Env) {
+    const buckets: { key: string; label: string; objectCount: number; totalBytes: number; error?: string }[] = [];
+    for (const descriptor of R2_BUCKET_REGISTRY) {
+      const bucket = descriptor.getBucket(env);
+      if (!bucket) continue;
+      let objectCount = 0;
+      let totalBytes = 0;
+      try {
+        let cursor: string | undefined;
+        do {
+          const page = await bucket.list({ limit: 1000, cursor });
+          for (const object of page.objects) {
+            objectCount++;
+            totalBytes += object.size;
+          }
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        buckets.push({ key: descriptor.key, label: descriptor.label, objectCount, totalBytes });
+      } catch (err) {
+        buckets.push({ key: descriptor.key, label: descriptor.label, objectCount, totalBytes, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return {
+      buckets,
+      objectCount: buckets.reduce((sum, b) => sum + b.objectCount, 0),
+      totalBytes: buckets.reduce((sum, b) => sum + b.totalBytes, 0),
+    };
+  }
+
   async listObjects(c: Context<{ Bindings: Env }>, query: ListR2ObjectsQuery) {
     const bucket = resolveBucket(c.env, query.bucket);
     if (!bucket) throw new BadRequestError(`未知のバケットです: ${query.bucket}`);

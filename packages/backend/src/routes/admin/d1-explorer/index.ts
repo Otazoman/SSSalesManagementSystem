@@ -22,6 +22,17 @@ const service = new D1ExplorerService();
 // ==========================================
 // Item13-b: D1参照・編集。DDL(テーブル・列の追加削除)のエンドポイントは意図的に持たない
 // ==========================================
+// REQ-001: DB ごとの大きさと総容量
+d1ExplorerRouter.get(
+  "/usage",
+  describeApiRoute({
+    summary: "D1参照: DBごとの使用容量と総容量",
+    tags: ["d1-explorer"],
+    responses: { 200: { description: "DBごとの大きさ(バイト)と総容量(共有しているDBは1回だけ数える)" } },
+  }),
+  async (c) => c.json(await service.getUsage(c.env)),
+);
+
 d1ExplorerRouter.get(
   "/databases",
   describeApiRoute({

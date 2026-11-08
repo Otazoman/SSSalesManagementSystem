@@ -7,6 +7,15 @@ import { AccessDeniedInline } from "../../_shared/ui/AccessDeniedInline";
 import { MessageBanner } from "../../_shared/ui/MessageBanner";
 import { useR2Explorer } from "./_hooks/useR2Explorer";
 import { R2ExplorerItem } from "./_types";
+import { StorageUsagePanel } from "../../_shared/ui/StorageUsagePanel";
+import { useStorageUsage } from "../../_shared/hooks/use-storage-usage";
+
+// REQ-001: バケットごとのファイル数・大きさと総容量(/api/r2-explorer/usage)
+interface R2Usage {
+  buckets: { key: string; label: string; objectCount: number; totalBytes: number; error?: string }[];
+  objectCount: number;
+  totalBytes: number;
+}
 
 function formatBytes(bytes?: number): string {
   if (bytes == null) return "-";
@@ -47,6 +56,8 @@ export default function R2ExplorerPage() {
     handleDownload,
     handleUpload,
   } = useR2Explorer();
+  // R2 は全ファイルを一覧して数えるため、ボタンを押した時だけ計算する
+  const usage = useStorageUsage<R2Usage>("/api/r2-explorer/usage", { autoLoad: false, enabled: canRead });
 
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -91,6 +102,25 @@ export default function R2ExplorerPage() {
       </div>
 
       <MessageBanner message={message} error={error} />
+
+      <StorageUsagePanel
+        title="📊 使用容量"
+        description="バケットごとのファイル数・大きさと総容量です。全ファイルを数えるため、ファイルが多いと時間がかかります。"
+        rows={
+          usage.data?.buckets.map((b) => ({
+            key: b.key,
+            label: b.label,
+            sizeBytes: b.totalBytes,
+            error: b.error,
+            note: `${b.objectCount.toLocaleString()} ファイル`,
+          })) ?? null
+        }
+        totalBytes={usage.data?.totalBytes ?? null}
+        totalNote={usage.data ? `${usage.data.objectCount.toLocaleString()} ファイル` : undefined}
+        loading={usage.loading}
+        error={usage.error}
+        onLoad={() => void usage.load()}
+      />
 
       <div className="flex flex-wrap gap-2">
         {buckets.map((b) => (

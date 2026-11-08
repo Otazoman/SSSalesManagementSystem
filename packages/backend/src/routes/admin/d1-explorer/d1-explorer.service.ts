@@ -29,7 +29,50 @@ type RowKey = Record<string, string | number>;
 // 「主キー指定の1行の更新・削除」を追加(DDLは引き続き行わない)。
 // ユーザー入力のSQLは一切受け付けず、固定形のSELECT/PRAGMA/UPDATE/DELETEのみを発行する。
 // テーブル名・列名は必ずスキーマ上に実在する名前と照合してから識別子としてクオートする(SQLインジェクション防止)
+// REQ-001: 容量の表示の対象。閲覧できる DB に加え、OTP 用 DB も大きさだけ表示する(中身は閲覧させない)
+const D1_USAGE_TARGETS: { key: string; label: string; binding: keyof Env }[] = [
+  ...D1_DATABASE_REGISTRY.map((d) => ({ key: d.key, label: d.label, binding: d.binding as keyof Env })),
+  { key: "otp", label: "OTP DB(確認コード。中身は閲覧不可)", binding: "DB_OTP" },
+];
+
 export class D1ExplorerService {
+  // REQ-001: DB ごとの大きさ(バイト)と総容量。大きさは D1 がクエリの結果に返す size_after を使う。
+  // Staging のように複数のバインディングが1つのデータベースを共有している場合は、大きさとテーブルの一覧が同じものを
+  // 同じデータベースとみなし、総容量では1回だけ数える(sharedWith に同じデータベースのキーを返す)
+  async getUsage(env: Env) {
+    const rows: { key: string; label: string; sizeBytes: number | null; signature: string | null; error?: string }[] = [];
+    for (const target of D1_USAGE_TARGETS) {
+      const db = env[target.binding] as D1Database | undefined;
+      if (!db) continue;
+      try {
+        const result = await db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+          .all<{ name: string }>();
+        const sizeBytes = Number(result.meta?.size_after ?? NaN);
+        const tables = result.results.map((r) => r.name).join(",");
+        rows.push({
+          key: target.key,
+          label: target.label,
+          sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : null,
+          signature: Number.isFinite(sizeBytes) ? `${sizeBytes}|${tables}` : null,
+        });
+      } catch (err) {
+        rows.push({ key: target.key, label: target.label, sizeBytes: null, signature: null, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    const seen = new Set<string>();
+    let totalBytes = 0;
+    const databases = rows.map(({ signature, ...row }) => {
+      const sharedWith = signature ? rows.filter((r) => r.signature === signature && r.key !== row.key).map((r) => r.key) : [];
+      if (signature && !seen.has(signature)) {
+        seen.add(signature);
+        totalBytes += row.sizeBytes ?? 0;
+      }
+      return { ...row, sharedWith };
+    });
+    return { databases, totalBytes };
+  }
+
   listDatabases(env: Env) {
     return D1_DATABASE_REGISTRY.filter((d) => !!env[d.binding]).map((d) => ({
       key: d.key,
