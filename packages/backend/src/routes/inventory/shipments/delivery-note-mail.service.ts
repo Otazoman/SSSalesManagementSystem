@@ -78,19 +78,23 @@ export class DeliveryNoteMailService {
           status: "FAILED",
           error: header.partnerId ? "先に PDF を発行してください" : "得意先が設定されていない出庫には、納品書を作成できません",
         });
-        await writeMailDeliveryLog({
-          dbLogBinding: c.env.DB_LOG,
-          category: "delivery_note",
-          documentId: header.id,
-          smtpFrom: "",
-          recipientTo: "⚠️ 送信前エラー(納品書PDF未生成)",
-          recipientCc: mailTemplate.ccAddress,
-          subject: `【配信拒否】${mailTemplate.subjectTemplate}`,
-          attachedR2Path: null,
-          status: "FAILED",
-          errorMessage: "得意先未設定、または納品書PDFの自動生成に失敗した出庫のため送信できません。",
-          performedById: header.createdBy || fallbackOperatorId || "UNKNOWN",
-        });
+        // PERF-07 B-6: PDF の未発行はメールの失敗ではない(画面がブラウザで発行して送り直す)ため、メールの記録は残さない。
+        // 得意先が設定されていない出庫は送れないため、今までどおり記録を残す
+        if (!header.partnerId) {
+          await writeMailDeliveryLog({
+            dbLogBinding: c.env.DB_LOG,
+            category: "delivery_note",
+            documentId: header.id,
+            smtpFrom: "",
+            recipientTo: "⚠️ 送信前エラー(得意先未設定)",
+            recipientCc: mailTemplate.ccAddress,
+            subject: `【配信拒否】${mailTemplate.subjectTemplate}`,
+            attachedR2Path: null,
+            status: "FAILED",
+            errorMessage: "得意先が設定されていない出庫のため送信できません。",
+            performedById: header.createdBy || fallbackOperatorId || "UNKNOWN",
+          });
+        }
         continue;
       }
 

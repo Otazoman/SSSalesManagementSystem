@@ -206,7 +206,8 @@ describe("納品書メール送信(方式A): 一括送信", () => {
     expect(logs[0].recipientTo).toContain(CONTACT_EMAIL_2);
   });
 
-  it("納品書PDF未生成・連絡先未登録の出庫は失敗として結果に記録され、配信ログにもFAILEDが残る", async () => {
+  // PERF-07 B-6: PDF の未発行は、画面がブラウザで発行して送り直すため、メールの失敗としては記録しない(結果には理由を返す)
+  it("納品書PDF未発行・連絡先未登録の出庫は失敗として結果に記録される。配信ログの FAILED は連絡先未登録の方だけに残る", async () => {
     const res = await postJson("/bulk-send-email", {
       shipmentHeaderIds: [HEADER_NO_PDF_ID, HEADER_NO_CONTACT_ID],
     });
@@ -215,8 +216,8 @@ describe("納品書メール送信(方式A): 一括送信", () => {
     expect(body.message).toContain("失敗: 2件");
     expect(body.results.every((r) => r.status === "FAILED")).toBe(true);
 
-    const noPdfLogs = await findMailLogs(HEADER_NO_PDF_ID);
-    expect(noPdfLogs[0].status).toBe("FAILED");
+    expect(body.results.find((r) => r.id === HEADER_NO_PDF_ID).error).toBe("先に PDF を発行してください");
+    expect(await findMailLogs(HEADER_NO_PDF_ID)).toHaveLength(0);
     const noContactLogs = await findMailLogs(HEADER_NO_CONTACT_ID);
     expect(noContactLogs[0].status).toBe("FAILED");
   });

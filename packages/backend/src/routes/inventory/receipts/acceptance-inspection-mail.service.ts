@@ -76,19 +76,7 @@ export class AcceptanceInspectionMailService {
           status: "FAILED",
           error: "先に PDF を発行してください",
         });
-        await writeMailDeliveryLog({
-          dbLogBinding: c.env.DB_LOG,
-          category: "acceptance_inspection",
-          documentId: receipt.id,
-          smtpFrom: "",
-          recipientTo: "⚠️ 送信前エラー(PDF自動生成失敗)",
-          recipientCc: mailTemplate.ccAddress,
-          subject: `【配信拒否】${mailTemplate.subjectTemplate}`,
-          attachedR2Path: null,
-          status: "FAILED",
-          errorMessage: "一括送信時の検収書PDF自動生成処理に失敗しました。フォントや設定等をご確認ください。",
-          performedById: receipt.createdBy || fallbackOperatorId || "UNKNOWN",
-        });
+        // PERF-07 B-6: PDF の未発行はメールの失敗ではない(画面がブラウザで発行して送り直す)ため、メールの記録は残さない
         continue;
       }
 
