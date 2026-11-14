@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { WorkflowHistoryTask, PartnerSnapshot } from "../_types";
 import { WorkflowTimeline } from "../../_shared/WorkflowTimeline";
 import { PreviewRenderer } from "../../_shared/PreviewRenderer";
+import { OpenDocumentLink } from "../../_shared/OpenDocumentLink";
 import { stackedTable } from "../../../_shared/ui/stacked-table";
 import { buttonClass } from "../../../_shared/ui/Button";
 import { MessageBanner } from "../../../_shared/ui/MessageBanner";
@@ -368,6 +369,7 @@ export function WorkflowTable({
                             <span className="ml-2 text-[10px] text-slate-600 font-normal">
                               (管理コード: {history.targetId})
                             </span>
+                            <OpenDocumentLink targetType={history.targetType} targetId={history.targetId} />
                           </h3>
 
                           <PreviewRenderer

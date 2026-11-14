@@ -12,6 +12,12 @@ import { AuditScanPanel } from "./_components/AuditScanPanel";
 import { AuditHistoryPanel } from "./_components/AuditHistoryPanel";
 import { AuditEditTarget } from "./_hooks/useStockAuditForm";
 import { AuditRecord } from "./_types";
+import {
+  OpenedAuditDocumentCard,
+  OpenedAuditDocumentKind,
+  parseOpenedAuditDocumentKind,
+} from "./_components/OpenedAuditDocumentCard";
+import { useDeepLinkId } from "../../_shared/hooks/use-deep-link-id";
 // 在庫照会・返品履歴・廃棄履歴タブは、入荷/出荷ページ(/inventory/receiving・/inventory/shipping)
 // と同じ共有コンポーネントをそのまま再利用する(instructions/page.tsxと同じ使い方)
 import { StockInquiryTab } from "../stock/_components/StockInquiryTab";
@@ -140,6 +146,21 @@ export default function InventoryAuditPage() {
     })();
   }, [urlEditId, canCreate]);
 
+  // REQ-016: 承認のプレビューなど他画面からの`?openId=xxx(&openKind=audit|reclassification|disposal|return)`で、
+  // 参照カードを開く。editId(差戻しの修正フォーム)とは別の入口で、状態を問わず内容を表示するだけ(閲覧権限のみで開ける)
+  const [openedDocument, setOpenedDocument] = useState<{
+    kind: OpenedAuditDocumentKind | null;
+    id: string;
+  } | null>(null);
+  useDeepLinkId(
+    "openId",
+    (id, params) => {
+      setOpenedDocument({ kind: parseOpenedAuditDocumentKind(params.get("openKind")), id });
+    },
+    !permsLoading && canRead,
+    ["openKind"],
+  );
+
   if (permsLoading) {
     return <LoadingGate />;
   }
@@ -161,6 +182,14 @@ export default function InventoryAuditPage() {
       />
 
       <MessageBanner message={message} />
+
+      {openedDocument && (
+        <OpenedAuditDocumentCard
+          kind={openedDocument.kind}
+          id={openedDocument.id}
+          onClose={() => setOpenedDocument(null)}
+        />
+      )}
 
       <div className="flex gap-2 border-b border-slate-200">
         {(

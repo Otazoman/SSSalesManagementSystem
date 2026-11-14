@@ -2,6 +2,7 @@ import React from "react";
 import { WorkflowTask } from "../_types";
 import { PreviewRenderer } from "../../_shared/PreviewRenderer";
 import { WorkflowTimeline } from "../../_shared/WorkflowTimeline";
+import { OpenDocumentLink } from "../../_shared/OpenDocumentLink";
 import { stackedTable } from "../../../_shared/ui/stacked-table";
 
 interface TaskPreviewRowProps {
@@ -36,6 +37,7 @@ export function TaskPreviewRow({
           <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3 shadow-inner">
             <h4 className="text-xs font-bold text-slate-800 border-b pb-1.5 flex items-center">
               <span>📝 申請内容のプレビュー</span>
+              <OpenDocumentLink targetType={task.targetType} targetId={task.targetId} />
             </h4>
             <PreviewRenderer
               targetType={task.targetType}

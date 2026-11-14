@@ -3,6 +3,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkflowTable } from "./WorkflowTable";
 import { WorkflowHistoryTask } from "../_types";
+import { PermissionProvider } from "../../../context/permissioncontext";
+
+const mockApiFetch = vi.fn();
+vi.mock("../../../_shared/hooks/use-api-fetch", () => ({
+  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
+  apiFetchShared: vi.fn(),
+}));
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -153,5 +160,23 @@ describe("WorkflowTable", () => {
       />,
     );
     expect(screen.getByText("承認太郎")).toBeInTheDocument();
+  });
+
+  it("プレビューに、元の伝票を別タブで開くリンクを出す(REQ-016)", async () => {
+    mockApiFetch.mockResolvedValue({ path: "/inventory/receiving" });
+    const user = { roleId: "staff", permissions: ["inventory_receiving:menu"] } as never;
+    const screens = [
+      { title: "入荷", icon: "", path: "/inventory/receiving", resource: "inventory_receiving", category: "inventory" },
+    ];
+    render(
+      <PermissionProvider value={{ user, flatScreens: screens, loading: false }}>
+        <WorkflowTable
+          {...baseProps({ histories: [baseTask({ targetType: "inventory_instructions", targetId: "RI-1" })] })}
+        />
+      </PermissionProvider>,
+    );
+    await userEvent.click(screen.getByText("👁️ プレビュー"));
+    const link = await screen.findByRole("link", { name: /伝票を開く/ });
+    expect(link).toHaveAttribute("href", "/inventory/receiving?openId=RI-1&openKind=instruction");
   });
 });

@@ -1,8 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskTable } from "./TaskTable";
 import { WorkflowTask } from "../_types";
+import { PermissionProvider } from "../../../context/permissioncontext";
+
+const mockApiFetch = vi.fn();
+vi.mock("../../../_shared/hooks/use-api-fetch", () => ({
+  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
+  apiFetchShared: vi.fn(),
+}));
 
 function baseTask(overrides: Partial<WorkflowTask> = {}): WorkflowTask {
   return {
@@ -111,5 +118,42 @@ describe("TaskTable", () => {
       "A",
     );
     expect(onCommentChange).toHaveBeenCalledWith("L1", "A");
+  });
+
+  describe("プレビューの「伝票を開く」(REQ-016)", () => {
+    const screens = [
+      { title: "単位", icon: "", path: "/master/units", resource: "master_units", category: "master" },
+    ];
+    function renderWith(permissions: string[], roleId = "staff") {
+      const user = { roleId, permissions } as never;
+      return render(
+        <PermissionProvider value={{ user, flatScreens: screens, loading: false }}>
+          <TaskTable {...baseProps({ tasks: [baseTask()], expandedTaskId: "L1" })} />
+        </PermissionProvider>,
+      );
+    }
+
+    it("参照する権限がある画面は、別タブで開くリンクを出す", async () => {
+      mockApiFetch.mockResolvedValue({ path: "/master/units" });
+      renderWith(["master_units:read"]);
+      const link = await screen.findByRole("link", { name: /伝票を開く/ });
+      expect(link).toHaveAttribute("href", "/master/units?editId=PCS");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(mockApiFetch).toHaveBeenCalledWith("/api/workflow-tasks/edit-path/PCS?targetType=master_units");
+    });
+
+    it("参照する権限が無い画面へのリンクは出さない", async () => {
+      mockApiFetch.mockResolvedValue({ path: "/master/units" });
+      renderWith(["sales_quotes:read"]);
+      await vi.waitFor(() => expect(mockApiFetch).toHaveBeenCalled());
+      await act(async () => {});
+      expect(screen.queryByRole("link", { name: /伝票を開く/ })).not.toBeInTheDocument();
+    });
+
+    it("管理者には権限の設定にかかわらずリンクを出す", async () => {
+      mockApiFetch.mockResolvedValue({ path: "/master/units" });
+      renderWith([], "admin");
+      expect(await screen.findByRole("link", { name: /伝票を開く/ })).toBeInTheDocument();
+    });
   });
 });

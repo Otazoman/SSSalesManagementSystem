@@ -45,7 +45,7 @@
 | REQ-013 | 対応予定 | 進捗確認 | 受注・発注・見積があれば、後続の工程が起票済みか「未起票」かと、担当する予定の人を見えるようにする |
 | REQ-014 | 対応予定 | 進捗確認: 工程ごとの担当設定 | 何を設定する画面かが分からない。画面の説明とマニュアルを直す |
 | REQ-015 | 対応予定 | 見積管理 | 失注の状態と、失注日・失注理由を足す。進捗確認では完了扱い(DB変更あり) |
-| REQ-016 | 対応予定 | 承認タスク・申請履歴 | プレビューから、元の伝票を別ウィンドウで開けるようにする |
+| REQ-016 | 確認待ち(Staging 未反映) | 承認タスク・申請履歴 | プレビューから、元の伝票を別ウィンドウで開けるようにする |
 | REQ-017 | 対応予定 | 請求管理 | 請求に承認機能を付け、承認済みの請求書だけ発行・メール送信できるようにする(売上と同じ形) |
 | REQ-018 | 対応予定 | 請求管理・支払管理(消込) | 入金と支払の消込に承認を付け、承認後に消込・残高・仕訳へ反映する(DB変更あり。REQ-017 の後) |
 | REQ-019 | 対応予定 | 購買申請 | 仕入先はマスタからの選択だけにする(自由入力をやめる) |
@@ -902,6 +902,23 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
 - 変更内容: プレビューの右上に「伝票を開く」(別タブ)のリンクを出す。リンク先は、「修正して再提出」が使っている編集先の解決(バックエンドの resolveEditPath と画面マスタのパス)を
   そのまま使う。進捗確認の buildDocumentHref と同じ editId / openId の形にする。参照する権限が無い画面へのリンクは出さない。
 - 確認方法: TaskTable.test.tsx・WorkflowTable.test.tsx で、種類ごとのリンク先が正しいこと。
+- 対応(2026-11-14):
+  - `frontend/app/workflow/_shared/OpenDocumentLink.tsx`(新規)を、承認タスクと申請履歴のプレビューの見出しの右に出す。画面のパスは「修正して再申請」と同じ
+    `/api/workflow-tasks/edit-path`(バックエンドの resolveEditPath)で解決する(取得の関数を `useWorkflowScreensAndUsers.ts` の fetchTargetEditPath に切り出し、
+    「修正して再申請」も同じ関数を使う。動きは変えていない)。プレビューを開いた時に1回だけ呼ぶ。
+  - リンク先は `_shared/document-link.ts`: 伝票・マスタは editId。入荷・出荷の画面は、進捗確認と同じ参照用のカード(openId + openKind。指示は instruction、
+    実績は receipt / shipment)。
+  - 参照する権限: 画面マスタのパスから画面を引き、`<画面>:read` か `<画面>:menu` がある時(管理者は全て)だけリンクを出す(use-page-permission.ts と同じ判定)。
+    画面側の表示の制御で、権限そのものは変えていない(開いた先の画面は、今まで通りその画面の権限で表示する)。
+  - 在庫・棚卸の画面(品質区分変更・廃棄・返品・棚卸): この画面の editId は差戻しの時だけ修正フォームを開くため、参照用の入口
+    `?openId=xxx(&openKind=audit|reclassification|disposal|return)` を `inventory/audit/page.tsx` に足した(2026-11-14 ユーザーの判断「見れるようにしたい」)。
+    `inventory/audit/_components/OpenedAuditDocumentCard.tsx`(新規)が状態を問わず内容を表示する(表示のみ。閲覧権限で開ける)。
+    棚卸は openKind=audit。品質区分変更・廃棄・返品は入出庫と同じ申請の種類のため種類を付けず、editId と同じく 棚卸→品質区分変更→廃棄→返品 の順に
+    既存の詳細取得 API(GET /api/stock-audits/:id など)で探す。API と権限は変えていない。
+  - 確認の結果: document-link.test.ts(種類ごとのリンク先)、OpenedAuditDocumentCard.test.tsx(種類の指定・順に探す・見つからない時)、TaskTable.test.tsx(リンクの表示・権限が無い時は出さない・管理者)、WorkflowTable.test.tsx(入荷指示の openId)、
+    backend の edit-path-coverage.test.ts(在庫以外の全17種類で画面のパスが見つかる)。画面全件(220ファイル・1299件)・`npx tsc --noEmit` が通った。
+    変更したファイルに lint のエラーは無い(同じフォルダの WorkflowSearchForm.tsx・*.browser.test.tsx に以前からのエラーがある)。
+  - マニュアル(docs/manual/workflow/tasks.md・histories.md)に「↗ 伝票を開く」を書き足した。
 
 ### REQ-017 請求に承認を付ける
 
