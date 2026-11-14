@@ -256,17 +256,21 @@ describe("GET / (入荷指示一覧) / GET /csv-download", () => {
   });
 });
 
-describe("POST /:id/generate-pdf", () => {
-  it("存在しない入荷指示へのPDF生成は404を返す", async () => {
+// PERF-07: PDF はブラウザで作る(GET /:id/pdf-source → POST /:id/pdf)。サーバーで作る generate-pdf は廃止した
+describe("PDF の発行(PERF-07)", () => {
+  it("サーバーで作る POST /:id/generate-pdf は廃止した", async () => {
     const ctx = createExecutionContext();
-    const res = await receiptInstructionsRouter.request(
-      "/NOPE/generate-pdf",
-      { method: "POST" },
-      env,
-      ctx,
-    );
+    const res = await receiptInstructionsRouter.request("/nope/generate-pdf", { method: "POST" }, env, ctx);
     await waitOnExecutionContext(ctx);
     expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("対象データがありません");
+  });
+
+  it("PDF を作るためのデータ(GET /:id/pdf-source)は、ログインしていなければ 401", async () => {
+    const ctx = createExecutionContext();
+    const res = await receiptInstructionsRouter.request("/nope/pdf-source", {}, env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(401);
   });
 });
 

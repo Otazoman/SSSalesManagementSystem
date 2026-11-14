@@ -16,6 +16,7 @@ import {
   AcceptanceInspectionContactOption,
 } from "./AcceptanceInspectionMailModal";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -76,13 +77,7 @@ export function AcceptanceInspectionPanel() {
     setError("");
     setMessage("");
     try {
-      const result = await apiFetch<{ message?: string }>(
-        `/api/stock-receipts/${h.id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "検収書PDFの生成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message?: string }>("/api/stock-receipts", h.id, { defaultErrorMessage: "検収書PDFの生成に失敗しました" });
       setMessage(result.message || "検収書PDFを生成しました");
     } catch (err) {
       setError(
@@ -171,13 +166,15 @@ export function AcceptanceInspectionPanel() {
     setIsMailSending(true);
     setError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await sendWithIssuedPdf("/api/stock-receipts", mailModalTarget.id, () =>
+        apiFetch<{ message?: string }>(
         `/api/stock-receipts/${mailModalTarget.id}/send-email`,
         {
           method: "POST",
           json: { recipientEmail },
           defaultErrorMessage: "メール送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの送信を予約しました");
       setMailModalTarget(null);
@@ -200,13 +197,15 @@ export function AcceptanceInspectionPanel() {
     setIsMailSending(true);
     setError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await bulkSendWithIssuedPdf("/api/stock-receipts", selectedIds, (targetIds) =>
+        apiFetch<{ message?: string }>(
         "/api/stock-receipts/bulk-send-email",
         {
           method: "POST",
-          json: { receiptIds: selectedIds },
+          json: { receiptIds: targetIds },
           defaultErrorMessage: "メール一括送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの一括送信を予約しました");
       setSelectedIds([]);

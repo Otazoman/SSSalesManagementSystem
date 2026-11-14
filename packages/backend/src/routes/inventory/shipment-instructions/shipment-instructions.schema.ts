@@ -61,8 +61,3 @@ export type VerifyInstructionDownloadOtpInput = v.InferOutput<
   typeof VerifyInstructionDownloadOtpSchema
 >;
 
-// Item6 Phase6-4: 複数選択して一括PDF発行・送信するための入力
-export const BulkGeneratePdfSchema = v.object({
-  ids: v.pipe(v.array(v.string()), v.minLength(1, "対象を1件以上選択してください")),
-});
-export type BulkGeneratePdfInput = v.InferOutput<typeof BulkGeneratePdfSchema>;

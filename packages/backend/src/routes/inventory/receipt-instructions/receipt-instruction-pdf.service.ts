@@ -10,11 +10,9 @@ import { UserRepository } from "../../admin/users/user.repository";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
-import {
-  generateInstructionPdf,
-  InstructionPdfData,
-} from "../../../platform/report-templates/generate-instruction-pdf";
-import { tryRenderInstructionPdfFromCustomTemplate } from "../../../platform/report-templates/try-render-instruction-pdf";
+import { type ReportPdfSource, type InstructionPdfData } from "report-renderer";
+import { loadCustomLayoutSource } from "../../../platform/report-templates/load-custom-layout";
+import { resolveInstructionPlaceholders } from "../../../platform/report-templates/resolve-instruction-placeholders";
 import { resolveOperatorEmployeeNumber } from "../../../platform/repository/fallback-operator";
 import { createDb } from "../../../platform/db/create-db";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
@@ -29,7 +27,9 @@ const REPORT_TEMPLATE_CATEGORY = "receiving_instruction";
 export class ReceiptInstructionPdfService {
   constructor(private repo: ReceiptInstructionsRepository) {}
 
-  async generatePdf(c: Context<{ Bindings: Env }>, instructionId: string) {
+  // PERF-07 B-3: PDF を作るためのデータ(GET /:id/pdf-source)。対象が無い・発行できない状態ならエラー。
+  // withLayout が false の時(受け取った PDF の保存の時)は、Excel テンプレートのレイアウトを読まない
+  async buildPdfSource(c: Context<{ Bindings: Env }>, instructionId: string, withLayout = true) {
     const header = await this.repo.findHeaderById(instructionId);
     if (!header) throw new NotFoundError("対象の入荷指示が見つかりません");
     if (header.status === "UNAPPROVED" || header.status === "REMANDED") {
@@ -73,16 +73,6 @@ export class ReceiptInstructionPdfService {
 
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
 
-    const [fontRes, logoRes, sealRes] = await Promise.all([
-      c.env.SYSTEM_BUCKET.get("fonts/company_fonts.ttf"),
-      c.env.SYSTEM_BUCKET.get("company/company_logo.png"),
-      c.env.SYSTEM_BUCKET.get("company/company_seal.png"),
-    ]);
-    if (!fontRes) throw new Error("日本語フォントファイルがR2に見つかりません");
-    const fontBuffer = await fontRes.arrayBuffer();
-    const logoBuffer = logoRes ? await logoRes.arrayBuffer() : null;
-    const sealBuffer = sealRes ? await sealRes.arrayBuffer() : null;
-
     const instructionData: InstructionPdfData = {
       documentTitle: "入荷指示書",
       code: instructionId,
@@ -107,15 +97,26 @@ export class ReceiptInstructionPdfService {
 
     // 帳票Excelテンプレートが登録・コンパイル済みならそちらを優先し、未登録・失敗時は
     // 既定のpdf-lib直描画へフォールバックする(見積書と同じ方針)
-    const customPdf = await tryRenderInstructionPdfFromCustomTemplate(
-      c.env,
-      REPORT_TEMPLATE_CATEGORY,
-      instructionData,
-      fontBuffer,
-    );
-    const pdfBinary =
-      customPdf ??
-      (await generateInstructionPdf(instructionData, { fontBuffer, logoBuffer, sealBuffer }));
+    const customLayout = !withLayout
+      ? null
+      : await loadCustomLayoutSource(c.env, REPORT_TEMPLATE_CATEGORY, () => resolveInstructionPlaceholders(instructionData));
+    const source: ReportPdfSource = {
+      documentType: REPORT_TEMPLATE_CATEGORY,
+      customLayout,
+      fallback: { kind: "instruction", data: instructionData },
+    };
+    return { source, header, systemConfig, warehouse };
+  }
+
+  // PERF-07 B-4: できた PDF を保存し、記録・倉庫への案内メール・監査ログを残す(generate-pdf と、ブラウザから受け取った PDF の両方)
+  async storePdf(
+    c: Context<{ Bindings: Env }>,
+    instructionId: string,
+    pdfBinary: Uint8Array,
+    built: Omit<Awaited<ReturnType<ReceiptInstructionPdfService["buildPdfSource"]>>, "source">,
+    uploadedBy?: { userId: string; size: number },
+  ) {
+    const { header, systemConfig, warehouse } = built;
 
     const r2Path = generateAttachmentKey(
       `receipt-instructions/${instructionId}`,
@@ -189,6 +190,7 @@ export class ReceiptInstructionPdfService {
         attachmentId,
         warehouseId: header.warehouseId,
         partnerId: header.partnerId,
+        ...(uploadedBy ? { generatedIn: "browser", uploadedBy: uploadedBy.userId, pdfBytes: uploadedBy.size } : {}),
       }),
     );
 

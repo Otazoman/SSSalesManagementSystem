@@ -202,14 +202,21 @@ describe("POST /:id/payment-receipts BUG-051", () => {
   });
 });
 
-describe("POST /:id/generate-pdf", () => {
-  it("存在しない請求へのPDF生成は404・固定メッセージを返す", async () => {
+// PERF-07: PDF はブラウザで作る(GET /:id/pdf-source → POST /:id/pdf)。サーバーで作る generate-pdf は廃止した
+describe("PDF の発行(PERF-07)", () => {
+  it("サーバーで作る POST /:id/generate-pdf は廃止した", async () => {
     const ctx = createExecutionContext();
     const res = await billingRouter.request("/nope/generate-pdf", { method: "POST" }, env, ctx);
     await waitOnExecutionContext(ctx);
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body).toEqual({ success: false, message: "対象データがありません" });
+    expect(await res.text()).not.toContain("対象データがありません");
+  });
+
+  it("PDF を作るためのデータ(GET /:id/pdf-source)は、ログインしていなければ 401", async () => {
+    const ctx = createExecutionContext();
+    const res = await billingRouter.request("/nope/pdf-source", {}, env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(401);
   });
 });
 

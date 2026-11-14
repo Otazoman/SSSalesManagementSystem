@@ -35,6 +35,12 @@ vi.mock("../_hooks/useInventoryHistory", () => ({
     setSort: vi.fn(),
   }),
 }));
+// PERF-07 B-5: 納品書 PDF はブラウザで作って発行する(共通処理 issueReportPdf。描画は共有パッケージのテストで確かめている)
+const issueReportPdf = vi.fn();
+vi.mock("../../../_shared/report-pdf/issue-report-pdf", () => ({
+  issueReportPdf: (...args: unknown[]) => issueReportPdf(...args),
+}));
+
 vi.mock("../../../_shared/hooks/use-pagination-setting", () => ({
   usePaginationSetting: () => ({ paginationEnabled: false }),
 }));
@@ -67,25 +73,17 @@ afterEach(() => {
 describe("DeliveryNotePanel(納品書PDFの作成 BUG-030)", () => {
   it("PDF が無い出庫は「納品書PDFを作成」を押すと作成APIを呼び、一覧を読み直す。選択とメール送信もできる", async () => {
     headers = [header({})];
-    const fetchSpy = vi.fn(async () =>
-      new Response(JSON.stringify({ success: true, message: "納品書PDFを作成しました" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchSpy);
+    issueReportPdf.mockResolvedValueOnce({ success: true, message: "納品書PDFを作成しました" });
 
     render(<DeliveryNotePanel />);
     expect(screen.queryByText("📄 納品書PDF")).toBeNull();
+    expect(screen.getByText("未発行")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "" })).not.toBeDisabled();
     expect(screen.getByText("✉️ 送信")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("📄 納品書PDFを作成"));
     await waitFor(() =>
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/stock-shipments/SH-1/generate-pdf",
-        expect.objectContaining({ method: "POST" }),
-      ),
+      expect(issueReportPdf).toHaveBeenCalledWith("/api/stock-shipments", "SH-1", expect.anything()),
     );
     await waitFor(() => expect(screen.getByText("納品書PDFを作成しました")).toBeInTheDocument());
     expect(refetch).toHaveBeenCalled();
@@ -96,19 +94,12 @@ describe("DeliveryNotePanel(納品書PDFの作成 BUG-030)", () => {
     render(<DeliveryNotePanel />);
     expect(screen.getByText("📄 納品書PDF")).toBeInTheDocument();
     expect(screen.getByText("🔄 PDFを作り直す")).toBeInTheDocument();
+    expect(screen.queryByText("未発行")).toBeNull();
   });
 
   it("作成に失敗した場合は、理由を表示する", async () => {
     headers = [header({})];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ success: false, message: "明細の無い出庫には、納品書を作成できません" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
+    issueReportPdf.mockRejectedValueOnce(new Error("明細の無い出庫には、納品書を作成できません"));
     render(<DeliveryNotePanel />);
     fireEvent.click(screen.getByText("📄 納品書PDFを作成"));
     await waitFor(() => expect(screen.getByText("明細の無い出庫には、納品書を作成できません")).toBeInTheDocument());

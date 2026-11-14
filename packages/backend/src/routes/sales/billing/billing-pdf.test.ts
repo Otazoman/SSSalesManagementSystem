@@ -100,20 +100,21 @@ beforeEach(async () => {
 // billing側へ流用していたため、請求管理から発行したはずのPDFが「売上計上書」になってしまう
 // 不具合があった。現在はPER_TRANSACTION/PERIODICとも常に自前で"INVOICE"レイアウトのPDFを
 // 生成する(buildAndSaveInvoicePdf)ため、この回帰を防ぐテストに置き換える
-describe("BillingPdfService.generatePdf", () => {
-  it("PER_TRANSACTIONモードでも(売上自体のPDFを流用せず)自前でPDF生成を試みる(フォント未セット環境のためエラーになるが、これは自前生成パスに到達した証拠)", async () => {
-    await expect(
-      withContext((c) => {
-        const service = new BillingPdfService(new BillingRepository(c.env.DB));
-        return service.generatePdf(c, "BL-1");
-      }),
-    ).rejects.toThrow("日本語フォントファイルがR2に見つかりません");
+// PERF-07 B-3: PDF はブラウザで作るため、サーバーは PDF を作るためのデータ(buildPdfSource)を組み立てる
+describe("BillingPdfService.buildPdfSource", () => {
+  it("PER_TRANSACTIONモードでも(売上自体のPDFを流用せず)請求書(INVOICE)のレイアウトで作るデータを返す", async () => {
+    const built = await withContext((c) => {
+      const service = new BillingPdfService(new BillingRepository(c.env.DB));
+      return service.buildPdfSource(c, "BL-1");
+    });
+    expect(built!.source.documentType).toBe("billing_invoice");
+    expect(built!.source.fallback).toMatchObject({ kind: "document", data: { templateType: "INVOICE", code: "BL-1" } });
   });
 
   it("対象の請求が存在しない場合はnullを返す", async () => {
     const result = await withContext((c) => {
       const service = new BillingPdfService(new BillingRepository(c.env.DB));
-      return service.generatePdf(c, "NOPE");
+      return service.buildPdfSource(c, "NOPE");
     });
     expect(result).toBeNull();
   });
@@ -123,7 +124,7 @@ describe("BillingPdfService.generatePdf", () => {
     await expect(
       withContext((c) => {
         const service = new BillingPdfService(new BillingRepository(c.env.DB));
-        return service.generatePdf(c, "BL-1");
+        return service.buildPdfSource(c, "BL-1");
       }),
     ).rejects.toThrow("請求に紐づく売上明細がありません");
   });

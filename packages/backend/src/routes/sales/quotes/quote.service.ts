@@ -85,8 +85,14 @@ export class QuoteService {
   }
 
   // --- PDF生成 (quote-pdf.service.ts) ---
-  generatePdf(c: Context, id: string, options: { includeOrderForm?: boolean } = {}) {
-    return this.pdf.generatePdf(c, id, options);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(c: Context, id: string, options: { includeOrderForm?: boolean; withLayout?: boolean } = {}) {
+    return this.pdf.buildPdfSource(c, id, options);
+  }
+
+  storePdf(...args: Parameters<QuotePdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- ダウンロード/OTP (quote-download.service.ts) ---

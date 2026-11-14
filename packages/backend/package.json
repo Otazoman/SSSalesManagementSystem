@@ -42,6 +42,7 @@
     "hono-openapi": "^1.3.1",
     "nodemailer": "^10.3.1",
     "pdf-lib": "^1.17.1",
+    "report-renderer": "file:../report-renderer",
     "sanitize-html": "^2.18.1",
     "valibot": "^1.4.2"
   },

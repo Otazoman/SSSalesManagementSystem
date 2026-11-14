@@ -17,7 +17,6 @@ import {
   WarehouseStockReservationRepository,
   releaseReservationForShippedQuantity,
 } from "../../../platform/inventory/warehouse-stock-reservation.repository";
-import { DeliveryNotePdfService } from "./delivery-note-pdf.service";
 import { NotFoundError, BadRequestError, ConflictError } from "../../../platform/http/http-error";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { resolveOperatorEmployeeNumber } from "../../../platform/repository/fallback-operator";
@@ -445,10 +444,7 @@ export class ShipmentsService {
         const instructionsRepo = ShipmentInstructionsRepository.fromDb(db);
         await instructionsRepo.recalculateFulfillment(input.shipmentInstructionId);
       }
-      if (effectivePartnerId) {
-        const deliveryNotePdfService = new DeliveryNotePdfService(this.repo);
-        c.executionCtx.waitUntil(deliveryNotePdfService.generateAndStore(c, headerId));
-      }
+      // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
 
       c.executionCtx.waitUntil(
         logAuditEvent(c, "CONFIRM_STOCK_SHIPMENT_DIRECT", RESOURCE_KEY, headerId, null, {
@@ -546,10 +542,7 @@ export class ShipmentsService {
       const stocksService = StocksService.fromDb(db);
       await stocksService.applyShipmentItems(resolvedItems, headerId, operatorId, now);
       await this.releaseReservationsForShippedItems(db, resolvedItems, now);
-      if (effectivePartnerId) {
-        const deliveryNotePdfService = new DeliveryNotePdfService(this.repo);
-        c.executionCtx.waitUntil(deliveryNotePdfService.generateAndStore(c, headerId));
-      }
+      // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
 
       c.executionCtx.waitUntil(
         logAuditEvent(c, "CONFIRM_STOCK_SHIPMENT_DIRECT", RESOURCE_KEY, headerId, null, {

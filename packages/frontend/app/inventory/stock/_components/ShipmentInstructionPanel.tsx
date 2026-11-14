@@ -26,6 +26,7 @@ import {
 import { ApplicantDepartmentSelect } from "../../../_shared/ui/ApplicantDepartmentSelect";
 import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletionControl";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, issueReportPdfs } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -111,14 +112,7 @@ export function ShipmentInstructionPanel({
     setMessageState({});
     setBulkSending(true);
     try {
-      const result = await apiFetch<{ message: string }>(
-        "/api/shipment-instructions/bulk-generate-pdf",
-        {
-          method: "POST",
-          json: { ids: Array.from(selectedIds) },
-          defaultErrorMessage: "一括PDF発行・送信に失敗しました",
-        },
-      );
+      const result = await issueReportPdfs("/api/shipment-instructions", Array.from(selectedIds), { defaultErrorMessage: "一括PDF発行・送信に失敗しました" });
       setMessageState({ message: result.message });
       setSelectedIds(new Set());
       void history.refetch();
@@ -138,13 +132,7 @@ export function ShipmentInstructionPanel({
     setMessageState({});
     setGeneratingPdfId(id);
     try {
-      const result = await apiFetch<{ message: string }>(
-        `/api/shipment-instructions/${id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "出荷指示書PDFの生成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message: string }>("/api/shipment-instructions", id, { defaultErrorMessage: "出荷指示書PDFの生成に失敗しました" });
       setMessageState({ message: result.message });
       void history.refetch();
     } catch (err: unknown) {

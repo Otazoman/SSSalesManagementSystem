@@ -4,6 +4,7 @@ import { Env } from "../../../types/env";
 import { QuoteRepository } from "./quote.repository";
 import { QuoteService } from "./quote.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
   describeApiRoute,
@@ -300,25 +301,18 @@ quotesRouter.post(
 // ==========================================
 // 8. PDF生成
 // ==========================================
-quotesRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "見積書PDF生成",
-    tags: ["quotes"],
-    responses: {
-      200: { description: "生成成功" },
-      404: { description: "対象データがない" },
-    },
-  }),
-  async (c) => {
-  const id = c.req.param("id");
-  // REQ-002: 本文に includeOrderForm: true があれば、見積書の後ろにご発注書を付ける(本文が無い・不正な場合は見積書だけ)
-  const body = (await c.req.json().catch(() => ({}))) as { includeOrderForm?: unknown };
-  const result = await getService(c).generatePdf(c, id, { includeOrderForm: body?.includeOrderForm === true });
-  if (!result) {
-    return c.json({ success: false, message: "対象データがありません" }, 404);
-  }
-  return c.json(result);
+// PERF-07 B-3・B-4: ブラウザで PDF を作るためのデータ(GET /:id/pdf-source。?includeOrderForm=true でご発注書を付ける)と、
+// ブラウザが作った PDF の受け取り(POST /:id/pdf)。以前の POST /:id/generate-pdf(サーバーで作る)は廃止した(PERF-07 B-6)
+registerBrowserPdfRoutes(quotesRouter, {
+  tag: "quotes",
+  label: "見積書",
+  resource: "sales_quotes",
+  build: (c, id, withLayout) =>
+    getService(c).buildPdfSource(c, id, {
+      includeOrderForm: c.req.query("includeOrderForm") === "true",
+      withLayout,
+    }),
+  store: (c, id, pdf, built, uploadedBy) => getService(c).storePdf(c, id, pdf, built, uploadedBy),
 });
 
 // ==========================================

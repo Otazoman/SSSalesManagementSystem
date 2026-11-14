@@ -73,12 +73,9 @@ export class BillingMailService {
       throw new NotFoundError("対象の請求データが見つかりません");
     }
 
+    // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)
     if (!header.invoicePdfR2Path) {
-      await this.pdfService.generatePdf(c, billingHeaderId);
-      header = await this.repo.findHeaderById(billingHeaderId);
-      if (!header || !header.invoicePdfR2Path) {
-        throw new BadRequestError("請求書PDFの作成に失敗しました。帳票テンプレートの設定をご確認ください。");
-      }
+      throw new BadRequestError("先に PDF を発行してください");
     }
 
     const partner = await this.repo.findPartnerById(header.partnerId);
@@ -147,22 +144,14 @@ export class BillingMailService {
 
     for (const header of targetHeaders) {
       let target = header;
-      if (!target.invoicePdfR2Path) {
-        try {
-          await this.pdfService.generatePdf(c, target.id);
-          const refreshed = await this.repo.findHeaderById(target.id);
-          if (refreshed) target = refreshed;
-        } catch (genErr: any) {
-          console.error(`[BULK SEND] PDF Auto-generation failed for billing: ${target.id}`, genErr);
-        }
-      }
+      // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。未発行の請求は送らずに失敗にする
 
       if (!target.invoicePdfR2Path) {
         failCount++;
         executionResults.push({
           id: target.id,
           status: "FAILED",
-          error: "請求書PDFの自動生成に失敗しました",
+          error: "先に PDF を発行してください",
         });
         await writeMailDeliveryLog({
           dbLogBinding: c.env.DB_LOG,

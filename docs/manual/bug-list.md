@@ -11,6 +11,7 @@
 - 2026-11-10: 添付のメモと 2026-11-09 のログを、コミット 541a150 のコードと照らし合わせて整理した 39 件(PERF-00〜10・BUG-087〜098・REQ-007〜022)を
   登録した(2026-11-14)。内容・実行順序・決まったことは、下の「詳細」の「2026-11 改修計画」を参照。重要度は仮のもの。原因はコードを読んで特定したもので、
   Staging での再現はしていない。計画の中の認証・API・DB の変更は、2026-11-14 にユーザーが計画どおり進めることを許可した(DB の列・表は着手前に報告する)。
+- 2026-11-14: 段階1(PERF-02〜06・08・09・11)を Staging に反映した(コミット 1ea7ac5。migration なし。Backend・Frontend のデプロイ)。
 
 ## 一覧
 
@@ -50,6 +51,7 @@
 | REQ-020 | 対応予定 | 発注管理(回答納期) | 受注とつながらない明細は、希望納期を回答納期に展開する(修正可) |
 | REQ-021 | 対応予定 | 入荷(入庫・検収書) | 入庫・入荷実績・検収書の画面から、元の発注を開けるリンクを付ける |
 | REQ-022 | 対応予定 | 出荷(納品書) | 納品書の画面から、元の受注を開けるリンクを付ける |
+| REQ-023 | 対応予定 | 承認タスク(一括承認) | 一括承認の結果に、次の段の承認待ちになった件数と、その段のロール名(ロールマスタの名称)を出す |
 
 ## CPU時間の対策一覧
 
@@ -57,16 +59,16 @@
 |---|---|---|---|
 | PERF-00 | 決定済み(変更なし) | プラン | Workers Paid にはせず、無料プランのまま続ける(2026-11-10 決定) |
 | PERF-01 | 対応中(1回目の計測済み) | 計測 | どの API が重いかを測る(exceededCpu の件数と CPU 時間を API のパス別に集計)。最初に行う |
-| PERF-02 | 確認待ち(Staging 未反映) | 申請履歴 | 1ページ分だけ組み立てる(全件を組み立ててから切り出すのをやめる)。limit の上限 500 → 50 |
-| PERF-03 | 確認待ち(Staging 未反映) | 承認待ち一覧 | 自分の分を先に選んでから、1ページ分だけ組み立てる |
-| PERF-04 | 確認待ち(Staging 未反映) | auth/profile | 会社設定を1回だけ読む(今は KV の同じキーを26回読んでいる) |
-| PERF-05 | 確認待ち(Staging 未反映) | 全 API 共通の前処理 | users の件数の問い合わせを必要な API だけにし、セッションの検証を1リクエストで1回にする |
-| PERF-06 | 確認待ち(Staging 未反映) | 画面 | 画面からの同じ API(company-settings・permissions/screens・auth/profile・申請履歴)の重複呼び出しを減らす |
-| PERF-07 | 対応予定 | PDF(10種類) | PDF の描画をブラウザへ移す(案B。2026-11-10 決定)。generate-pdf は削除 |
-| PERF-08 | 確認待ち(Staging 未反映) | OTP メール | 登録の直後にすぐ送る(再送は今の定期処理を使う) |
-| PERF-09 | 確認待ち(Staging 未反映) | 承認・差戻し・取下げ | 同じ履歴・申請を2回ずつ取得しているのを1回にする |
+| PERF-02 | 確認待ち | 申請履歴 | 1ページ分だけ組み立てる(全件を組み立ててから切り出すのをやめる)。limit の上限 500 → 50 |
+| PERF-03 | 確認待ち | 承認待ち一覧 | 自分の分を先に選んでから、1ページ分だけ組み立てる |
+| PERF-04 | 確認待ち | auth/profile | 会社設定を1回だけ読む(今は KV の同じキーを26回読んでいる) |
+| PERF-05 | 確認待ち | 全 API 共通の前処理 | users の件数の問い合わせを必要な API だけにし、セッションの検証を1リクエストで1回にする |
+| PERF-06 | 確認待ち | 画面 | 画面からの同じ API(company-settings・permissions/screens・auth/profile・申請履歴)の重複呼び出しを減らす |
+| PERF-07 | 確認待ち(Staging 未反映) | PDF(10種類) | PDF の描画をブラウザへ移す(案B。2026-11-10 決定)。generate-pdf は削除 |
+| PERF-08 | 確認待ち | OTP メール | 登録の直後にすぐ送る(再送は今の定期処理を使う) |
+| PERF-09 | 確認待ち | 承認・差戻し・取下げ | 同じ履歴・申請を2回ずつ取得しているのを1回にする |
 | PERF-10 | 対応予定(計測まで) | ログイン・帳票テンプレートの変換・メール添付 | 無料プランで残る重い処理を PERF-07 の後に測り、対応を決める |
-| PERF-11 | 確認待ち(Staging 未反映) | 進捗確認 | 一覧の取得が CPU 中央値 22 ms・最大 57 ms(PERF-01 の1回目の計測)。「進行中」の絞り込みで起点を最大300件まで走査し、30件ごとに約30回の問い合わせをしている(2026-11-14 追加。方針は相談) |
+| PERF-11 | 確認待ち | 進捗確認 | 一覧の取得が CPU 中央値 22 ms・最大 57 ms(PERF-01 の1回目の計測)。「進行中」の絞り込みで起点を最大300件まで走査し、30件ごとに約30回の問い合わせをしている(2026-11-14 追加。方針は相談) |
 
 ## 課題一覧
 
@@ -232,6 +234,30 @@ CLAUDE.md の「変更前に確認」に当たるもの(2026-11-14 に、計画�
   - 呼び出しの回数: company-settings が 20 回、permissions/screens が 27 回、申請履歴が 20 回(PERF-06 の重複呼び出しと合う)。
   - この記録には、単独の PDF 発行(generate-pdf)は含まれていない。PDF の CPU 時間は bulk-send-email の 440 ms で代わりに確かめた。
   - 注: 進捗確認(GET /api/progress)は計画の対象に入っていなかったため、PERF-11 として追加した。
+- 計測(2回目、段階1を Staging に反映した後。2026-11-14 10:08〜10:16、141 件。生のログは集計後に削除):
+  - **exceededCpu は前回と同じく 0 件**(全件 ok)。1回目も 0 件だったため「件数が減った」ことは確かめられない。CPU 時間で比べる。
+
+    | API | 1回目 回数 | 1回目 中央値/最大(ms) | 2回目 回数 | 2回目 中央値/最大(ms) | 項目 |
+    |---|---|---|---|---|---|
+    | GET /api/workflow-tasks/history | 20 | 103.5 / 206 | 7 | 20 / 68 | PERF-02(大きく改善) |
+    | 定期処理(毎分) | 7 | 52 / 112 | 9 | 10 / 69 | PERF-08(確認コードのメールの送信が API 側に移った) |
+    | GET /api/progress | 5 | 22 / 57 | 8 | 30 / 45 | PERF-11(最大は下がったが、中央値は下がっていない) |
+    | GET /api/workflow-tasks/my-pending | 12 | 6 / 33 | 8 | 14.5 / 28 | PERF-03(最大は下がったが、中央値は上がった。下の注) |
+    | GET /api/auth/profile | 10 | 8.5 / 21 | 6 | 6.5 / 15 | PERF-04 |
+    | GET /api/users/count | 4 | 2.5 / 23 | 2 | 4.5 / 5 | PERF-05 |
+    | POST /api/workflow-tasks/bulk-approve | 1 | 35 / 35 | 1 | 29 / 29 | PERF-09 は対象外(一括承認) |
+    | POST /api/workflow-tasks/approve | 1 | 19 / 19 | 1 | 32 / 32 | PERF-09(1回ずつのため比べられない) |
+    | POST /api/auth/login | 4 | 35.5 / 51 | 2 | 34 / 38 | PERF-10(変更なし) |
+    | POST /api/quotes/download-request | — | — | 1 | 170 / 170 | PERF-08(確認コードのメールを応答の後に同じ処理の中で送るため) |
+    | POST /api/quotes/bulk-send-email | — | — | 1 | 1263 / 1263 | PERF-07(PDF をサーバーで作っている) |
+
+  - 呼び出しの回数(PERF-06): 会社設定 20 回 → 5 回、画面の一覧 27 回 → 10 回、プロフィール 10 回 → 6 回(操作の量が違うため目安)。
+  - メール: 期間中に登録したメール9件(承認の通知・見積の送付・確認コード)は全て送信済み(SUCCESS、再送なし)。
+  - 注:
+    - 承認待ち一覧は、Staging の件数が少ないため、PERF-03 で足した固定の読み込み(承認フロー・段・ロールの全件)の分だけ中央値が上がったと考えられる。
+      件数が増えた時に効く作りのため、このままとし、件数が増えても重いままなら相談する。
+    - 確認コードの発行は、メールの送信(SMTP)の CPU 時間が API 側に入るようになった(以前は定期処理の側で同じ時間を使っていた)。
+      打ち切りは起きていないが、無料プランの上限を超える処理のため、PERF-10 の計測の対象に加える。
 
 #### PERF-02 申請履歴: 1ページ分だけ組み立てる
 
@@ -385,6 +411,66 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
 - 変わること・注意: フォントの初回の読み込みに 3.7MB の通信が要る(スマートフォンでも発行できるが、初回は数秒かかる)。納品書が自動で作られなくなり、発行の操作が1つ増える。
   PDF の中身は利用者のブラウザが作るため、社内の利用者が故意に書き換えた PDF を上げることは技術的にはできる(誰が上げたかは監査ログに残る)。
 - API の変更: API を2種類(×帳票)と共通の3つを追加。generate-pdf は削除。メール送信は PDF が無いと 400 になる。
+- 進み具合:
+  - B-1(2026-11-14 済み): 共有パッケージは、リポジトリ直下に package.json が無い(npm の workspaces を使っていない)ため、
+    `packages/report-renderer` に独自の package.json(pdf-lib 1.17.1・@pdf-lib/fontkit 1.1.1。backend と同じ版)を置き、backend から
+    `"report-renderer": "file:../report-renderer"` で参照する形にした(2026-11-14 ユーザー決定)。frontend への追加は B-5 で行う。
+    - 移したもの(`git mv`): `utils/pdfGenerator.ts`(→ pdf-generator.ts)、`jsons/reportLayouts.json`(→ report-layouts.json)、
+      `platform/report-templates/` の render-layout-pdf・compute-render-pages・compute-render-instructions・fit-text・format-values・
+      generate-instruction-pdf・compute-quote-amount-breakdown・types、それらが使う `platform/tax/compute-tax-amounts.ts`。
+    - backend の元の場所には、共有パッケージから読み込み直すだけのファイルを置いた(他のコードの読み込み先は変えていない)。
+    - 確認: `report-renderer-equivalence.test.ts`(新規)で、9種類の帳票・ロゴと社印と改ページ・見積書とご発注書の結合・指示書3種類と改ページ・
+      Excel テンプレートの16通りについて、移す前(コミット 1ea7ac5)と同じページ数・同じバイト列(SHA-256)の PDF になることを確かめた
+      (時刻と乱数を固定して作る)。backend のテスト全件(197ファイル・2061件)と `npx tsc --noEmit`、`wrangler deploy --dry-run`
+      (Worker の大きさは前回と同じ 4511.19 KiB。pdf-lib は1つだけ入る)が通った。
+    - README.md・docs/development/release.md に、`packages/report-renderer` で先に `npm install` する手順を足した。
+  - B-2(2026-11-14 済み): `routes/report-assets/`(GET /api/report-assets/font・logo・seal)。R2 のオブジェクトをそのまま流し、ETag と
+    `Cache-Control: private, no-cache` を付ける。If-None-Match が同じなら 304。ログインが必要。テスト `routes/report-assets/index.test.ts`(5件)。
+  - B-3・B-4(2026-11-14、見積書まで):
+    - 共有パッケージに描画の入口 `renderReportPdf(source, assets)` を足した(以前の各 *-pdf.service.ts と同じ順番: Excel テンプレート → 失敗・無しなら
+      既定のレイアウト → 後ろにご発注書)。pdf-source の応答はこの関数に渡すデータ(`ReportPdfSource`、JSON)。サーバーでの発行(generate-pdf。
+      B-6 で削除するまで残す)も同じ関数を通す。移す前と同じ PDF になることを `report-renderer-equivalence.test.ts` で確かめた。
+    - 共通の部品: `platform/report-templates/load-custom-layout.ts`(Excel テンプレートのレイアウトと差し込む値)・`load-report-assets.ts`(フォント・
+      ロゴ・社印)・`browser-pdf-routes.ts`(GET /:id/pdf-source と POST /:id/pdf を帳票ごとに同じ形で登録。受け取りは PDF の先頭・5MB 以下・
+      発行できる状態を確かめ、監査ログに上げた人と大きさを残す)。
+    - サーバー側の画面の権限の確認 `platform/auth/screen-permission.ts`(hasScreenPermission)を足した。データは参照、受け取りは更新の権限が要る。
+      付与された全ロールの権限を合わせて判断する(auth/profile と同じ。auth/profile もこの関数の権限の取得を使うようにした)。管理者かどうかは
+      cookie のロールではなく DB の今のロールで判断する(adminGuard と同じ。画面より厳しい)。
+    - 見積書(`quote-pdf.service.ts`): データの組み立て(buildPdfSource)・保存と後処理(storePdf)・サーバーでの発行(generatePdf)に分けた。
+      テスト `routes/sales/quotes/browser-pdf.test.ts`(7件): 401・403・404・PDF でない/ファイル無し/5MB 超の 400・権限の区別、
+      **ブラウザの流れ(pdf-source → renderReportPdf → 受け取り)で保存した PDF が、generate-pdf で保存した PDF とバイト列まで同じ**。
+    - 確認の結果: backend のテスト全件(199ファイル・2075件)、`npx tsc --noEmit` が通った。
+  - B-3・B-4(残りの9種類。2026-11-14 済み): 注文請書・発注書・検収書・売上関連書類・仕入計上書・請求書・入荷指示書・出荷指示書・納品書も、
+    見積書と同じく buildPdfSource(データ)・storePdf(保存と後処理)に分け、GET /:id/pdf-source・POST /:id/pdf を登録した。
+    画面の権限のリソース: 注文請書 sales_orders・売上 sales_invoices・請求書 sales_billing・発注書 purchase_orders・仕入 purchase_receipts・
+    検収書と入荷指示書 inventory_receiving・納品書と出荷指示書 inventory_shipping(発行している画面に合わせた)。
+    納品書は、以前の generate-pdf と同じく、出庫が確定(承認済み)していないと 400。
+    - pdf-source の応答が JSON にしても変わらないこと(Date などが入らないこと)を、backend のテストの共通の準備(`test/check-report-pdf-source.ts`)で、
+      描画の入口に渡す全てのデータについて確かめる(Date を入れると失敗することも確かめた)。日付の項目は、どの帳票も文字列にしてから渡している。
+  - B-5(2026-11-14 済み): frontend から `file:../report-renderer` で参照し、`next.config.ts` に `transpilePackages`・`turbopack.root`(packages/ まで)を足した。
+    - `_shared/report-pdf/issue-report-pdf.ts`: issueReportPdf(pdf-source → フォント・ロゴ・社印 → 描画 → 送信。応答は generate-pdf と同じ形)・
+      issueReportPdfs(一括。以前の bulk-generate-pdf と同じ応答)。フォントなどは Cache Storage に保存し ETag で確かめる。PDF を作るライブラリは
+      発行の時に初めて読み込む(別のファイル約 1.1MB。他の画面の表示は重くならない)。作成中は `ReportPdfIssuingNotice`(layout.tsx)が
+      「PDF を作成しています」を出す。
+    - 画面の PDF 発行(13か所。10種類の帳票と見積の参照・指示書の一括発行)をこれに切り替えた。
+  - B-6(2026-11-14 済み):
+    - 納品書の自動作成をやめた(出庫の確定・承認の確定2か所・直送完了)。納品書のパネルに「未発行」を出す(発行のボタンは以前からある)。
+    - メール送信(見積書・注文請書・売上・発注書・検収書・請求書・納品書の 1件・一括): PDF が無ければサーバーでは作らず、1件は 400
+      「先に PDF を発行してください」、一括はその伝票を同じ理由で失敗にする。画面は sendWithIssuedPdf・bulkSendWithIssuedPdf で、
+      その時だけブラウザで発行してから送り直す(利用者の操作は変わらない)。
+    - 指示書の作成の時の自動作成は、コードを確かめたところ元から無かった(計画の「221行目付近」は一括発行の API だった)。
+    - POST /:id/generate-pdf(10種類)・POST /bulk-generate-pdf(指示書2種類)と、サーバーで PDF を作る関数(各サービスの generatePdf、納品書の
+      generateAndStore)を削除した。画面から呼んでいないことは grep で確かめた。
+    - Backend の Worker の大きさ: 4511 KiB → 3098 KiB(pdf-lib が Backend に入らなくなった)。
+  - 文書: README.md・docs/architecture/overview.md に「PDF はブラウザで生成する」、マニュアル(basics/common-operations.md に「帳票の PDF を発行する」、
+    inventory/shipping.md の納品書)を直した。
+  - 確認の結果: backend のテスト全件(199ファイル・2078件)、frontend の画面のテスト全件(217ファイル・1246件)と Worker のテスト(24件)、
+    両方の `npx tsc --noEmit`、frontend の `npm run build`、backend の `wrangler deploy --dry-run` が通った。変更した画面のファイルの lint のエラーは増えていない。
+  - 確かめていないこと: ブラウザで作った PDF とサーバーで作った PDF のバイト列の一致は、見積書でだけ確かめた(他の種類は、同じ描画のコードと
+    JSON の確認で代えた)。実際のブラウザでの発行・メール・OTP ダウンロードは、Staging で確かめる。
+  - 変更したテスト(仕様が変わったため): 各帳票の「generate-pdf の 404」→「generate-pdf の廃止・pdf-source の 401」、1件のメール送信(BUG-029 の
+    「無ければ作って送る」→「先に PDF を発行してください」)、請求書の PDF(generatePdf → buildPdfSource)、納品書の作成の条件(generate-pdf → pdf-source)、
+    納品書のパネル(作成 API の呼び出し → issueReportPdf)。
 
 #### PERF-08 OTP メールをすぐ送る(再送は今の定期処理を使う)
 
@@ -821,6 +907,25 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
 - 変更内容: 入庫・検収書の表示に「発注番号」(orderId)を、出庫・納品書の表示に「受注番号」(salesOrderId)を出し、buildDocumentHref で元の発注・受注を開くリンクにする。
   番号が無い入出庫(単独の入庫・出庫)では出さない。一覧の API が番号を返していない場合は、応答に足す。
 - 確認方法: DeliveryNotePanel.test.tsx・OpenedStockDocumentCard.test.tsx でリンクが出ること。
+
+### REQ-023 一括承認の結果に、次の段の承認待ちになった件を出す
+
+- 見つけた日: 2026-11-14(Staging の確認で「一括承認で承認しても、すべて承認されていない」とユーザーから指摘)
+- 調べた結果(2026-11-14、Staging の DB を読み取りで確認): 一括承認は失敗していなかった。承認フローが2段(1段目 users → 2段目 manager)の見積2件を
+  一括承認し、QT-5603-1 は2段目(最後の段)を承認して申請が承認済みになった。QT-2139-1 は1段目を承認し、2段目の承認待ちが作られた。
+  操作したユーザーが2段目のロールも持っていたため、同じ一覧に残り「承認されていない」ように見えた(後で個別に承認済み)。
+- 今の仕様: 一括承認・個別の承認とも、1回の操作で承認するのは今の段だけ。申請の時に1段目だけ、申請者がそのロールを持っていれば自動で通過する。
+- 決定(2026-11-14): 自動で次の段を通過させることはせず、結果の表示を分かりやすくする(案2)。
+- 変更内容(案):
+  - 一括承認の応答(`workflow-tasks-bulk.service.ts`)で、承認した件を「最後の段まで承認(申請が承認済み)」と「次の段の承認待ちになった」に分けて数え、
+    次の段になった件は、その段のロール名(ロールマスタの名称。名称が無ければロール ID)ごとの件数を返す。
+  - メッセージの例: 「2件を承認しました(うち1件は次の段「課長」の承認待ちになりました)」。
+  - 個別の承認(`workflow-tasks-approval.service.ts`)も同じ考え方で、次の段に回った場合は「次の段「課長」の承認待ちになりました」と出す(同じ見え方のため。
+    不要なら一括承認だけにする)。
+  - 画面(`workflow/tasks/_hooks/useWorkflowTasks.ts`)は、応答のメッセージをそのまま出しているため、画面の変更は要らない見込み。
+- API の変更: 応答に項目を足し、メッセージの文言を変える(既存の項目は変えない)。
+- 確認方法: 2段のフローで、1段目の一括承認は「次の段のロール名」が出ること、最後の段の一括承認は申請が承認済みになり出ないこと、
+  ロール名が無いロールは ID で出ること、失敗の件数の表示が今と同じであること。
 
 ### REQ-006 倉庫間移動(横持ち)を、入庫・出庫とは分けた機能にする(旧 TSK-004)
 

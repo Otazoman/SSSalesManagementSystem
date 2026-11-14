@@ -226,7 +226,7 @@ describe("generateDocumentPDF 明細の納期列", () => {
 // BUG-077: 合計欄の見出しは帳票ごとに変える(以前は帳票に関係なく「見積金額(税込)」だった)
 describe("合計欄の見出し(reportLayouts.json の totalBoxLabel)", () => {
   it("帳票ごとの見出しを持ち、見積書以外は「見積金額」にしない", async () => {
-    const { default: layouts } = await import("../jsons/reportLayouts.json");
+    const { default: layouts } = await import("report-renderer/report-layouts.json");
     const labels = Object.fromEntries(
       Object.entries(layouts as Record<string, { totalBoxLabel?: string }>).map(([k, v]) => [k, v.totalBoxLabel]),
     );

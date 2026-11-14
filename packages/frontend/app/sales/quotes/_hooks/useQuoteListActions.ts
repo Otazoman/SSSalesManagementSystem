@@ -3,6 +3,7 @@ import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { QuoteRecord } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface UseQuoteListActionsProps {
   quotes: QuoteRecord[];
@@ -176,11 +177,7 @@ export function useQuoteListActions({
     setMessage("⌛ PDFファイルを生成中...");
     setError("");
     try {
-      await apiFetch(`/api/quotes/${id}/generate-pdf`, {
-        method: "POST",
-        json: { includeOrderForm: options.includeOrderForm === true },
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      await issueReportPdf("/api/quotes", id, { query: { includeOrderForm: String(options.includeOrderForm === true) }, defaultErrorMessage: "PDF生成に失敗しました" });
 
       setMessage(
         "✅ PDF見積書の生成に成功しました。添付ファイル欄をご確認ください。",

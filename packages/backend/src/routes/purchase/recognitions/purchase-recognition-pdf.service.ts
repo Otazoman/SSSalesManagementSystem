@@ -1,10 +1,10 @@
 import { Context } from "hono";
 import { PurchaseRecognitionRepository } from "./purchase-recognition.repository";
 import { RESOURCE_KEY } from "./purchase-recognition-constants";
-import { generateDocumentPDF } from "../../../utils/pdfGenerator";
+import { type ReportPdfSource } from "report-renderer";
 import { DEFAULT_ITEM_NAME, DEFAULT_PAYMENT_TERMS } from "../../../platform/documents/document-defaults";
 import { resolvePurchaseRecognitionPlaceholders } from "../../../platform/report-templates/resolve-document-placeholders";
-import { tryRenderDocumentPdfFromCustomTemplate } from "../../../platform/report-templates/try-render-document-pdf";
+import { loadCustomLayoutSource } from "../../../platform/report-templates/load-custom-layout";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
@@ -23,7 +23,9 @@ export class PurchaseRecognitionPdfService {
     this.repo = repo;
   }
 
-  async generatePdf(c: Context, id: string) {
+  // PERF-07 B-3: PDF を作るためのデータ(GET /:id/pdf-source)。対象が無ければ null(発行できない状態ならエラー)。
+  // withLayout が false の時(受け取った PDF の保存の時)は、Excel テンプレートのレイアウトを読まない
+  async buildPdfSource(c: Context, id: string, withLayout = true) {
     const rows = await this.repo.findRecognitionWithPartner(id);
     if (rows.length === 0) return null;
 
@@ -45,18 +47,6 @@ export class PurchaseRecognitionPdfService {
       );
       if (userRecord?.name) staffName = userRecord.name;
     }
-
-    const [fontRes, logoRes, sealRes] = await Promise.all([
-      c.env.SYSTEM_BUCKET.get("fonts/company_fonts.ttf"),
-      c.env.SYSTEM_BUCKET.get("company/company_logo.png"),
-      c.env.SYSTEM_BUCKET.get("company/company_seal.png"),
-    ]);
-
-    if (!fontRes) throw new Error("日本語フォントファイルがR2に見つかりません");
-
-    const fontBuffer = await fontRes.arrayBuffer();
-    const logoBuffer = logoRes ? await logoRes.arrayBuffer() : null;
-    const sealBuffer = sealRes ? await sealRes.arrayBuffer() : null;
 
     const pdfData = {
       templateType: "PURCHASE_RECOGNITION" as const,
@@ -91,10 +81,9 @@ export class PurchaseRecognitionPdfService {
       this.repo.findTaxCategoryRates(),
       this.repo.findUnitNames(),
     ]);
-    const customPdf = await tryRenderDocumentPdfFromCustomTemplate(
-      c.env,
-      "purchase_recognition",
-      () =>
+    const customLayout = !withLayout
+      ? null
+      : await loadCustomLayoutSource(c.env, "purchase_recognition", () =>
         resolvePurchaseRecognitionPlaceholders({
           purchaseNo: hData.id,
           purchaseDate: hData.recognitionDate,
@@ -120,11 +109,25 @@ export class PurchaseRecognitionPdfService {
           taxRoundingMode: toTaxRoundingMode(systemConfig.tax_rounding_mode),
           unitNames,
         }),
-      fontBuffer,
-    );
-    const pdfBinary =
-      customPdf ?? (await generateDocumentPDF(pdfData, { fontBuffer, logoBuffer, sealBuffer }));
+        );
 
+    const source: ReportPdfSource = {
+      documentType: "purchase_recognition",
+      customLayout,
+      fallback: { kind: "document", data: pdfData },
+    };
+    return { source, hData, resolvedPartnerName };
+  }
+
+  // PERF-07 B-4: できた PDF を保存し、記録・監査ログを残す(generate-pdf と、ブラウザから受け取った PDF の両方)
+  async storePdf(
+    c: Context,
+    id: string,
+    pdfBinary: Uint8Array,
+    built: Omit<NonNullable<Awaited<ReturnType<PurchaseRecognitionPdfService["buildPdfSource"]>>>, "source">,
+    uploadedBy?: { userId: string; size: number },
+  ) {
+    const { hData, resolvedPartnerName } = built;
     const r2Path = generateAttachmentKey(`purchase-recognitions/${id}`, "generated_recognition.pdf");
     await c.env.PURCHASE_RECOGNITIONS_BUCKET.put(r2Path, pdfBinary, {
       httpMetadata: { contentType: "application/pdf" },
@@ -152,6 +155,7 @@ export class PurchaseRecognitionPdfService {
         fileName: await resolveDocumentFileName(c.env.DB, "purchase_recognition", id),
         totalAmount: hData.totalAmount,
         customerName: resolvedPartnerName,
+        ...(uploadedBy ? { generatedIn: "browser", uploadedBy: uploadedBy.userId, pdfBytes: uploadedBy.size } : {}),
       }),
     );
 

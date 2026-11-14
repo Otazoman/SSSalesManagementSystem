@@ -2,11 +2,10 @@ import { Context } from "hono";
 import { Env } from "../../../types/env";
 import { ReceiptsRepository } from "./receipts.repository";
 import { ProductsRepository } from "../../master/products/products.repository";
-import { generateDocumentPDF, PDFInvoiceData } from "../../../utils/pdfGenerator";
-import { renderLayoutToPdf } from "../../../platform/report-templates/render-layout-pdf";
+import { type ReportPdfSource, type PDFInvoiceData } from "report-renderer";
 import { resolveAcceptanceInspectionPlaceholders } from "../../../platform/report-templates/resolve-acceptance-inspection-placeholders";
 import { computeQuoteAmountBreakdown } from "../../../platform/report-templates/compute-quote-amount-breakdown";
-import { CompiledLayout } from "../../../platform/report-templates/types";
+import { loadCustomLayoutSource } from "../../../platform/report-templates/load-custom-layout";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
@@ -27,7 +26,9 @@ const RESOURCE_KEY = "inventory_stock";
 export class AcceptanceInspectionPdfService {
   constructor(private repo: ReceiptsRepository) {}
 
-  async generatePdf(c: Context<{ Bindings: Env }>, id: string) {
+  // PERF-07 B-3: PDF を作るためのデータ(GET /:id/pdf-source)。対象が無ければ null(発行できない状態ならエラー)。
+  // withLayout が false の時(受け取った PDF の保存の時)は、Excel テンプレートのレイアウトを読まない
+  async buildPdfSource(c: Context<{ Bindings: Env }>, id: string, withLayout = true) {
     const rows = await this.repo.findReceiptWithPartner(id);
     if (rows.length === 0) return null;
 
@@ -46,17 +47,6 @@ export class AcceptanceInspectionPdfService {
     const db = createDb(c.env.DB);
     const fallbackId = await resolveOperatorEmployeeNumber(c, db);
     const staffName = header.createdBy || fallbackId;
-
-    const [fontRes, logoRes, sealRes] = await Promise.all([
-      c.env.SYSTEM_BUCKET.get("fonts/company_fonts.ttf"),
-      c.env.SYSTEM_BUCKET.get("company/company_logo.png"),
-      c.env.SYSTEM_BUCKET.get("company/company_seal.png"),
-    ]);
-    if (!fontRes) throw new Error("日本語フォントファイルがR2に見つかりません");
-
-    const fontBuffer = await fontRes.arrayBuffer();
-    const logoBuffer = logoRes ? await logoRes.arrayBuffer() : null;
-    const sealBuffer = sealRes ? await sealRes.arrayBuffer() : null;
 
     const productsRepo = new ProductsRepository(c.env.DB);
     const itemsWithNames = await Promise.all(
@@ -111,20 +101,38 @@ export class AcceptanceInspectionPdfService {
       taxBreakdown: breakdown,
     };
 
-    const customPdf = await this.tryRenderFromCustomTemplate(
-      c,
-      header,
-      itemsWithNames,
-      resolvedPartnerName,
-      staffName,
-      systemConfig,
-      fontBuffer,
-      taxCategoryRates,
-      unitNames,
-    );
+    const customLayout = !withLayout
+      ? null
+      : await loadCustomLayoutSource(c.env, "acceptance_inspection", () =>
+          resolveAcceptanceInspectionPlaceholders({
+            header,
+            partnerName: resolvedPartnerName,
+            items: itemsWithNames,
+            staffName,
+            systemConfig,
+            taxCategoryRates,
+            taxRoundingMode: toTaxRoundingMode(systemConfig.tax_rounding_mode),
+            unitNames,
+          }),
+        );
 
-    const pdfBinary = customPdf ?? (await generateDocumentPDF(pdfData, { fontBuffer, logoBuffer, sealBuffer }));
+    const source: ReportPdfSource = {
+      documentType: "acceptance_inspection",
+      customLayout,
+      fallback: { kind: "document", data: pdfData },
+    };
+    return { source, header, resolvedPartnerName, items, staffName, fallbackId, totalAmount };
+  }
 
+  // PERF-07 B-4: できた PDF を保存し、記録・監査ログを残す(generate-pdf と、ブラウザから受け取った PDF の両方)
+  async storePdf(
+    c: Context<{ Bindings: Env }>,
+    id: string,
+    pdfBinary: Uint8Array,
+    built: Omit<NonNullable<Awaited<ReturnType<AcceptanceInspectionPdfService["buildPdfSource"]>>>, "source">,
+    uploadedBy?: { userId: string; size: number },
+  ) {
+    const { header, resolvedPartnerName, items, staffName, fallbackId, totalAmount } = built;
     const r2Path = generateAttachmentKey(`inventory-documents/acceptance-inspections/${id}`, "acceptance_inspection.pdf");
     await c.env.ACCEPTANCE_INSPECTIONS_BUCKET.put(r2Path, pdfBinary, {
       httpMetadata: { contentType: "application/pdf" },
@@ -150,6 +158,7 @@ export class AcceptanceInspectionPdfService {
         fileName: await resolveDocumentFileName(c.env.DB, "acceptance_inspection", id),
         totalAmount,
         partnerName: resolvedPartnerName,
+        ...(uploadedBy ? { generatedIn: "browser", uploadedBy: uploadedBy.userId, pdfBytes: uploadedBy.size } : {}),
       }),
     );
 
@@ -157,48 +166,5 @@ export class AcceptanceInspectionPdfService {
       success: true,
       message: "検収書PDFを生成しました",
     };
-  }
-
-  private async tryRenderFromCustomTemplate(
-    c: Context<{ Bindings: Env }>,
-    header: any,
-    items: any[],
-    partnerName: string,
-    staffName: string,
-    systemConfig: Record<string, unknown>,
-    fontBuffer: ArrayBuffer,
-    taxCategoryRates: Map<string, number>,
-    unitNames: Map<string, string>,
-  ): Promise<Uint8Array | null> {
-    try {
-      const mailTemplate = await this.repo.findMailTemplate("acceptance_inspection");
-      if (!mailTemplate || mailTemplate.reportLayoutStatus !== "READY" || !mailTemplate.reportLayoutPath) {
-        return null;
-      }
-
-      const layoutObj = await c.env.SYSTEM_BUCKET.get(mailTemplate.reportLayoutPath);
-      if (!layoutObj) return null;
-
-      const layout: CompiledLayout = JSON.parse(await layoutObj.text());
-
-      const { values, items: resolvedItems } = resolveAcceptanceInspectionPlaceholders({
-        header,
-        partnerName,
-        items,
-        staffName,
-        systemConfig,
-        taxCategoryRates,
-        taxRoundingMode: toTaxRoundingMode(systemConfig.tax_rounding_mode),
-        unitNames,
-      });
-
-      return await renderLayoutToPdf(layout, values, resolvedItems, fontBuffer);
-    } catch (err) {
-      console.error(
-        "[AcceptanceInspectionPdf] カスタムテンプレートでの生成に失敗、既定のレイアウトへフォールバックします:",
-        err instanceof Error ? err.message : err,
-      );
-      return null;
-    }
   }
 }

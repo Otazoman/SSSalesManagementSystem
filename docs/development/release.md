@@ -53,7 +53,8 @@ node packages/backend/scripts/db-docs/generate-db-docs.mjs --check   # スキー
 ```bash
 git pull
 node infra/scripts/sync-wrangler.mjs --write     # wrangler.jsonc.example の変更を反映(実ID・ストアIDは引き継がれる)
-cd packages/backend  && npm install
+cd packages/report-renderer && npm install   # 帳票の描画の共有パッケージ(PERF-07)。backend・frontend より先に
+cd ../backend        && npm install
 cd ../frontend       && npm install
 cd ../..
 ```

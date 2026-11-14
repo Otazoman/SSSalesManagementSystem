@@ -17,6 +17,7 @@ import {
   DeliveryNoteContactOption,
 } from "./DeliveryNoteMailModal";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -100,13 +101,7 @@ export function DeliveryNotePanel() {
     setMessage("");
     setGeneratingId(header.id);
     try {
-      const result = await apiFetch<{ message?: string }>(
-        `/api/stock-shipments/${header.id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "納品書PDFの作成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message?: string }>("/api/stock-shipments", header.id, { defaultErrorMessage: "納品書PDFの作成に失敗しました" });
       setMessage(result.message || "納品書PDFを作成しました");
       await history.refetch();
     } catch (err) {
@@ -140,13 +135,15 @@ export function DeliveryNotePanel() {
     setIsMailSending(true);
     setMailError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await sendWithIssuedPdf("/api/stock-shipments", mailModalTarget.id, () =>
+        apiFetch<{ message?: string }>(
         `/api/stock-shipments/${mailModalTarget.id}/send-email`,
         {
           method: "POST",
           json: { recipientEmail },
           defaultErrorMessage: "メール送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの送信を予約しました");
       setMailModalTarget(null);
@@ -173,13 +170,15 @@ export function DeliveryNotePanel() {
     setIsMailSending(true);
     setMailError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await bulkSendWithIssuedPdf("/api/stock-shipments", selectedIds, (targetIds) =>
+        apiFetch<{ message?: string }>(
         "/api/stock-shipments/bulk-send-email",
         {
           method: "POST",
-          json: { shipmentHeaderIds: selectedIds },
+          json: { shipmentHeaderIds: targetIds },
           defaultErrorMessage: "メール一括送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの一括送信を予約しました");
       setSelectedIds([]);
@@ -330,6 +329,12 @@ export function DeliveryNotePanel() {
                   <span className="text-slate-500">-</span>
                 ) : (
                   <div className="flex flex-wrap justify-end gap-2">
+                    {/* PERF-07 B-6: 納品書は出庫の確定の時に自動では作らないため、未発行を分かるようにする */}
+                    {!h.deliveryNoteR2Path && (
+                      <span className="self-center rounded bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-900">
+                        未発行
+                      </span>
+                    )}
                     <Button
                       size="sm"
                       variant="secondary"

@@ -14,6 +14,7 @@ import { SessionPayload } from "../../platform/auth/session-token";
 import { setSessionCookie, clearSessionCookie, getSession } from "../../platform/auth/get-session";
 import { LoginStateRepository, LoginState } from "../../platform/auth/login-state.repository";
 import { getCompanySettings } from "../../platform/kv/company-settings-cache";
+import { fetchPermissionsForRole } from "../../platform/auth/screen-permission";
 import { generateOtpCode } from "../../platform/otp/generate-otp-code";
 import { LoginOtpRepository } from "../../platform/auth/login-otp.repository";
 import {
@@ -52,25 +53,9 @@ export class AuthService {
 
   // ロール1件分の権限IDリストをKVキャッシュ優先で取得する共通ヘルパー
   // (getProfileで複数ロール分をループ呼び出しして合算するために切り出した)
+  // PERF-07 B-4: サーバー側の画面の権限の確認でも同じものを使うため、platform/auth/screen-permission.ts へ移した
   private async fetchPermissionsForRole(roleId: string): Promise<string[]> {
-    try {
-      const cached: string[] | null = await this.env.KV_PERMISSIONS.get(
-        `role_permissions:${roleId}`,
-        { type: "json" },
-      );
-      if (cached !== null) return cached;
-
-      const fetched = await this.repo.fetchRolePermissions(roleId);
-      await this.env.KV_PERMISSIONS.put(
-        `role_permissions:${roleId}`,
-        JSON.stringify(fetched),
-        { expirationTtl: 86400 },
-      );
-      return fetched;
-    } catch (kvErr) {
-      console.error("[Profile API KV Permissions Fetch Error]", kvErr);
-      return [];
-    }
+    return fetchPermissionsForRole(this.env, roleId);
   }
 
   async login(c: Context<{ Bindings: Env }>, input: LoginInput) {

@@ -95,8 +95,14 @@ export class PurchaseOrderService {
   }
 
   // --- PDF生成 ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(...args: Parameters<PurchaseOrderPdfService["buildPdfSource"]>) {
+    return this.pdf.buildPdfSource(...args);
+  }
+
+  storePdf(...args: Parameters<PurchaseOrderPdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- ダウンロード/OTP ---

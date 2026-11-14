@@ -6,7 +6,7 @@ import { ShipmentInstructionsService } from "./shipment-instructions.service";
 import { ShipmentInstructionPdfService } from "./shipment-instruction-pdf.service";
 import { ShipmentInstructionDownloadService } from "./shipment-instruction-download.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
-import { isHttpError } from "../../../platform/http/http-error";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
   describeMutationRoute,
@@ -18,7 +18,6 @@ import {
   createShipmentInstructionSchema,
   GetShipmentInstructionsQuerySchema,
   VerifyInstructionDownloadOtpSchema,
-  BulkGeneratePdfSchema,
 } from "./shipment-instructions.schema";
 import { resolveDocumentFileName } from "../../../platform/documents/document-file-name";
 
@@ -174,72 +173,17 @@ shipmentInstructionsRouter.post(
   },
 );
 
-// 指示書PDF生成 (POST /:id/generate-pdf) : 承認確定後(APPROVED以降)にオンデマンド生成する
-shipmentInstructionsRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "出荷指示書PDF生成",
-    tags: ["shipment-instructions"],
-    responses: {
-      200: { description: "生成成功" },
-      400: { description: "未発行の出荷指示" },
-      404: { description: "対象データがない" },
-    },
-  }),
-  async (c) => {
-    try {
-      const id = c.req.param("id");
-      const result = await getPdfService(c).generatePdf(c, id);
-      return c.json(result);
-    } catch (err) {
-      return respondError(c, err, "出荷指示書PDF生成に失敗しました");
-    }
-  },
-);
 
-// 複数指示書の一括PDF発行・送信 (POST /bulk-generate-pdf) : 単独発行(POST /:id/generate-pdf)を
-// 選択された全IDに対して順に呼ぶだけの薄いラッパー。1件の失敗が他へ影響しないよう、
-// 個別にtry/catchしてresults配列で成功/失敗を返す
-shipmentInstructionsRouter.post(
-  "/bulk-generate-pdf",
-  describeMutationRoute({
-    summary: "出荷指示書PDFの一括生成・送信",
-    tags: ["shipment-instructions"],
-    json: BulkGeneratePdfSchema,
-    successDescription: "各IDごとの成功・失敗結果",
-    errors: [{ status: 400, description: "入力データ検証エラー" }],
-  }),
-  async (c) => {
-    try {
-      const rawBody = await c.req.json();
-      const parsed = v.parse(BulkGeneratePdfSchema, rawBody);
-      const pdfService = getPdfService(c);
+// PERF-07 B-3・B-4: ブラウザで出荷指示書 PDF を作るためのデータ(GET /:id/pdf-source)と、ブラウザが作った PDF の受け取り(POST /:id/pdf)。
+// 出荷指示書は出荷の画面(inventory_shipping)から発行する
+registerBrowserPdfRoutes(shipmentInstructionsRouter, {
+  tag: "shipment-instructions",
+  label: "出荷指示書",
+  resource: "inventory_shipping",
+  build: (c, id, withLayout) => getPdfService(c).buildPdfSource(c, id, withLayout),
+  store: (c, id, pdf, built, uploadedBy) => getPdfService(c).storePdf(c, id, pdf, built, uploadedBy),
+});
 
-      const results = [];
-      for (const id of parsed.ids) {
-        try {
-          const result = await pdfService.generatePdf(c, id);
-          results.push({ id, success: true, message: result.message });
-        } catch (err) {
-          results.push({
-            id,
-            success: false,
-            message: isHttpError(err) ? err.message : "PDF生成に失敗しました",
-          });
-        }
-      }
-
-      const successCount = results.filter((r) => r.success).length;
-      return c.json({
-        success: true,
-        message: `${results.length}件中${successCount}件のPDFを生成・送信しました`,
-        results,
-      });
-    } catch (err) {
-      return respondError(c, err, "出荷指示書一括PDF生成に失敗しました");
-    }
-  },
-);
 
 // 最新の指示書PDFを表示・ダウンロード (GET /:id/document) : 社内向け(API_KEY必須の通常ルート)。
 // attachmentIdを都度確認しなくても、発行済みであればヘッダーのinstructionDocumentR2Pathから

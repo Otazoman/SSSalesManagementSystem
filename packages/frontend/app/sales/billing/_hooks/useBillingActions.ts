@@ -4,6 +4,7 @@ import { BillingDetail, UnbilledSalesInvoice } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface UseBillingActionsProps {
   syncBillings: (filters: Record<string, string>) => Promise<void>;
@@ -186,11 +187,13 @@ export function useBillingActions({
     setMessage("");
     setError("");
     try {
-      await apiFetch(`/api/sales-billing/${detail.id}/send-email`, {
+      await sendWithIssuedPdf("/api/sales-billing", detail.id, () =>
+        apiFetch(`/api/sales-billing/${detail.id}/send-email`, {
         method: "POST",
         json: { recipientEmail },
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
       setMessage("📧 メールの送信を予約しました");
       setShowMailModal(false);
     } catch (err) {
@@ -220,14 +223,15 @@ export function useBillingActions({
     setMessage("");
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>("/api/sales-billing/bulk-send-email", {
+      const data = await bulkSendWithIssuedPdf("/api/sales-billing", selectedBillingIds, (targetIds) =>
+        apiFetch<{ message?: string }>("/api/sales-billing/bulk-send-email", {
         method: "POST",
-        json: {
-          billingHeaderIds: selectedBillingIds,
+        json: { billingHeaderIds: targetIds,
           fallbackOperatorId: "CURRENT_USER",
         },
         defaultErrorMessage: "一括送信リレーに失敗しました",
-      });
+      }),
+      );
       setMessage(data.message || "一括送信を予約しました");
       setSelectedBillingIds([]);
     } catch (err) {
@@ -356,10 +360,7 @@ export function useBillingActions({
     setMessage("⌛ PDFファイルを生成中...");
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>(`/api/sales-billing/${id}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      const data = await issueReportPdf<{ message?: string }>("/api/sales-billing", id, { defaultErrorMessage: "PDF生成に失敗しました" });
       setMessage(data.message || "請求書PDFの生成に成功しました");
       void handleOpenDetail(id);
       void syncBillings({

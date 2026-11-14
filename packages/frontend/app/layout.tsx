@@ -9,6 +9,7 @@ import { PermissionProvider } from "./context/permissioncontext";
 import { ScreenDescriptionProvider } from "./context/screen-descriptions";
 import { ThemeProvider, THEME_INIT_SCRIPT } from "./context/theme";
 import { ConfirmProvider } from "./_shared/ui/ConfirmDialog";
+import { ReportPdfIssuingNotice } from "./_shared/report-pdf/ReportPdfIssuingNotice";
 
 // 同一階層およびhooksから必要なパーツをインポート
 import { useAuthAndMenu } from "./hooks/use-auth-and-menu";
@@ -239,6 +240,8 @@ export default function RootLayout({
           </ThemeProvider>
           </ConfirmProvider>
         </PermissionProvider>
+        {/* PERF-07 B-5: ブラウザで帳票 PDF を作っている間の表示 */}
+        <ReportPdfIssuingNotice />
       </body>
     </html>
   );

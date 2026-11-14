@@ -1,12 +1,11 @@
 import { Context } from "hono";
 import { SalesOrderRepository } from "./sales-order.repository";
 import { RESOURCE_KEY } from "./sales-order-constants";
-import { generateDocumentPDF } from "../../../utils/pdfGenerator";
+import { type ReportPdfSource } from "report-renderer";
 import { DEFAULT_ITEM_NAME, DEFAULT_PAYMENT_TERMS } from "../../../platform/documents/document-defaults";
-import { renderLayoutToPdf } from "../../../platform/report-templates/render-layout-pdf";
 import { resolveOrderPlaceholders } from "../../../platform/report-templates/resolve-order-placeholders";
 import { computeQuoteAmountBreakdown } from "../../../platform/report-templates/compute-quote-amount-breakdown";
-import { CompiledLayout } from "../../../platform/report-templates/types";
+import { loadCustomLayoutSource } from "../../../platform/report-templates/load-custom-layout";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
@@ -23,7 +22,9 @@ export class SalesOrderPdfService {
     this.repo = repo;
   }
 
-  async generatePdf(c: Context, id: string) {
+  // PERF-07 B-3: PDF を作るためのデータ(GET /:id/pdf-source)。受注が無ければ null。
+  // withLayout が false の時(受け取った PDF の保存の時)は、Excel テンプレートのレイアウトを読まない
+  async buildPdfSource(c: Context, id: string, withLayout = true) {
     const rows = await this.repo.findOrderWithPartner(id);
     if (rows.length === 0) return null;
 
@@ -47,18 +48,6 @@ export class SalesOrderPdfService {
       );
       if (userRecord && userRecord.name) staffName = userRecord.name;
     }
-
-    const [fontRes, logoRes, sealRes] = await Promise.all([
-      c.env.SYSTEM_BUCKET.get("fonts/company_fonts.ttf"),
-      c.env.SYSTEM_BUCKET.get("company/company_logo.png"),
-      c.env.SYSTEM_BUCKET.get("company/company_seal.png"),
-    ]);
-
-    if (!fontRes) throw new Error("日本語フォントファイルがR2に見つかりません");
-
-    const fontBuffer = await fontRes.arrayBuffer();
-    const logoBuffer = logoRes ? await logoRes.arrayBuffer() : null;
-    const sealBuffer = sealRes ? await sealRes.arrayBuffer() : null;
 
     const taxCategoryRates = await this.repo.findTaxCategoryRates();
     const unitNames = await this.repo.findUnitNames();
@@ -96,21 +85,40 @@ export class SalesOrderPdfService {
       taxBreakdown,
     };
 
-    const customPdf = await this.tryRenderFromCustomTemplate(
-      c,
-      hData,
-      items,
-      resolvedPartnerName,
-      staffName,
-      systemConfig,
-      fontBuffer,
-      taxCategoryRates,
-      unitNames,
-    );
+    // 💡 mail-settings.service.tsのINITIAL_TEMPLATESで予約されているid("order_acknowledgement")と
+    // 一致させる必要がある("sales_order"ではない。admin/mail-settings画面で管理される帳票種別idのため)
+    const customLayout = !withLayout
+      ? null
+      : await loadCustomLayoutSource(c.env, "order_acknowledgement", () =>
+          resolveOrderPlaceholders({
+            order: hData,
+            partnerName: resolvedPartnerName,
+            items,
+            staffName,
+            systemConfig,
+            taxCategoryRates,
+            taxRoundingMode: toTaxRoundingMode(systemConfig.tax_rounding_mode),
+            unitNames,
+          }),
+        );
 
-    const pdfBinary =
-      customPdf ?? (await generateDocumentPDF(pdfData, { fontBuffer, logoBuffer, sealBuffer }));
+    const source: ReportPdfSource = {
+      documentType: "order_acknowledgement",
+      customLayout,
+      fallback: { kind: "document", data: pdfData },
+    };
+    return { source, hData, resolvedPartnerName };
+  }
 
+  // PERF-07 B-4: できた PDF を保存し、受注履歴への記録・監査ログを残す(generate-pdf と、ブラウザから受け取った PDF の両方)
+  async storePdf(
+    c: Context,
+    id: string,
+    pdfBinary: Uint8Array,
+    built: { hData: { updatedBy: string | null; totalAmount: number } & Record<string, any>; resolvedPartnerName: string },
+    uploadedBy?: { userId: string; size: number },
+  ) {
+    const { hData, resolvedPartnerName } = built;
     const r2Path = generateAttachmentKey(`orders/${id}`, "generated_order.pdf");
     await c.env.SALES_ORDERS_BUCKET.put(r2Path, pdfBinary, {
       httpMetadata: { contentType: "application/pdf" },
@@ -138,6 +146,7 @@ export class SalesOrderPdfService {
         fileName: await resolveDocumentFileName(c.env.DB, "order_acknowledgement", id),
         totalAmount: hData.totalAmount,
         customerName: resolvedPartnerName,
+        ...(uploadedBy ? { generatedIn: "browser", uploadedBy: uploadedBy.userId, pdfBytes: uploadedBy.size } : {}),
       }),
     );
 
@@ -145,50 +154,5 @@ export class SalesOrderPdfService {
       success: true,
       message: "画面編集内容を反映したPDFを受注履歴に生成しました",
     };
-  }
-
-  private async tryRenderFromCustomTemplate(
-    c: Context,
-    hData: any,
-    items: any[],
-    partnerName: string,
-    staffName: string,
-    systemConfig: Record<string, unknown>,
-    fontBuffer: ArrayBuffer,
-    taxCategoryRates: Map<string, number>,
-    unitNames: Map<string, string>,
-  ): Promise<Uint8Array | null> {
-    try {
-      // 💡 mail-settings.service.tsのINITIAL_TEMPLATESで予約されているid("order_acknowledgement")と
-      // 一致させる必要がある("sales_order"ではない。admin/mail-settings画面で管理される帳票種別idのため)
-      const mailTemplate = await this.repo.findMailTemplate("order_acknowledgement");
-      if (!mailTemplate || mailTemplate.reportLayoutStatus !== "READY" || !mailTemplate.reportLayoutPath) {
-        return null;
-      }
-
-      const layoutObj = await c.env.SYSTEM_BUCKET.get(mailTemplate.reportLayoutPath);
-      if (!layoutObj) return null;
-
-      const layout: CompiledLayout = JSON.parse(await layoutObj.text());
-
-      const { values, items: resolvedItems } = resolveOrderPlaceholders({
-        order: hData,
-        partnerName,
-        items,
-        staffName,
-        systemConfig,
-        taxCategoryRates,
-        taxRoundingMode: toTaxRoundingMode(systemConfig.tax_rounding_mode),
-        unitNames,
-      });
-
-      return await renderLayoutToPdf(layout, values, resolvedItems, fontBuffer);
-    } catch (err) {
-      console.error(
-        "[SalesOrderPdf] カスタムテンプレートでの生成に失敗、既定のレイアウトへフォールバックします:",
-        err instanceof Error ? err.message : err,
-      );
-      return null;
-    }
   }
 }

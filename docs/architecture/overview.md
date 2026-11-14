@@ -36,6 +36,7 @@ D1(データベース) / R2(ファイル) / KV(設定・キャッシュ) / Secre
 - Frontend と Backend は**別々の Worker** です。責務を統合しません(CLAUDE.md #17)。
 - デプロイは **Backend → Frontend の順**です(Frontend が Backend に直接つながるため)。
 - Cloudflare の無料プランで動く構成にしています。
+  - 帳票の PDF はブラウザで生成します(Backend で作ると、無料プランの CPU 時間の上限(1リクエスト 10 ms)を超えるため。PERF-07)。
 
 ## 2. リクエストの流れ
 
@@ -158,7 +159,12 @@ Backend Worker は公開していません(`workers_dev: false`・`preview_urls:
 
 ### 5-2. 帳票(PDF)とメール
 
-- 見積書・注文請書・納品書・請求書・発注書・検収書などの PDF は、Backend で生成します(`platform/report-templates/`、pdf-lib)。フォント・ロゴ・印影は R2 の `SYSTEM_BUCKET` から読みます。
+- 見積書・注文請書・納品書・請求書・発注書・検収書などの PDF は、**ブラウザで生成します**(PERF-07。Backend で作ると無料プランの CPU 時間の上限を超えるため)。
+  1. 画面が `GET /api/<帳票>/:id/pdf-source` で PDF を作るためのデータを受け取ります(Backend は伝票・会社設定・Excel テンプレートのレイアウトを組み立てるだけ)。
+  2. フォント・ロゴ・印影を `GET /api/report-assets/font・logo・seal` で受け取ります(R2 の `SYSTEM_BUCKET` のまま流す。ブラウザの Cache Storage に保存し、ETag で変わっていないかを確かめる)。
+  3. 描画のコードは共有パッケージ `packages/report-renderer`(pdf-lib)で、Backend と Frontend の両方から `file:../report-renderer` で参照しています。
+  4. 画面が `POST /api/<帳票>/:id/pdf` で PDF を送り、Backend は検証(PDF か・5MB 以下・発行できる状態・画面の更新権限)して R2 に保存し、記録・監査ログを残します。
+- メール送信の時に PDF が無ければ、Backend は「先に PDF を発行してください」を返し、画面がブラウザで PDF を発行してから送り直します。納品書も、出庫の確定の時には自動で作りません(出荷の画面の「納品書PDFを作成」で発行する)。
 - 帳票テンプレートは Excel(xlsx)でアップロードでき、Cron で変換されます(`scheduled/process-report-template-compiles.ts`)。
 - 取引先へのメール送信やダウンロードは、OTP(使い捨ての確認コード)付きのリンクで行えます。
 - メール・Slack の通知は、いったん送信待ちの一覧(outbox)に入れ、Cron(1分ごと)がまとめて送ります(`scheduled/process-notification-outbox.ts`)。

@@ -1,6 +1,5 @@
 import { Context } from "hono";
 import { ShipmentsRepository } from "./shipments.repository";
-import { DeliveryNotePdfService } from "./delivery-note-pdf.service";
 import { BulkSendDeliveryNoteEmailInput } from "./shipments.schema";
 import { PartnersRepository } from "../../master/partners/partners.repository";
 import { PartnerContactsRepository } from "../../master/partner-contacts/partner-contacts.repository";
@@ -47,19 +46,6 @@ export class DeliveryNoteMailService {
 
   // BUG-030: 納品書の PDF が無ければ、その場で作る(承認時の自動作成に失敗した場合など)。
   // 作れた場合は header の R2 パスを更新する。得意先が無い・作成に失敗した場合は何もしない(呼び出し側で送信エラーにする)
-  private async ensureDeliveryNote(
-    c: Context,
-    header: { id: string; partnerId: string | null; deliveryNoteR2Path: string | null },
-  ) {
-    if (header.deliveryNoteR2Path || !header.partnerId) return;
-    try {
-      await new DeliveryNotePdfService(this.repo).generatePdf(c as any, header.id);
-      header.deliveryNoteR2Path = (await this.repo.findHeaderById(header.id))?.deliveryNoteR2Path ?? null;
-    } catch (err) {
-      console.error(`[SEND] Delivery note auto-generation failed: ${header.id}`, err);
-    }
-  }
-
   async bulkSendEmail(c: Context, payload: BulkSendDeliveryNoteEmailInput) {
     const { shipmentHeaderIds, fallbackOperatorId } = payload;
 
@@ -84,13 +70,13 @@ export class DeliveryNoteMailService {
     const executionResults = [];
 
     for (const header of targetShipments) {
-      await this.ensureDeliveryNote(c, header);
+      // PERF-07 B-6: 納品書 PDF はブラウザで作る(サーバーでは作らない)。未発行の出庫は送らずに失敗にする
       if (!header.partnerId || !header.deliveryNoteR2Path) {
         failCount++;
         executionResults.push({
           id: header.id,
           status: "FAILED",
-          error: "納品書PDFがまだ生成されていません(得意先未設定、または生成に失敗した可能性があります)",
+          error: header.partnerId ? "先に PDF を発行してください" : "得意先が設定されていない出庫には、納品書を作成できません",
         });
         await writeMailDeliveryLog({
           dbLogBinding: c.env.DB_LOG,
@@ -207,11 +193,11 @@ export class DeliveryNoteMailService {
     }
     const header = targetShipments[0];
 
-    await this.ensureDeliveryNote(c, header);
+    // PERF-07 B-6: 納品書 PDF はブラウザで作る(サーバーでは作らない)
     if (!header.deliveryNoteR2Path) {
       throw new BadRequestError(
         header.partnerId
-          ? "納品書PDFの作成に失敗しました。帳票テンプレート・フォントの設定をご確認ください。"
+          ? "先に PDF を発行してください"
           : "得意先が設定されていない出庫には、納品書を作成できません。",
       );
     }

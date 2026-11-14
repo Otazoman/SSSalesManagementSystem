@@ -4,6 +4,7 @@ import { Env } from "../../../types/env";
 import { BillingRepository } from "./billing.repository";
 import { BillingService } from "./billing.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import { describeApiRoute, describeListRoute, describeCsvDownloadRoute } from "../../../platform/openapi/describe-route";
 import {
@@ -249,25 +250,15 @@ billingRouter.post(
 // ==========================================
 // 8. 請求書PDF発行
 // ==========================================
-billingRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "請求書PDF発行(都度=対象売上のPDFをそのまま発行、締め=合算PDFを新規生成)",
-    tags: ["sales-billing"],
-    responses: {
-      200: { description: "生成成功" },
-      404: { description: "対象データがない" },
-    },
-  }),
-  async (c) => {
-    const id = c.req.param("id");
-    const result = await getService(c).generatePdf(c, id);
-    if (!result) {
-      return c.json({ success: false, message: "対象データがありません" }, 404);
-    }
-    return c.json(result);
-  },
-);
+
+// PERF-07 B-3・B-4: ブラウザで PDF を作るためのデータ(GET /:id/pdf-source)と、ブラウザが作った PDF の受け取り(POST /:id/pdf)
+registerBrowserPdfRoutes(billingRouter, {
+  tag: "sales-billing",
+  label: "請求書",
+  resource: "sales_billing",
+  build: (c, id, withLayout) => getService(c).buildPdfSource(c, id, withLayout),
+  store: (c, id, pdf, built, uploadedBy) => getService(c).storePdf(c, id, pdf, built, uploadedBy),
+});
 
 // ==========================================
 // K-4-4: 請求書の再発行(保存済みPDFの再ダウンロード・再送付)

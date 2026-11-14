@@ -68,23 +68,16 @@ export class SalesOrderMailService {
     const executionResults = [];
 
     for (const order of targetOrders) {
-      let pdfAttachment = await this.repo.findLatestPdfAttachment(order.id);
+      // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。無ければ「先に PDF を発行してください」
+    const pdfAttachment = await this.repo.findLatestPdfAttachment(order.id);
 
-      if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-        try {
-          await this.pdfService.generatePdf(c, order.id);
-          pdfAttachment = await this.repo.findLatestPdfAttachment(order.id);
-        } catch (genErr: any) {
-          console.error(`[BULK SEND] PDF Auto-generation failed for order: ${order.id}`, genErr);
-        }
-      }
 
       if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
         failCount++;
         executionResults.push({
           id: order.id,
           status: "FAILED",
-          error: "注文請書PDFの自動生成に失敗しました",
+          error: "先に PDF を発行してください",
         });
         await writeMailDeliveryLog({
           dbLogBinding: c.env.DB_LOG,
@@ -203,17 +196,10 @@ export class SalesOrderMailService {
     const order = targetOrders[0];
 
     // BUG-029: 1件の送信でも、PDF が無ければその場で作ってから送る(一括送信と同じ)
-    let pdfAttachment = await this.repo.findLatestPdfAttachment(order.id);
+    // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。無ければ「先に PDF を発行してください」
+    const pdfAttachment = await this.repo.findLatestPdfAttachment(order.id);
     if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-      try {
-        await this.pdfService.generatePdf(c, order.id);
-        pdfAttachment = await this.repo.findLatestPdfAttachment(order.id);
-      } catch (genErr) {
-        console.error(`[SINGLE SEND] PDF Auto-generation failed: ${order.id}`, genErr);
-      }
-    }
-    if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-      throw new BadRequestError("注文請書PDFの作成に失敗しました。帳票テンプレートの設定をご確認ください。");
+      throw new BadRequestError("先に PDF を発行してください");
     }
 
     const targetToEmails = recipientEmail.trim();

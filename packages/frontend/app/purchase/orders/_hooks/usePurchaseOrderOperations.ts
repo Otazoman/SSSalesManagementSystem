@@ -25,6 +25,7 @@ import { useTaxRoundingMode } from "../../../_shared/hooks/use-tax-rounding-mode
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
 import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface CompanySettingsResponse {
   is_otp_download_restricted_to_contacts?: boolean;
@@ -981,10 +982,7 @@ export function usePurchaseOrderOperations({
     setIsSubmitting(true);
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>(`/api/purchase-orders/${editingId}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "発注書PDFの生成に失敗しました",
-      });
+      const data = await issueReportPdf<{ message?: string }>("/api/purchase-orders", editingId, { defaultErrorMessage: "発注書PDFの生成に失敗しました" });
       setMessage(data.message || "発注書PDFを生成しました");
       const detail = await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${editingId}`);
       setAttachments(detail.attachments || []);
@@ -1031,11 +1029,13 @@ export function usePurchaseOrderOperations({
     setIsMailSending(true);
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>(`/api/purchase-orders/${mailModalOrderId}/send-email`, {
+      const data = await sendWithIssuedPdf("/api/purchase-orders", mailModalOrderId, () =>
+        apiFetch<{ message?: string }>(`/api/purchase-orders/${mailModalOrderId}/send-email`, {
         method: "POST",
         json: { recipientEmail },
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
       setMessage(data.message || "📧 メールの送信を予約しました");
       setMailModalOrderId(null);
     } catch (err) {
@@ -1050,11 +1050,13 @@ export function usePurchaseOrderOperations({
     setIsMailSending(true);
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>("/api/purchase-orders/bulk-send-email", {
+      const data = await bulkSendWithIssuedPdf("/api/purchase-orders", selectedOrderIds, (targetIds) =>
+        apiFetch<{ message?: string }>("/api/purchase-orders/bulk-send-email", {
         method: "POST",
-        json: { orderIds: selectedOrderIds },
+        json: { orderIds: targetIds },
         defaultErrorMessage: "一括送信リレーに失敗しました",
-      });
+      }),
+      );
       setMessage(data.message || "一括送信を予約しました");
       setSelectedOrderIds([]);
     } catch (err) {

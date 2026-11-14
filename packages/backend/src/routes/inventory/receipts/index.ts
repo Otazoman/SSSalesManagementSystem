@@ -7,6 +7,7 @@ import { AcceptanceInspectionPdfService } from "./acceptance-inspection-pdf.serv
 import { AcceptanceInspectionDownloadService } from "./acceptance-inspection-download.service";
 import { AcceptanceInspectionMailService } from "./acceptance-inspection-mail.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
   describeMutationRoute,
@@ -181,29 +182,16 @@ stockReceiptsRouter.put(
 // ==========================================
 // 検収書発行(Item9、発注書と同じ方式): PDF生成
 // ==========================================
-stockReceiptsRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "検収書PDF生成",
-    tags: ["stock-receipts"],
-    responses: {
-      200: { description: "生成成功" },
-      404: { description: "対象データがない" },
-    },
-  }),
-  async (c) => {
-    const id = c.req.param("id");
-    try {
-      const result = await getPdfService(c).generatePdf(c, id);
-      if (!result) {
-        return c.json({ success: false, message: "対象データがありません" }, 404);
-      }
-      return c.json(result);
-    } catch (err) {
-      return respondError(c, err);
-    }
-  },
-);
+
+// PERF-07 B-3・B-4: ブラウザで検収書 PDF を作るためのデータ(GET /:id/pdf-source)と、ブラウザが作った PDF の受け取り(POST /:id/pdf)。
+// 検収書は入荷の画面(inventory_receiving)から発行する
+registerBrowserPdfRoutes(stockReceiptsRouter, {
+  tag: "stock-receipts",
+  label: "検収書",
+  resource: "inventory_receiving",
+  build: (c, id, withLayout) => getPdfService(c).buildPdfSource(c, id, withLayout),
+  store: (c, id, pdf, built, uploadedBy) => getPdfService(c).storePdf(c, id, pdf, built, uploadedBy),
+});
 
 // ==========================================
 // 検収書添付ファイルのストリーミング配信・ダウンロード(社内向け、OTP認証なし)

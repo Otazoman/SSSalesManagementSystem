@@ -4,6 +4,7 @@ import { OrderRecord, OrderPrefillData } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
 import { todayJst } from "../../../_shared/jst-date";
+import { issueReportPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface UseOrderListActionsProps {
   canDelete: boolean;
@@ -197,10 +198,7 @@ export function useOrderListActions({
     setMessage("⌛ PDFファイルを生成中...");
     setError("");
     try {
-      await apiFetch(`/api/sales-orders/${id}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      await issueReportPdf("/api/sales-orders", id, { defaultErrorMessage: "PDF生成に失敗しました" });
 
       setMessage("✅ 注文請書PDFの生成に成功しました。添付ファイル欄をご確認ください。");
       void handleOpenEditForm(id);

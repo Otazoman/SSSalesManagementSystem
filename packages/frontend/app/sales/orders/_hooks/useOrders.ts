@@ -14,6 +14,7 @@ import {
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
 import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
+import { sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const DUMMY_PRODUCTS: ProductMaster[] = [
   { id: "PROD-001", name: "スタンダードサーバープラン", price: 50000 },
@@ -361,11 +362,13 @@ export function useOrders({ canRead, permsLoading }: UseOrdersProps) {
     setError("");
 
     try {
-      const data = await apiFetch<{ message?: string }>("/api/sales-orders/bulk-send-email", {
+      const data = await bulkSendWithIssuedPdf("/api/sales-orders", selectedOrderIds, (targetIds) =>
+        apiFetch<{ message?: string }>("/api/sales-orders/bulk-send-email", {
         method: "POST",
-        json: { orderIds: selectedOrderIds, fallbackOperatorId: "CURRENT_USER" },
+        json: { orderIds: targetIds,  fallbackOperatorId: "CURRENT_USER" },
         defaultErrorMessage: "一括送信リレーに失敗しました",
-      });
+      }),
+      );
 
       setMessage(data.message || "一括送信を予約しました");
       return true;
@@ -405,11 +408,13 @@ export function useOrders({ canRead, permsLoading }: UseOrdersProps) {
     setError("");
 
     try {
-      await apiFetch(`/api/sales-orders/${params.orderId}/send-email`, {
+      await sendWithIssuedPdf("/api/sales-orders", params.orderId, () =>
+        apiFetch(`/api/sales-orders/${params.orderId}/send-email`, {
         method: "POST",
         json: params,
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
 
       setMessage("📧 メールの送信を予約しました");
       return true;

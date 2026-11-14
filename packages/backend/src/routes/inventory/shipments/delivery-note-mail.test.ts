@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
 import * as auditSchema from "../../../db/audit-schema";
 import { stockShipmentsRouter } from "./index";
+import { signSessionToken } from "../../../platform/auth/session-token";
 import { grantAllDocumentTypesToEmailTargets } from "../../../../test/support/contact-document-types";
 
 /**
@@ -226,15 +227,43 @@ describe("納品書メール送信(方式A): 一括送信", () => {
   });
 });
 
-// BUG-030: 納品書PDFの作成(作り直し)。承認時の自動作成に失敗した場合などに、画面から作り直せる
-describe("納品書PDFの作成(POST /:id/generate-pdf)", () => {
+// BUG-030 → PERF-07: 納品書 PDF は、出荷の画面の「納品書PDFを作成」でブラウザが作る(GET /:id/pdf-source → POST /:id/pdf)。
+// 作れない場合は、データを受け取る時点で理由を返す。メール送信は、PDF が無ければ送らない
+describe("納品書PDFの作成(GET /:id/pdf-source)", () => {
+  const ADMIN_ID = "u-dn-admin";
+
+  beforeEach(async () => {
+    const createdAt = new Date();
+    await db.insert(schema.roles).values({ id: "admin", name: "システム管理者", createdAt }).onConflictDoNothing();
+    await db
+      .insert(schema.users)
+      .values({ id: ADMIN_ID, employeeNumber: "E-DN-ADMIN", email: "dn-admin@example.com", name: "管理者", createdAt, updatedAt: createdAt })
+      .onConflictDoNothing();
+    await db.insert(schema.userRoles).values({ userId: ADMIN_ID, roleId: "admin", departmentSurrogateId: null }).onConflictDoNothing();
+  });
+
+  afterEach(async () => {
+    await db.delete(schema.userRoles).where(eq(schema.userRoles.userId, ADMIN_ID));
+  });
+
+  async function getSource(id: string) {
+    const token = await signSessionToken(
+      { userId: ADMIN_ID, employeeNumber: "E-DN-ADMIN", name: "管理者", role: "admin", deptName: "", companyName: "", isAuditEnabled: false },
+      await env.SESSION_SECRET.get(),
+      3600,
+    );
+    const ctx = createExecutionContext();
+    const res = await stockShipmentsRouter.request(`/${id}/pdf-source`, { headers: { Cookie: `session_token=${token}` } }, env, ctx);
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
   it("存在しない出庫は404", async () => {
-    const res = await postJson("/SH-NOPE/generate-pdf", {});
-    expect(res.status).toBe(404);
+    expect((await getSource("SH-NOPE")).status).toBe(404);
   });
 
   it("未確定(未承認)の出庫は400で理由を返す", async () => {
-    const res = await postJson(`/${HEADER_UNAPPROVED_ID}/generate-pdf`, {});
+    const res = await getSource(HEADER_UNAPPROVED_ID);
     expect(res.status).toBe(400);
     expect(((await res.json()) as { message: string }).message).toContain("確定");
   });
@@ -248,20 +277,20 @@ describe("納品書PDFの作成(POST /:id/generate-pdf)", () => {
       createdBy: "EMP001",
       createdAt: now,
     });
-    const res = await postJson("/SH-DN-NO-PARTNER/generate-pdf", {});
+    const res = await getSource("SH-DN-NO-PARTNER");
     expect(res.status).toBe(400);
     expect(((await res.json()) as { message: string }).message).toContain("得意先が設定されていない");
   });
 
-  it("明細の無い出庫は400で理由を返す(作成に失敗しても、理由がわかる)", async () => {
-    const res = await postJson(`/${HEADER_NO_PDF_ID}/generate-pdf`, {});
+  it("明細の無い出庫は400で理由を返す", async () => {
+    const res = await getSource(HEADER_NO_PDF_ID);
     expect(res.status).toBe(400);
     expect(((await res.json()) as { message: string }).message).toContain("明細の無い出庫");
   });
 
-  it("個別送信で PDF が無い場合は、作成を試み、作れなかったことを伝える", async () => {
+  it("個別送信で PDF が無い場合は、サーバーでは作らずに「先に PDF を発行してください」を返す", async () => {
     const res = await postJson(`/${HEADER_NO_PDF_ID}/send-email`, { recipientEmail: "custom@example.com" });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toContain("納品書PDFの作成に失敗しました");
+    expect(((await res.json()) as { message: string }).message).toBe("先に PDF を発行してください");
   });
 });

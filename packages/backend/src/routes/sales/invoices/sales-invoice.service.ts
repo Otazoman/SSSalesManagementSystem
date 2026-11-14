@@ -82,8 +82,14 @@ export class SalesInvoiceService {
   }
 
   // --- PDF生成 ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(...args: Parameters<SalesInvoicePdfService["buildPdfSource"]>) {
+    return this.pdf.buildPdfSource(...args);
+  }
+
+  storePdf(...args: Parameters<SalesInvoicePdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- 添付ファイルダウンロード(認証済みルート) ---

@@ -16,7 +16,6 @@ import { DisposalsRepository } from "../../routes/inventory/disposals/disposals.
 import { ReturnsRepository } from "../../routes/inventory/returns/returns.repository";
 import { ShipmentInstructionsRepository } from "../../routes/inventory/shipment-instructions/shipment-instructions.repository";
 import { ReceiptInstructionsRepository } from "../../routes/inventory/receipt-instructions/receipt-instructions.repository";
-import { DeliveryNotePdfService } from "../../routes/inventory/shipments/delivery-note-pdf.service";
 import { StocksService } from "../../routes/inventory/stocks/stocks.service";
 import { SalesOrderRepository } from "../../routes/sales/orders/sales-order.repository";
 import { SalesOrderShipmentService } from "../../routes/sales/orders/sales-order-shipment.service";
@@ -146,12 +145,7 @@ async function applyApproved({
         await salesOrderShipmentService.recalculateShipmentStatus(orderId);
       }
     }
-    // Item6 Phase6-4: 得意先が設定されていれば納品書PDFを自動生成する(承認確定=実際に
-    // 在庫が減算されたタイミング)。cはR2バインディングアクセスに必要
-    if (shipmentHeader.partnerId && c) {
-      const deliveryNotePdfService = new DeliveryNotePdfService(shipmentsRepo);
-      c.executionCtx.waitUntil(deliveryNotePdfService.generateAndStore(c as any, reqParent.targetId));
-    }
+    // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
     return;
   }
 

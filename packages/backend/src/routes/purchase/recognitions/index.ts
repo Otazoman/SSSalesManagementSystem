@@ -4,6 +4,7 @@ import { Env } from "../../../types/env";
 import { PurchaseRecognitionRepository } from "./purchase-recognition.repository";
 import { PurchaseRecognitionService } from "./purchase-recognition.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import { describeApiRoute, describeListRoute, describeCsvDownloadRoute } from "../../../platform/openapi/describe-route";
 import {
@@ -291,25 +292,15 @@ purchaseRecognitionsRouter.post(
 // ==========================================
 // 10. PDF生成
 // ==========================================
-purchaseRecognitionsRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "仕入計上書PDF生成",
-    tags: ["purchase-recognitions"],
-    responses: {
-      200: { description: "生成成功" },
-      404: { description: "対象データがない" },
-    },
-  }),
-  async (c) => {
-    const id = c.req.param("id");
-    const result = await getService(c).generatePdf(c, id);
-    if (!result) {
-      return c.json({ success: false, message: "対象データがありません" }, 404);
-    }
-    return c.json(result);
-  },
-);
+
+// PERF-07 B-3・B-4: ブラウザで PDF を作るためのデータ(GET /:id/pdf-source)と、ブラウザが作った PDF の受け取り(POST /:id/pdf)
+registerBrowserPdfRoutes(purchaseRecognitionsRouter, {
+  tag: "purchase-recognitions",
+  label: "仕入計上書",
+  resource: "purchase_receipts",
+  build: (c, id, withLayout) => getService(c).buildPdfSource(c, id, withLayout),
+  store: (c, id, pdf, built, uploadedBy) => getService(c).storePdf(c, id, pdf, built, uploadedBy),
+});
 
 // ==========================================
 // 添付ファイルのストリーミング配信・ダウンロード

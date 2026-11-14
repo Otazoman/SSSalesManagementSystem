@@ -4,7 +4,6 @@ import { Env } from "../../../types/env";
 import * as schema from "../../../db/schema";
 import type { AppDb } from "../../../platform/db/create-db";
 import { ShipmentsRepository } from "../../inventory/shipments/shipments.repository";
-import { DeliveryNotePdfService } from "../../inventory/shipments/delivery-note-pdf.service";
 import { StocksService } from "../../inventory/stocks/stocks.service";
 import { SalesOrderRepository } from "../../sales/orders/sales-order.repository";
 import { SalesOrderShipmentService } from "../../sales/orders/sales-order-shipment.service";
@@ -78,10 +77,7 @@ export async function confirmDirectShipmentOfReceipt(
   if (shipment.salesOrderId) {
     await new SalesOrderShipmentService(salesOrderRepo).recalculateShipmentStatus(shipment.salesOrderId);
   }
-  // 得意先が設定されていれば、今の出庫と同じく納品書PDFを作る(R2 を使うため Context がある時だけ)
-  if (shipment.partnerId && c) {
-    c.executionCtx.waitUntil(new DeliveryNotePdfService(shipmentsRepo).generateAndStore(c as any, shipment.id));
-  }
+  // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
 }
 
 /** 直送完了の入庫の差戻し・取下げに、対になる出庫の状態を合わせる */

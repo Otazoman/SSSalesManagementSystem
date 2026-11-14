@@ -1,11 +1,11 @@
 import { Context } from "hono";
 import { BillingRepository } from "./billing.repository";
 import { RESOURCE_KEY } from "./billing-constants";
-import { generateDocumentPDF } from "../../../utils/pdfGenerator";
+import { type ReportPdfSource } from "report-renderer";
 import { DEFAULT_ITEM_NAME, DEFAULT_PAYMENT_TERMS } from "../../../platform/documents/document-defaults";
 import { computeQuoteAmountBreakdown } from "../../../platform/report-templates/compute-quote-amount-breakdown";
 import { resolveBillingPlaceholders } from "../../../platform/report-templates/resolve-document-placeholders";
-import { tryRenderDocumentPdfFromCustomTemplate } from "../../../platform/report-templates/try-render-document-pdf";
+import { loadCustomLayoutSource } from "../../../platform/report-templates/load-custom-layout";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
 import { buildBillingTaxLines } from "./billing-tax-lines";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
@@ -42,7 +42,9 @@ export class BillingPdfService {
     return { header };
   }
 
-  async generatePdf(c: Context, billingHeaderId: string) {
+  // PERF-07 B-3: PDF を作るためのデータ(GET /:id/pdf-source)。対象が無ければ null(発行できない状態ならエラー)。
+  // withLayout が false の時(受け取った PDF の保存の時)は、Excel テンプレートのレイアウトを読まない
+  async buildPdfSource(c: Context, billingHeaderId: string, withLayout = true) {
     const header = await this.repo.findHeaderById(billingHeaderId);
     if (!header) return null;
 
@@ -51,14 +53,6 @@ export class BillingPdfService {
       throw new BadRequestError("請求に紐づく売上明細がありません");
     }
 
-    return this.buildAndSaveInvoicePdf(c, header, items);
-  }
-
-  private async buildAndSaveInvoicePdf(
-    c: Context,
-    header: NonNullable<Awaited<ReturnType<BillingRepository["findHeaderById"]>>>,
-    items: Awaited<ReturnType<BillingRepository["findItemsByHeaderId"]>>,
-  ) {
     const partner = await this.repo.findPartnerById(header.partnerId);
 
     // K-4-3: salesInvoiceIdが設定された行はsales_invoice_itemsへJOINして明細を取得し、
@@ -87,17 +81,6 @@ export class BillingPdfService {
       taxCategoryRates,
       toTaxRoundingMode(systemConfig.tax_rounding_mode),
     );
-
-    const [fontRes, logoRes, sealRes] = await Promise.all([
-      c.env.SYSTEM_BUCKET.get("fonts/company_fonts.ttf"),
-      c.env.SYSTEM_BUCKET.get("company/company_logo.png"),
-      c.env.SYSTEM_BUCKET.get("company/company_seal.png"),
-    ]);
-    if (!fontRes) throw new Error("日本語フォントファイルがR2に見つかりません");
-
-    const fontBuffer = await fontRes.arrayBuffer();
-    const logoBuffer = logoRes ? await logoRes.arrayBuffer() : null;
-    const sealBuffer = sealRes ? await sealRes.arrayBuffer() : null;
 
     const pdfData = {
       templateType: "INVOICE" as const,
@@ -128,10 +111,9 @@ export class BillingPdfService {
     };
 
     const unitNames = await this.repo.findUnitNames();
-    const customPdf = await tryRenderDocumentPdfFromCustomTemplate(
-      c.env,
-      "billing_invoice",
-      () =>
+    const customLayout = !withLayout
+      ? null
+      : await loadCustomLayoutSource(c.env, "billing_invoice", () =>
         resolveBillingPlaceholders({
           billingNo: header.id,
           billingDate: header.billingDate,
@@ -156,11 +138,25 @@ export class BillingPdfService {
           taxRoundingMode: toTaxRoundingMode(systemConfig.tax_rounding_mode),
           unitNames,
         }),
-      fontBuffer,
-    );
-    const pdfBinary =
-      customPdf ?? (await generateDocumentPDF(pdfData, { fontBuffer, logoBuffer, sealBuffer }));
+        );
 
+    const source: ReportPdfSource = {
+      documentType: "billing_invoice",
+      customLayout,
+      fallback: { kind: "document", data: pdfData },
+    };
+    return { source, header };
+  }
+
+  // PERF-07 B-4: できた PDF を保存し、記録・監査ログを残す(generate-pdf と、ブラウザから受け取った PDF の両方)
+  async storePdf(
+    c: Context,
+    billingHeaderId: string,
+    pdfBinary: Uint8Array,
+    built: Omit<NonNullable<Awaited<ReturnType<BillingPdfService["buildPdfSource"]>>>, "source">,
+    uploadedBy?: { userId: string; size: number },
+  ) {
+    const { header } = built;
     const r2Path = generateAttachmentKey(`billing/${header.id}`, "generated_invoice.pdf");
     await c.env.BILLING_BUCKET.put(r2Path, pdfBinary, {
       httpMetadata: { contentType: "application/pdf" },
@@ -179,6 +175,7 @@ export class BillingPdfService {
         mode: header.mode,
         r2Path,
         totalAmount: header.totalAmount,
+        ...(uploadedBy ? { generatedIn: "browser", uploadedBy: uploadedBy.userId, pdfBytes: uploadedBy.size } : {}),
       }),
     );
 

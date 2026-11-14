@@ -78,8 +78,14 @@ export class BillingService {
   }
 
   // --- PDF発行 ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(...args: Parameters<BillingPdfService["buildPdfSource"]>) {
+    return this.pdf.buildPdfSource(...args);
+  }
+
+  storePdf(...args: Parameters<BillingPdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- K-4-4: 再発行(保存済みPDFの再ダウンロード・再送付) ---

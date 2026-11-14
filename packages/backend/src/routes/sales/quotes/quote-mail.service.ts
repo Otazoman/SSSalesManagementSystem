@@ -72,21 +72,9 @@ export class QuoteMailService {
     const executionResults = [];
 
     for (const quote of targetQuotes) {
-      let pdfAttachment = await this.repo.findLatestPdfAttachment(quote.id);
+      // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。無ければ「先に PDF を発行してください」
+    const pdfAttachment = await this.repo.findLatestPdfAttachment(quote.id);
 
-      // 💡 PDFが存在しない場合はその場で自動生成を行う
-      if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-        try {
-          await this.pdfService.generatePdf(c, quote.id);
-          // 生成後に最新の添付ファイルレコードを再取得
-          pdfAttachment = await this.repo.findLatestPdfAttachment(quote.id);
-        } catch (genErr: any) {
-          console.error(
-            `[BULK SEND] PDF Auto-generation failed for quote: ${quote.id}`,
-            genErr,
-          );
-        }
-      }
 
       // 💡 自動生成を試みても取得できなかった場合のみエラーとする
       if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
@@ -94,7 +82,7 @@ export class QuoteMailService {
         executionResults.push({
           id: quote.id,
           status: "FAILED",
-          error: "見積書PDFの自動生成に失敗しました",
+          error: "先に PDF を発行してください",
         });
         await writeMailDeliveryLog({
           dbLogBinding: c.env.DB_LOG,
@@ -236,17 +224,10 @@ export class QuoteMailService {
     const quote = targetQuotes[0];
 
     // BUG-029: 1件の送信でも、PDF が無ければその場で作ってから送る(一括送信と同じ)
-    let pdfAttachment = await this.repo.findLatestPdfAttachment(quote.id);
+    // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。無ければ「先に PDF を発行してください」
+    const pdfAttachment = await this.repo.findLatestPdfAttachment(quote.id);
     if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-      try {
-        await this.pdfService.generatePdf(c, quote.id);
-        pdfAttachment = await this.repo.findLatestPdfAttachment(quote.id);
-      } catch (genErr) {
-        console.error(`[SINGLE SEND] PDF Auto-generation failed: ${quote.id}`, genErr);
-      }
-    }
-    if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-      throw new BadRequestError("見積書PDFの作成に失敗しました。帳票テンプレートの設定をご確認ください。");
+      throw new BadRequestError("先に PDF を発行してください");
     }
 
     // 💡 修正のコア：マスタから引くのではなく、フロントから渡されたアドレスをそのまま使う

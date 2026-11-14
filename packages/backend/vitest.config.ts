@@ -47,7 +47,7 @@ export default defineConfig(async () => {
       },
     },
     test: {
-      setupFiles: ["./test/apply-migrations.ts"],
+      setupFiles: ["./test/apply-migrations.ts", "./test/check-report-pdf-source.ts"],
       // scripts/ のテスト(DB ドキュメントの生成など)は Node 標準のテスト(node --test)で書いているため、
       // Vitest の対象から外す(実行方法は docs/development/testing.md)
       exclude: ["**/node_modules/**", "scripts/**"],
