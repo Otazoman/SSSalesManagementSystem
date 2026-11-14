@@ -32,12 +32,16 @@ export function PaymentDetailModal({
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("BANK_TRANSFER");
   const [memo, setMemo] = useState("");
+  // BUG-087: 記録に成功するたびに増やし、Modal の「未保存の編集」の印を消す(商談の BUG-081 と同じ形)
+  const [savedVersion, setSavedVersion] = useState(0);
 
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
   // BUG-051: 未消込額を超える支払は記録できない(仕入側には単体の前渡金の仕組みが無いため)
   const isOverRemaining = Number(amount) > remaining;
+  // BUG-094: 支払額が0円(相殺・赤伝など)で未完了の支払は、金額を入力せずに0円で完了にできる
+  const canCompleteWithZero = remaining === 0 && detail.reconciliationStatus !== "RECONCILED";
 
   const handleSubmitDisbursement = async () => {
     const amountNumber = Number(amount);
@@ -51,6 +55,20 @@ export function PaymentDetailModal({
     if (success) {
       setAmount("");
       setMemo("");
+      setSavedVersion((v) => v + 1);
+    }
+  };
+
+  const handleCompleteWithZero = async () => {
+    const success = await onRecordDisbursement(detail.id, {
+      paidDate,
+      amount: 0,
+      method,
+      memo: memo || undefined,
+    });
+    if (success) {
+      setMemo("");
+      setSavedVersion((v) => v + 1);
     }
   };
 
@@ -67,6 +85,7 @@ export function PaymentDetailModal({
       size="2xl"
       onClose={onClose}
       warnOnDiscard
+      discardResetKey={savedVersion}
     >
       {/* 進捗確認(閲覧専用)に表示される完了/進行中の手動設定。この画面の更新権限がある場合のみ変更できる */}
       <DocumentCompletionControl stageKey="payment" documentId={detail.id} />
@@ -213,7 +232,12 @@ export function PaymentDetailModal({
             ⚠️ 未消込額(¥{remaining.toLocaleString()})を超える金額は記録できません。
           </p>
         )}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {canCompleteWithZero && (
+            <Button variant="secondary" onClick={handleCompleteWithZero}>
+              0円で消込を完了する
+            </Button>
+          )}
           <Button
             variant="success"
             onClick={handleSubmitDisbursement}

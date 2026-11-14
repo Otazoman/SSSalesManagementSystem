@@ -138,3 +138,95 @@ describe("BillingDetailModal: BUG-051 未発行の請求・請求額を超える
     expect(onRecord).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BillingDetailModal: BUG-087 記録した後の✕", () => {
+  function renderWith(saved: boolean) {
+    const onClose = vi.fn();
+    render(
+      <BillingDetailModal
+        detail={{ ...DETAIL, status: "ISSUED" }}
+        onClose={onClose}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={vi.fn(async () => saved)}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return onClose;
+  }
+
+  it("入金の記録に成功した後は、✕で確認を出さずに閉じる", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const onClose = renderWith(true);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("記録に失敗した時は、入力が残るため✕で確認する", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onClose = renderWith(false);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+
+    expect(confirmSpy).toHaveBeenCalledWith("保存していない編集を破棄しますか？");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("BillingDetailModal: BUG-094 0円の請求", () => {
+  function renderDetail(detail: BillingDetail, onRecordPaymentReceipt = vi.fn(async () => true)) {
+    render(
+      <BillingDetailModal
+        detail={detail}
+        onClose={vi.fn()}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={onRecordPaymentReceipt}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return onRecordPaymentReceipt;
+  }
+
+  it("発行済みで請求額が0円・未完了なら「0円で消込を完了する」を出し、0円で記録する", async () => {
+    const onRecord = renderDetail({ ...DETAIL, status: "ISSUED", totalAmount: 0, taxAmount: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "0円で消込を完了する" }));
+    await flush();
+    expect(onRecord).toHaveBeenCalledWith("BL-1", expect.objectContaining({ amount: 0 }));
+  });
+
+  it("未発行(下書き)・未消込額がある時は出さない", () => {
+    renderDetail({ ...DETAIL, status: "DRAFT", totalAmount: 0, taxAmount: 0 });
+    expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
+  });
+
+  it("未消込額がある時は出さない", () => {
+    renderDetail({ ...DETAIL, status: "ISSUED" });
+    expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
+  });
+});

@@ -41,6 +41,16 @@ export class BillingReconciliationService {
         `入金額(¥${amount.toLocaleString()})が請求の未消込額(¥${remaining.toLocaleString()})を超えているため紐づけできません`,
       );
     }
+    // BUG-094: 0円の記録は、未消込額が0円で未完了の請求(相殺・赤伝などで請求額が0円)を完了にする時だけ受け付ける
+    // (単体入金の紐づけは入金の金額をそのまま使うため対象外)
+    if (!cashReceiptId) {
+      if (amount < 0 || (amount === 0 && remaining > 0)) {
+        throw new BadRequestError("入金額は1円以上で入力してください(0円で完了にできるのは、未消込額が0円の請求だけです)");
+      }
+      if (amount === 0 && header.reconciliationStatus === "RECONCILED") {
+        throw new BadRequestError("この請求は既に消込済みです");
+      }
+    }
     // BUG-051: 請求額を超える分は消込にせず、同じ取引先の単体入金(前受金)として登録する
     // (超過分まで消込にすると、入金の仕訳で売掛金がマイナスになるため)
     const reconcileAmount = Math.min(amount, remaining);

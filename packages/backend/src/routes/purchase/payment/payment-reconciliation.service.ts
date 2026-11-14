@@ -25,6 +25,13 @@ export class PaymentReconciliationService {
         `支払額(¥${amount.toLocaleString()})が支払の未消込額(¥${remaining.toLocaleString()})を超えています`,
       );
     }
+    // BUG-094: 0円の記録は、未消込額が0円で未完了の支払(相殺・赤伝などで支払額が0円)を完了にする時だけ受け付ける
+    if (amount < 0 || (amount === 0 && remaining > 0)) {
+      throw new BadRequestError("支払額は1円以上で入力してください(0円で完了にできるのは、未消込額が0円の支払だけです)");
+    }
+    if (amount === 0 && header.reconciliationStatus === "RECONCILED") {
+      throw new BadRequestError("この支払は既に消込済みです");
+    }
 
     const opId = await this.repo.getFallbackOperatorId(c);
     const disbursementId = crypto.randomUUID();

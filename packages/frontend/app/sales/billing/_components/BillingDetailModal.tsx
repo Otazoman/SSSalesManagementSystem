@@ -58,6 +58,8 @@ export function BillingDetailModal({
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("BANK_TRANSFER");
   const [memo, setMemo] = useState("");
+  // BUG-087: 記録に成功するたびに増やし、Modal の「未保存の編集」の印を消す(商談の BUG-081 と同じ形)
+  const [savedVersion, setSavedVersion] = useState(0);
   // K-4-2: 対象売上明細の展開表示状態
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Set<string>>(
     new Set(),
@@ -69,6 +71,8 @@ export function BillingDetailModal({
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
   // BUG-051: 未発行(下書き)の請求には入金を記録できない(請求書を発行するとISSUEDになる)
   const isDraft = detail.status === "DRAFT";
+  // BUG-094: 請求額が0円(相殺・赤伝など)で未完了の請求は、金額を入力せずに0円で完了にできる
+  const canCompleteWithZero = !isDraft && remaining === 0 && detail.reconciliationStatus !== "RECONCILED";
 
   const toggleExpanded = (itemId: string) => {
     setExpandedInvoiceIds((prev) => {
@@ -100,6 +104,20 @@ export function BillingDetailModal({
     if (success) {
       setAmount("");
       setMemo("");
+      setSavedVersion((v) => v + 1);
+    }
+  };
+
+  const handleCompleteWithZero = async () => {
+    const success = await onRecordPaymentReceipt(detail.id, {
+      receivedDate,
+      amount: 0,
+      method,
+      memo: memo || undefined,
+    });
+    if (success) {
+      setMemo("");
+      setSavedVersion((v) => v + 1);
     }
   };
 
@@ -117,6 +135,7 @@ export function BillingDetailModal({
         size="2xl"
         onClose={onClose}
         warnOnDiscard
+        discardResetKey={savedVersion}
       >
         {/* 進捗確認(閲覧専用)に表示される完了/進行中の手動設定。この画面の更新権限がある場合のみ変更できる */}
         <DocumentCompletionControl stageKey="billing" documentId={detail.id} />
@@ -351,7 +370,12 @@ export function BillingDetailModal({
               ⚠️ 請求書を発行してから入金を記録できます(未発行の請求には入金を記録できません)。
             </p>
           )}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {canCompleteWithZero && (
+              <Button variant="secondary" onClick={handleCompleteWithZero}>
+                0円で消込を完了する
+              </Button>
+            )}
             <Button
               variant="success"
               onClick={handleSubmitReceipt}

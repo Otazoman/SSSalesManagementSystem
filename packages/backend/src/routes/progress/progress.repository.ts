@@ -501,6 +501,16 @@ export class ProgressRepository {
     );
   }
 
+  // BUG-090: 入庫がまだ無い入荷指示も出すため、発注番号(item_receipt_instructions.order_id)でも探す
+  findReceiptInstructionsByOrder(orderIds: string[]) {
+    return this.inChunks(orderIds, (chunk) =>
+      this.db
+        .select()
+        .from(schema.itemReceiptInstructions)
+        .where(inArray(schema.itemReceiptInstructions.orderId, chunk)),
+    );
+  }
+
   findRecognitionsByOrder(orderIds: string[]) {
     return this.inChunks(orderIds, (chunk) =>
       this.db

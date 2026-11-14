@@ -282,6 +282,11 @@ export class ProgressService {
     const receiptInstructions = await this.repo.findReceiptInstructions(
       allReceipts.map((r) => r.receiptInstructionId).filter((id): id is string => !!id),
     );
+    // BUG-090: 入庫経由に加え、発注番号でも入荷指示を探す(入庫がまだ無い入荷指示も入荷指示の欄に出す。同じ番号は最後に1つにまとめる)
+    const receiptInstructionsByOrder = groupBy(
+      await this.repo.findReceiptInstructionsByOrder(allOrderIds),
+      (i) => i.orderId,
+    );
     const receiptInstructionById = new Map(receiptInstructions.map((i) => [i.id, i]));
     const recognitionsByOrder = groupBy(await this.repo.findRecognitionsByOrder(allOrderIds), (r) => r.orderId);
     const allRecognitions = [...recognitionsByOrder.values()].flat();
@@ -327,6 +332,14 @@ export class ProgressService {
             order.status === "APPROVED" &&
             isFullyFulfilled(orderItemsByOrder.get(orderId) ?? [], recognizedQtyByItem),
         });
+        for (const instruction of receiptInstructionsByOrder.get(orderId) ?? []) {
+          stages.receipt_instruction.push({
+            id: instruction.id,
+            status: instruction.status,
+            assigneeEmployeeNumber: null,
+            completed: instruction.status === "FULFILLED",
+          });
+        }
         for (const receipt of receiptsByOrder.get(orderId) ?? []) {
           stages.item_receipt.push({
             id: receipt.id,

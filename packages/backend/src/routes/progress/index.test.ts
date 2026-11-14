@@ -279,6 +279,54 @@ describe("GET / (進捗一覧)", () => {
   });
 });
 
+describe("BUG-090: 入荷指示・入庫の欄", () => {
+  afterEach(async () => {
+    await db.delete(schema.itemReceiptHeaders);
+    await db.delete(schema.itemReceiptInstructions);
+  });
+
+  const instruction = (id: string, status: string) => ({
+    id,
+    partnerId: "P-1",
+    warehouseId: "WH-1",
+    instructedReceiveDate: later,
+    status,
+    orderId: "PO-1",
+    createdBy: "EMP001",
+    createdAt: now,
+  });
+
+  it("承認済みの発注 + 入庫の無い入荷指示(申請中): 入荷指示の欄に申請中として出る", async () => {
+    await seedSalesOrderWithPurchase();
+    await db.insert(schema.itemReceiptInstructions).values(instruction("RI-1", "UNAPPROVED"));
+
+    const row = ((await (await callProgress()).json()) as any).items[0];
+    expect(row.stages.purchase_order[0]).toMatchObject({ id: "PO-1", status: "APPROVED" });
+    expect(row.stages.receipt_instruction).toHaveLength(1);
+    expect(row.stages.receipt_instruction[0]).toMatchObject({ id: "RI-1", status: "UNAPPROVED" });
+    expect(row.stages.item_receipt).toEqual([]);
+  });
+
+  it("承認済みの発注 + 申請中の入庫: 入庫の欄に申請中として出る。入荷指示は入庫経由と発注番号経由で重ならない", async () => {
+    await seedSalesOrderWithPurchase();
+    await db.insert(schema.itemReceiptInstructions).values(instruction("RI-1", "APPROVED"));
+    await db.insert(schema.itemReceiptHeaders).values({
+      id: "RC-1",
+      orderId: "PO-1",
+      receiptInstructionId: "RI-1",
+      receivedDate: later,
+      status: "UNAPPROVED",
+      createdBy: "EMP001",
+      createdAt: now,
+    });
+
+    const row = ((await (await callProgress()).json()) as any).items[0];
+    expect(row.stages.item_receipt).toHaveLength(1);
+    expect(row.stages.item_receipt[0]).toMatchObject({ id: "RC-1", status: "UNAPPROVED" });
+    expect(row.stages.receipt_instruction.map((d: any) => d.id)).toEqual(["RI-1"]);
+  });
+});
+
 describe("GET / (検索条件)", () => {
   it("取引先名・担当者・期間で絞り込める", async () => {
     await seedSalesOrderWithPurchase(); // SO-1: 取引先「テスト商事」、営業担当EMP001(営業太郎)、受注日2026-09-10
