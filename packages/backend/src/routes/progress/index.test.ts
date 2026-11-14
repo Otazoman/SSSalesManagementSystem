@@ -555,6 +555,88 @@ describe("追加要望M-2: 完了/進行中の判定と既定表示", () => {
   });
 });
 
+// PERF-11: 進行中/完了の走査では、完了の判定に必要な分だけを30件ずつ組み立て、
+// 名前・承認の状況・担当の解決は、最後に返す行にだけ1回行う
+describe("進捗確認の問い合わせ回数(PERF-11)", () => {
+  afterEach(async () => {
+    await db.delete(schema.documentCompletionOverrides);
+  });
+
+  // D1 に送った SQL を記録する env
+  function envRecordingSql() {
+    const statements: string[] = [];
+    const d1 = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (query: string) => {
+            statements.push(query);
+            return target.prepare(query);
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    return { testEnv: { ...env, DB: d1 }, statements };
+  }
+
+  // 完了済みの受注 completedCount 件(新しい順に先に並ぶ)と、最後に進行中の受注1件
+  async function seedMostlyCompleted(completedCount: number) {
+    for (let i = 0; i < completedCount; i++) {
+      const id = `SO-DONE-${String(i).padStart(3, "0")}`;
+      await db.insert(schema.salesOrders).values({
+        id,
+        partnerId: "P-1",
+        orderDate: new Date(later.getTime() - i * 60000),
+        status: "APPROVED",
+        salesPersonEmployeeNumber: "EMP001",
+        totalAmount: 0,
+        taxAmount: 0,
+        ...audit,
+      });
+      await forceDocument("sales_order", id, "COMPLETED");
+    }
+    await db.insert(schema.salesOrders).values({
+      id: "SO-OPEN",
+      partnerId: "P-1",
+      orderDate: now,
+      status: "PENDING",
+      salesPersonEmployeeNumber: "EMP001",
+      totalAmount: 0,
+      taxAmount: 0,
+      ...audit,
+    });
+  }
+
+  const isPartnerNameQuery = (q: string) => /from "partners"/i.test(q) && !/from \(/i.test(q);
+
+  it("完了済みの案件を複数回の走査で読み飛ばしても、名前などの取得は返す行の分の1回だけ", async () => {
+    await seedMostlyCompleted(45);
+    const { testEnv, statements } = envRecordingSql();
+    const ctx = createExecutionContext();
+    const res = await progressRouter.request("/?state=in_progress", {}, testEnv, ctx);
+    await waitOnExecutionContext(ctx);
+    const body = (await res.json()) as any;
+
+    expect(body.items.map((r: any) => r.rootId)).toEqual(["SO-OPEN"]);
+    expect(body.items[0].partnerName).toBe("テスト商事");
+    expect(body.items[0].stages.sales_order[0].assigneeName).toBe("営業太郎");
+    expect(statements.filter(isPartnerNameQuery)).toHaveLength(1);
+  });
+
+  it("CSV でも、名前などの取得は返す行の分の1回だけ", async () => {
+    await seedMostlyCompleted(45);
+    const { testEnv, statements } = envRecordingSql();
+    const ctx = createExecutionContext();
+    const res = await progressRouter.request("/csv-download?state=all", {}, testEnv, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(200);
+    const lines = (await res.text()).split("\n");
+    expect(lines).toHaveLength(1 + 46);
+    expect(statements.filter(isPartnerNameQuery)).toHaveLength(1);
+  });
+});
+
 describe("追加要望M-2: 複合検索(件名・取引先・伝票番号・キーワード・見積起点)", () => {
   it("件名・取引先名・伝票番号(案件内のどの伝票でも)・横断キーワードをANDで絞り込める", async () => {
     await seedSalesOrderWithPurchase();

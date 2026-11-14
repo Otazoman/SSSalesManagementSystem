@@ -3,6 +3,7 @@ import { getTargetAdapter } from "../../../workflow-engine/target-adapters/regis
 import {
   WorkflowTasksRepository,
   type UserRole,
+  type ApprovalFlow,
   type ApprovalFlowStep,
   type WorkflowLog,
   type MasterApprovalRequest,
@@ -48,6 +49,12 @@ export class WorkflowTasksHistoryService {
       ) => Promise<WorkflowLog[]>;
       getUserName: (userId: string) => Promise<string | null>;
       getRoleName: (roleId: string) => Promise<string | null>;
+      // PERF-02: 未処理の段の承認者候補の氏名(", " 区切り。いなければ null)を、まとめて取得したデータから返す。
+      // 指定が無い場合は、今までどおり段ごとに WorkflowEngine.resolveApprovers で解決する
+      resolveCandidateNames?: (
+        reqParent: MasterApprovalRequest,
+        step: ApprovalFlowStep,
+      ) => Promise<string | null>;
     },
   ): Promise<FlowProgressStep[]> {
     const flowProgress: FlowProgressStep[] = [];
@@ -84,7 +91,9 @@ export class WorkflowTasksHistoryService {
         }
       }
 
-      if (!performedBy) {
+      if (!performedBy && caches.resolveCandidateNames) {
+        performedBy = await caches.resolveCandidateNames(reqParent, step);
+      } else if (!performedBy) {
         try {
           const allowedIds: string[] = await WorkflowEngine.resolveApprovers(
             db,
@@ -134,10 +143,16 @@ export class WorkflowTasksHistoryService {
     return flowProgress;
   }
 
-  static async getHistory(
+  /**
+   * PERF-02: 申請履歴の一覧の判定に使う軽い行を集める(名前・プレビュー・承認の進み具合はまだ付けない)。
+   * 表示対象の判定(自分の申請・自分の操作・自分が承認者)、申請者・期間の絞り込み、並べ替えは、この行だけで行う。
+   * 以前は全ての行に名前・プレビュー・承認の進み具合を付けてから絞り込んでいたため、問い合わせの回数が
+   * 申請の件数に比例していた。判定の内容は以前と同じ。
+   */
+  static async collectHistoryRows(
     db: any,
     queryParams: HistoryQuery,
-  ): Promise<{ histories: HistoryItem[]; isAdmin: boolean }> {
+  ): Promise<{ rows: HistoryRow[]; isAdmin: boolean; defs: FlowDefinitionsLoader }> {
     const {
       userId: loginUserId,
       status: filterStatus,
@@ -153,357 +168,92 @@ export class WorkflowTasksHistoryService {
     const isAdmin = myUserRoles.some(
       (ur: UserRole) => ur.roleId === "admin" || ur.roleId === "workflow_admin",
     );
+    const myRoleIds = myUserRoles.map((ur: UserRole) => ur.roleId);
+    const defs = createFlowDefinitionsLoader(db);
 
-    let historicalLogs: WorkflowLog[] = [];
+    let fetched = await WorkflowTasksRepository.getHistoryRows(db, {
+      isAdmin,
+      loginUserId,
+      myRoleIds,
+      statusFilter: filterStatus,
+    });
 
-    if (isAdmin) {
-      historicalLogs = await WorkflowTasksRepository.getWorkflowLogsForAdmin(
-        db,
-        filterStatus && filterStatus !== "all" ? filterStatus : undefined,
-      );
-    } else {
-      const myRequests =
-        await WorkflowTasksRepository.getRequestTargetsByApplicant(
-          db,
-          loginUserId,
-        );
-      const myRoleIds = myUserRoles.map((ur: UserRole) => ur.roleId);
-
-      historicalLogs = await WorkflowTasksRepository.getMyRelevantWorkflowLogs(
-        db,
-        {
-          loginUserId,
-          myRoleIds,
-          requestTargets: myRequests,
-          statusFilter: filterStatus,
-        },
-      );
-
-      // 💡 不具合修正(2026-08-25): getMyRelevantWorkflowLogs()の「自分のロールが承認待ち」
-      // 条件はロールID一致のみでSQLを広く取っており、部署スコープ(同名ロールが複数部署に
-      // 存在する場合、対象ステップの部署または申請者の所属部門と一致するか)を見ていなかった。
-      // そのため例えば「営業統括部の課長」が「人事総務部の課長」宛の承認待ちまで参照できて
-      // しまっていた(承認タスク一覧=getMyPendingTasksは以前この種の不具合を修正済みだったが、
-      // 申請履歴側は別実装のため対象外のままだった)。自分の申請でも自分が実際に処理したログ
-      // でもない(=ロール一致だけで拾われた)行のみ、getMyPendingTasksと同じ
-      // resolveApprovers()ベースの判定を通し、真に自分が承認者として解決されるかを検証する。
-      const myRequestTargetKeySet = new Set(
-        myRequests.map((r) => `${r.targetType}:${r.targetId}`),
-      );
-      const deptScopeCache = new Map<string, boolean>();
-      const filteredHistoricalLogs: WorkflowLog[] = [];
-      for (const log of historicalLogs) {
-        const isOwnAction = log.approverId === loginUserId;
-        const isOwnRequest = myRequestTargetKeySet.has(
-          `${log.targetType}:${log.targetId}`,
-        );
-        if (isOwnAction || isOwnRequest) {
-          filteredHistoricalLogs.push(log);
-          continue;
-        }
-
+    if (!isAdmin) {
+      // 💡 不具合修正(2026-08-25)の部署スコープの判定: 自分の申請でも自分が実際に処理したログでもない
+      // (=ロール一致だけで拾われた)行は、ログインユーザーが本当に承認者として解決されるかを確かめる。
+      // 以前は対象ごとに WorkflowEngine.resolveApprovers() で DB に問い合わせていたが、PERF-02 で、
+      // まとめて取得したフローの段・申請者の所属と、ログインユーザーのロールから同じ判定を計算する
+      // (isResolvedApprover。resolveApprovers と同じ結果になることはテストで確かめている)。
+      const needsDeptCheck = (row: (typeof fetched)[number]) => {
+        const log = row.log;
+        if (log.approverId === loginUserId || Boolean(row.ownTarget)) return false;
         // 部署未指定(会社全体)で当該ロールを保持している場合は、部署を問わず許可
-        // (getMyPendingTasksのisAdminForThisRoleと同じ判定)
         const isCompanyWideForThisRole = myUserRoles.some(
           (ur: UserRole) =>
             ur.roleId === log.approverRoleId &&
-            (ur.departmentSurrogateId === null ||
-              ur.departmentSurrogateId === ""),
+            (ur.departmentSurrogateId === null || ur.departmentSurrogateId === ""),
         );
-        if (isCompanyWideForThisRole) {
-          filteredHistoricalLogs.push(log);
-          continue;
-        }
-
-        // ここまで残るのは「status=PENDINGかつロールID一致」で拾われた行のみ
-        // (getMyRelevantWorkflowLogsの条件構造上、それ以外はisOwnAction/isOwnRequestで
-        // 既に処理済みのため)
-        const cacheKey = `${log.targetType}:${log.targetId}:${log.layer}:${log.approverRoleId}`;
-        if (!deptScopeCache.has(cacheKey)) {
-          const reqParent =
-            await WorkflowTasksRepository.getPendingParentRequest(
-              db,
-              log.targetId,
-              log.targetType,
-            );
-          if (!reqParent) {
-            deptScopeCache.set(cacheKey, false);
-          } else {
-            const amount = await resolveTargetAmountForFlow(
-              db,
-              reqParent.targetType,
-              reqParent.targetId,
-            );
-            const activeFlow = await WorkflowTasksRepository.resolveFlowForRequest(
-              db,
-              reqParent,
-              amount,
-            );
-            let flowTargetDeptSurrogateId: string | null = null;
-            if (activeFlow) {
-              const stepDef = await WorkflowTasksRepository.getFlowStepByOrder(
-                db,
-                activeFlow.id,
-                log.layer,
-              );
-              if (stepDef) {
-                flowTargetDeptSurrogateId = stepDef.targetDepartmentSurrogateId;
-              }
-            }
-            const allowedUserIds = await WorkflowEngine.resolveApprovers(
-              db,
-              reqParent.applicantId,
-              log.approverRoleId,
-              flowTargetDeptSurrogateId ||
-                reqParent.applicantDepartmentSurrogateId ||
-                null,
-            );
-            deptScopeCache.set(cacheKey, allowedUserIds.includes(loginUserId));
-          }
-        }
-
-        if (deptScopeCache.get(cacheKey)) {
-          filteredHistoricalLogs.push(log);
-        }
-      }
-      historicalLogs = filteredHistoricalLogs;
-
-      const getStatusPriority = (status: string) => {
-        if (status === "PENDING") return 1;
-        if (status === "REMANDED") return 2;
-        return 3;
+        return !isCompanyWideForThisRole;
       };
 
-      historicalLogs.sort((a: WorkflowLog, b: WorkflowLog) => {
-        const pA = getStatusPriority(a.status);
-        const pB = getStatusPriority(b.status);
-        if (pA !== pB) return pA - pB;
-        const timeA = a.performedAt ? new Date(a.performedAt).getTime() : 0;
-        const timeB = b.performedAt ? new Date(b.performedAt).getTime() : 0;
-        return timeB - timeA;
-      });
+      const checkRows = fetched.filter(needsDeptCheck);
+      if (checkRows.length > 0) {
+        const loaded = await defs();
+        const pendingApplicantIds = checkRows
+          .map((r) => r.pendingParent?.applicantId)
+          .filter((id): id is string => Boolean(id));
+        const [firstDeptByUser, loginUserActive] = await Promise.all([
+          loadFirstDepartmentByUser(db, pendingApplicantIds),
+          WorkflowTasksRepository.isUserActive(db, loginUserId),
+        ]);
+        const deptScopeCache = new Map<string, boolean>();
+        for (const row of checkRows) {
+          const log = row.log;
+          const cacheKey = `${log.targetType}:${log.targetId}:${log.layer}:${log.approverRoleId}`;
+          if (deptScopeCache.has(cacheKey)) continue;
+          const reqParent = row.pendingParent;
+          if (!reqParent) {
+            deptScopeCache.set(cacheKey, false);
+            continue;
+          }
+          const activeFlow = await resolveFlowFromDefinitions(loaded, reqParent, () =>
+            resolveTargetAmountForFlow(db, reqParent.targetType, reqParent.targetId),
+          );
+          const stepDef = activeFlow
+            ? (loaded.stepsByFlow.get(activeFlow.id) ?? []).find((s) => s.stepOrder === log.layer)
+            : undefined;
+          const deptSurrogateId =
+            stepDef?.targetDepartmentSurrogateId ||
+            reqParent.applicantDepartmentSurrogateId ||
+            firstDeptByUser.get(reqParent.applicantId) ||
+            null;
+          deptScopeCache.set(
+            cacheKey,
+            isResolvedApprover({
+              myUserRoles,
+              loginUserActive,
+              roleId: log.approverRoleId,
+              deptSurrogateId,
+            }),
+          );
+        }
+        fetched = fetched.filter(
+          (row) =>
+            !needsDeptCheck(row) ||
+            deptScopeCache.get(
+              `${row.log.targetType}:${row.log.targetId}:${row.log.layer}:${row.log.approverRoleId}`,
+            ) === true,
+        );
+      }
     }
 
-    const historiesList: HistoryItem[] = [];
-
-    // 💡 パフォーマンス最適化: historicalLogsは同一の申請(targetId+targetType)や同一の
-    // 承認者・ロールを何度も参照するため、リクエスト内でのみ有効なメモ化キャッシュを設け、
-    // ループ内で同じDB問い合わせを繰り返さないようにする(挙動・戻り値の形は一切変更しない)。
-    const reqParentCache = new Map<
-      string,
-      Awaited<
-        ReturnType<
-          typeof WorkflowTasksRepository.getLatestMasterApprovalRequest
-        >
-      >
-    >();
-    // 各ログ行がどの申請(masterApprovalRequests)に属するかは、原則log.requestIdで一意に特定する。
-    // 同一targetId/targetTypeへ複数回申請(差戻し→修正して再提出)された場合、「targetIdに対する
-    // 最新の申請」を全ログ行に一律で紐付けると、差戻し済みの古いログにも再提出後の新しい申請情報が
-    // 表示されてしまう(承認履歴画面で同じ対象が重複して見える不具合の原因だった)。
-    // requestIdカラム追加(migration)以前の既存ログ行はrequestIdがnullのため、その場合のみ
-    // 従来通り「targetIdに対する最新の申請」にフォールバックする(後方互換)。
-    const getCachedReqParent = async (log: {
-      requestId: string | null;
-      targetId: string;
-      targetType: string;
-    }) => {
-      const key = log.requestId
-        ? `id:${log.requestId}`
-        : `latest:${log.targetType}:${log.targetId}`;
-      if (!reqParentCache.has(key)) {
-        reqParentCache.set(
-          key,
-          log.requestId
-            ? await WorkflowTasksRepository.getParentRequestById(
-                db,
-                log.requestId,
-              )
-            : await WorkflowTasksRepository.getLatestMasterApprovalRequest(
-                db,
-                log.targetId,
-                log.targetType,
-              ),
-        );
-      }
-      return reqParentCache.get(key)!;
-    };
-
-    const userNameCache = new Map<string, string | null>();
-    const getCachedUserName = async (userId: string) => {
-      if (!userNameCache.has(userId)) {
-        userNameCache.set(
-          userId,
-          await WorkflowTasksRepository.getUserName(db, userId),
-        );
-      }
-      return userNameCache.get(userId)!;
-    };
-
-    const roleNameCache = new Map<string, string | null>();
-    const getCachedRoleName = async (roleId: string) => {
-      if (!roleNameCache.has(roleId)) {
-        roleNameCache.set(
-          roleId,
-          await WorkflowTasksRepository.getRoleName(db, roleId),
-        );
-      }
-      return roleNameCache.get(roleId)!;
-    };
-
-    const deptIdCache = new Map<string, string | null>();
-    const getCachedPrimaryDepartmentId = async (userId: string) => {
-      if (!deptIdCache.has(userId)) {
-        deptIdCache.set(
-          userId,
-          await WorkflowTasksRepository.getPrimaryDepartmentId(db, userId),
-        );
-      }
-      return deptIdCache.get(userId)!;
-    };
-
-    const activeFlowCache = new Map<
-      string,
-      Awaited<ReturnType<typeof WorkflowTasksRepository.resolveFlowForRequest>>
-    >();
-    const getCachedActiveFlow = async (
-      reqParent: MasterApprovalRequest,
-      amount: number,
-    ) => {
-      const key = reqParent.flowId || `${reqParent.targetType}:${amount}`;
-      if (!activeFlowCache.has(key)) {
-        activeFlowCache.set(
-          key,
-          await WorkflowTasksRepository.resolveFlowForRequest(
-            db,
-            reqParent,
-            amount,
-          ),
-        );
-      }
-      return activeFlowCache.get(key)!;
-    };
-
-    const flowStepsCache = new Map<string, ApprovalFlowStep[]>();
-    const getCachedFlowSteps = async (flowId: string) => {
-      if (!flowStepsCache.has(flowId)) {
-        flowStepsCache.set(
-          flowId,
-          await WorkflowTasksRepository.getFlowSteps(db, flowId),
-        );
-      }
-      return flowStepsCache.get(flowId)!;
-    };
-
-    const relatedLogsCache = new Map<string, WorkflowLog[]>();
-    const getCachedWorkflowLogsForFlowProgress = async (
-      targetId: string,
-      targetType: string,
-      createdAt: unknown,
-    ) => {
-      const key = `${targetType}:${targetId}:${createdAt}`;
-      if (!relatedLogsCache.has(key)) {
-        relatedLogsCache.set(
-          key,
-          await WorkflowTasksRepository.getWorkflowLogsForFlowProgress(
-            db,
-            targetId,
-            targetType,
-            createdAt as any,
-          ),
-        );
-      }
-      return relatedLogsCache.get(key)!;
-    };
-
-    // 💡 追加のパフォーマンス最適化: 同一の申請(requestId)は複数のworkflow_logs
-    // (段階/差戻し履歴ごとに1行)を持つため、ログ単位でループしていると
-    // 「申請ごとに一意なはずの情報」まで申請のログ件数分だけ重複して再計算していた。
-    // targetName/snapshotのプレビュー・対象金額・flowProgress(承認フロー全体の進捗配列、
-    // 内部でWorkflowEngine.resolveApprovers等の追加DB問い合わせを伴う)は、いずれも
-    // reqParent(申請そのもの)にのみ依存し、個々のlogの内容には依存しないため、
-    // requestIdをキーに1申請につき1回だけ計算するようにキャッシュする。
-    const historyPreviewCache = new Map<
-      string,
-      { targetName: string; snapshotNew: unknown; snapshotOld: unknown }
-    >();
-    const getCachedHistoryPreview = async (
-      reqParent: MasterApprovalRequest,
-      targetId: string,
-      targetType: string,
-    ) => {
-      if (!historyPreviewCache.has(reqParent.id)) {
-        const historyAdapter = getTargetAdapter(targetType);
-        const result = historyAdapter?.getHistoryPreview
-          ? await historyAdapter.getHistoryPreview({
-              db,
-              requestId: reqParent.id,
-              targetId,
-              requestType: reqParent.requestType,
-            })
-          : {
-              targetName: "不明なマスタ",
-              snapshotNew: null,
-              snapshotOld: null,
-            };
-        historyPreviewCache.set(reqParent.id, result);
-      }
-      return historyPreviewCache.get(reqParent.id)!;
-    };
-
-    const targetAmountCache = new Map<string, number>();
-    const getCachedTargetAmount = async (
-      targetType: string,
-      targetId: string,
-    ) => {
-      const key = `${targetType}:${targetId}`;
-      if (!targetAmountCache.has(key)) {
-        targetAmountCache.set(
-          key,
-          await resolveTargetAmountForFlow(db, targetType, targetId),
-        );
-      }
-      return targetAmountCache.get(key)!;
-    };
-
-    const flowProgressCache = new Map<string, FlowProgressStep[]>();
-    const getCachedFlowProgress = async (
-      reqParent: MasterApprovalRequest,
-      targetId: string,
-      targetType: string,
-    ) => {
-      if (flowProgressCache.has(reqParent.id)) {
-        return flowProgressCache.get(reqParent.id)!;
-      }
-
-      const flowProgress = await WorkflowTasksHistoryService.buildFlowProgress(
-        db,
-        reqParent,
-        targetId,
-        targetType,
-        {
-          getTargetAmount: getCachedTargetAmount,
-          resolveFlow: getCachedActiveFlow,
-          getFlowSteps: getCachedFlowSteps,
-          getRelatedLogs: getCachedWorkflowLogsForFlowProgress,
-          getUserName: getCachedUserName,
-          getRoleName: getCachedRoleName,
-        },
-      );
-
-      flowProgressCache.set(reqParent.id, flowProgress);
-      return flowProgress;
-    };
-
-    for (const log of historicalLogs) {
-      const reqParent = await getCachedReqParent(log);
-
+    const rows: HistoryRow[] = [];
+    for (const { log, parent: reqParent } of fetched) {
       if (!reqParent) continue;
 
       if (!isAdmin) {
         const isMyOwnRequest = reqParent.applicantId === loginUserId;
         const isMyAction = log.approverId === loginUserId;
-        const myRoleIds = myUserRoles.map((ur: UserRole) => ur.roleId);
         const isPendingForMe =
           log.status === "PENDING" && myRoleIds.includes(log.approverRoleId);
 
@@ -532,63 +282,22 @@ export class WorkflowTasksHistoryService {
         if (filterEndDate && requestDateStr > filterEndDate) continue;
       }
 
-      // 💡 パフォーマンス最適化: reqParentと全く同じ条件のため再取得せずそのまま使う
-      // (以前はISSUE-05の最適化余地として記録されていた既知の冗長呼び出し)
-      const currentParentStatus = reqParent.status;
-
-      const applicantName = await getCachedUserName(reqParent.applicantId);
-
-      let approverName: string | null = null;
-      if (log.approverId) {
-        approverName = await getCachedUserName(log.approverId);
-      }
-
-      const preview = await getCachedHistoryPreview(
+      rows.push({
+        log,
         reqParent,
-        log.targetId,
-        log.targetType,
-      );
-      const targetName = preview.targetName;
-      const snapshotNew = preview.snapshotNew;
-      const snapshotOld = preview.snapshotOld;
-
-      const flowProgress = await getCachedFlowProgress(
-        reqParent,
-        log.targetId,
-        log.targetType,
-      );
-
-      const applicantDeptId = await getCachedPrimaryDepartmentId(
-        reqParent.applicantId,
-      );
-
-      historiesList.push({
-        logId: log.id,
-        requestId: reqParent.id,
-        targetType: log.targetType,
-        targetId: log.targetId,
-        targetName,
-        layer: log.layer,
-        requestType: reqParent.requestType,
-        applicantId: `${applicantName} (ID: ${reqParent.applicantId.substring(0, 8)})`,
-        applicantDepartmentId: applicantDeptId,
         status: log.status,
-        comment: log.comment,
+        parentStatus: reqParent.status,
+        targetId: log.targetId,
         performedAt: log.performedAt,
-        approverName,
-        snapshotNew,
-        snapshotOld,
-        parentStatus: currentParentStatus,
-        flowProgress,
       });
     }
 
-    historiesList.sort((a: HistoryItem, b: HistoryItem) => {
-      const getPriority = (status: string) => {
-        if (status === "PENDING") return 1;
-        if (status === "REMANDED") return 2;
-        return 3;
-      };
+    const getPriority = (status: string) => {
+      if (status === "PENDING") return 1;
+      if (status === "REMANDED") return 2;
+      return 3;
+    };
+    rows.sort((a, b) => {
       const pA = getPriority(a.status);
       const pB = getPriority(b.status);
       if (pA !== pB) return pA - pB;
@@ -597,10 +306,99 @@ export class WorkflowTasksHistoryService {
       return tB - tA;
     });
 
-    return { histories: historiesList, isAdmin };
+    return { rows, isAdmin, defs };
   }
 
-  static computeHistoryCounts(historiesList: HistoryItem[]) {
+  /**
+   * PERF-02: 軽い行に、名前・プレビュー・承認の進み具合を付けて HistoryItem にする(渡した行だけ)。
+   * ユーザー名・ロール名・フローの段・関連する履歴・承認者の候補は、行ごとではなく表ごとにまとめて取得する。
+   * プレビューは種類ごとのアダプターで、申請1件につき1回取得する(以前と同じ)。
+   */
+  static async buildHistoryItems(
+    db: any,
+    rows: HistoryRow[],
+    defs: FlowDefinitionsLoader,
+  ): Promise<HistoryItem[]> {
+    if (rows.length === 0) return [];
+
+    const requests = new Map<string, { reqParent: MasterApprovalRequest; targetId: string; targetType: string }>();
+    for (const row of rows) {
+      if (!requests.has(row.reqParent.id)) {
+        requests.set(row.reqParent.id, {
+          reqParent: row.reqParent,
+          targetId: row.log.targetId,
+          targetType: row.log.targetType,
+        });
+      }
+    }
+    const requestList = [...requests.values()];
+
+    const { caches, nameOf, firstDeptByUser } = await prepareFlowProgressContext(
+      db,
+      requestList,
+      defs,
+      rows.map((r) => r.log.approverId).filter((id): id is string => Boolean(id)),
+    );
+
+    const previewByRequest = new Map<string, { targetName: string; snapshotNew: unknown; snapshotOld: unknown }>();
+    const flowProgressByRequest = new Map<string, FlowProgressStep[]>();
+    for (const { reqParent, targetId, targetType } of requestList) {
+      const historyAdapter = getTargetAdapter(targetType);
+      previewByRequest.set(
+        reqParent.id,
+        historyAdapter?.getHistoryPreview
+          ? await historyAdapter.getHistoryPreview({
+              db,
+              requestId: reqParent.id,
+              targetId,
+              requestType: reqParent.requestType,
+            })
+          : { targetName: "不明なマスタ", snapshotNew: null, snapshotOld: null },
+      );
+      flowProgressByRequest.set(
+        reqParent.id,
+        await WorkflowTasksHistoryService.buildFlowProgress(db, reqParent, targetId, targetType, caches),
+      );
+    }
+
+    return rows.map(({ log, reqParent }) => {
+      const preview = previewByRequest.get(reqParent.id)!;
+      return {
+        logId: log.id,
+        requestId: reqParent.id,
+        targetType: log.targetType,
+        targetId: log.targetId,
+        targetName: preview.targetName,
+        layer: log.layer,
+        requestType: reqParent.requestType,
+        applicantId: `${nameOf(reqParent.applicantId)} (ID: ${reqParent.applicantId.substring(0, 8)})`,
+        applicantDepartmentId: firstDeptByUser.get(reqParent.applicantId) ?? null,
+        status: log.status,
+        comment: log.comment,
+        performedAt: log.performedAt,
+        approverName: log.approverId ? nameOf(log.approverId) : null,
+        snapshotNew: preview.snapshotNew,
+        snapshotOld: preview.snapshotOld,
+        parentStatus: reqParent.status,
+        flowProgress: flowProgressByRequest.get(reqParent.id)!,
+      };
+    });
+  }
+
+  /** 全ての行を組み立てて返す(ページ指定なしの形。画面からは使わず、テスト・他機能のテストが使う) */
+  static async getHistory(
+    db: any,
+    queryParams: HistoryQuery,
+  ): Promise<{ histories: HistoryItem[]; isAdmin: boolean }> {
+    const { rows, isAdmin, defs } = await WorkflowTasksHistoryService.collectHistoryRows(
+      db,
+      queryParams,
+    );
+    const histories = await WorkflowTasksHistoryService.buildHistoryItems(db, rows, defs);
+    return { histories, isAdmin };
+  }
+
+  static computeHistoryCounts(historiesList: Array<{ status: string }>) {
     return {
       approved: historiesList.filter((h) => h.status === "APPROVED").length,
       remanded: historiesList.filter((h) => h.status === "REMANDED").length,
@@ -609,10 +407,10 @@ export class WorkflowTasksHistoryService {
     };
   }
 
-  static applyUiStatusFilter(
-    historiesList: HistoryItem[],
+  static applyUiStatusFilter<T extends { status: string; parentStatus: string; targetId: string }>(
+    historiesList: T[],
     uiStatus: string | null | undefined,
-  ): HistoryItem[] {
+  ): T[] {
     const filtered = historiesList.filter((item) => {
       if (!uiStatus || uiStatus === "all") {
         return true;
@@ -651,29 +449,249 @@ export class WorkflowTasksHistoryService {
     return filtered;
   }
 
+  // PERF-02: 件数の集計・タブの絞り込み・ページの切り出しは軽い行で行い、名前・プレビュー・承認の進み具合は
+  // 切り出した1ページ分の行にだけ付ける
   static async getHistoryPage(
     db: any,
     queryParams: HistoryQuery,
     params: PaginationParams,
   ) {
     const uiStatus = queryParams.status;
-    const { histories, isAdmin } = await WorkflowTasksHistoryService.getHistory(db, {
+    const { rows, isAdmin, defs } = await WorkflowTasksHistoryService.collectHistoryRows(db, {
       ...queryParams,
       status: undefined,
     });
 
-    const counts = WorkflowTasksHistoryService.computeHistoryCounts(histories);
-    const filtered = WorkflowTasksHistoryService.applyUiStatusFilter(
-      histories,
-      uiStatus,
-    );
+    const counts = WorkflowTasksHistoryService.computeHistoryCounts(rows);
+    const filtered = WorkflowTasksHistoryService.applyUiStatusFilter(rows, uiStatus);
 
     const start = toOffset(params);
-    const data = filtered.slice(start, start + params.limit);
+    const pageRows = filtered.slice(start, start + params.limit);
+    const data = await WorkflowTasksHistoryService.buildHistoryItems(db, pageRows, defs);
     return {
       ...buildListResponse(data, buildPaginationMeta(params, filtered.length)),
       isAdmin,
       counts,
     };
   }
+}
+
+// ==========================================
+// PERF-02: 申請履歴の軽い行と、まとめて取得したデータからの判定
+// ==========================================
+
+/** 申請履歴の軽い行(名前・プレビュー・承認の進み具合を付ける前) */
+export interface HistoryRow {
+  log: WorkflowLog;
+  reqParent: MasterApprovalRequest;
+  status: string;
+  parentStatus: string;
+  targetId: string;
+  performedAt: Date | null;
+}
+
+interface FlowDefinitions {
+  flowsById: Map<string, ApprovalFlow>;
+  activeFlowsByType: Map<string, ApprovalFlow[]>;
+  stepsByFlow: Map<string, ApprovalFlowStep[]>;
+}
+export type FlowDefinitionsLoader = () => Promise<FlowDefinitions>;
+
+// 承認フローと段の定義(件数の少ない設定の表)を、1リクエストで1回だけ読む
+export function createFlowDefinitionsLoader(db: any): FlowDefinitionsLoader {
+  let pending: Promise<FlowDefinitions> | null = null;
+  return () => {
+    if (!pending) {
+      pending = (async () => {
+        const [flows, steps] = await Promise.all([
+          WorkflowTasksRepository.getAllApprovalFlows(db),
+          WorkflowTasksRepository.getAllApprovalFlowSteps(db),
+        ]);
+        const flowsById = new Map(flows.map((f) => [f.id, f]));
+        const activeFlowsByType = new Map<string, ApprovalFlow[]>();
+        for (const f of flows) {
+          if (!f.isActive) continue;
+          const list = activeFlowsByType.get(f.requestType) ?? [];
+          list.push(f);
+          activeFlowsByType.set(f.requestType, list);
+        }
+        const stepsByFlow = new Map<string, ApprovalFlowStep[]>();
+        for (const s of steps) {
+          const list = stepsByFlow.get(s.flowId) ?? [];
+          list.push(s);
+          stepsByFlow.set(s.flowId, list);
+        }
+        return { flowsById, activeFlowsByType, stepsByFlow };
+      })();
+    }
+    return pending;
+  };
+}
+
+// WorkflowTasksRepository.resolveFlowForRequest(+ getActiveFlow)でフローを選ぶのに金額が要るか。
+// 金額が要るのは「申請に記録されたフローが無い」かつ「その種類の有効なフローが複数ある」場合だけ
+export function flowNeedsAmount(defs: FlowDefinitions, reqParent: MasterApprovalRequest): boolean {
+  const direct = reqParent.flowId ? defs.flowsById.get(reqParent.flowId) : undefined;
+  return !direct && (defs.activeFlowsByType.get(reqParent.targetType) ?? []).length > 1;
+}
+
+// resolveFlowForRequest(+ getActiveFlow)と同じ選び方を、読み込み済みの定義で行う(金額は要る時だけ取得する)
+export async function resolveFlowFromDefinitions(
+  defs: FlowDefinitions,
+  reqParent: MasterApprovalRequest,
+  getAmount: () => Promise<number>,
+): Promise<ApprovalFlow | null> {
+  const direct = reqParent.flowId ? defs.flowsById.get(reqParent.flowId) : undefined;
+  if (direct) return direct;
+  const matches = defs.activeFlowsByType.get(reqParent.targetType) ?? [];
+  if (matches.length <= 1) return matches[0] || null;
+  const amount = await getAmount();
+  return matches.find((f) => f.minAmount <= amount && f.maxAmount >= amount) || matches[0];
+}
+
+/**
+ * PERF-02・PERF-03: 申請(複数)の承認の進み具合(buildFlowProgress)を、行ごとではなく表ごとにまとめて取得したデータで
+ * 組み立てるための準備。関連する履歴・ロール名・申請者の先頭の所属・承認者の候補・ユーザー名を1回ずつ取得する。
+ * extraUserIds: 呼び出し側が氏名を使うユーザー(履歴の承認者など)。nameOf で引ける
+ */
+export async function prepareFlowProgressContext(
+  db: any,
+  requestList: Array<{ reqParent: MasterApprovalRequest; targetId: string; targetType: string }>,
+  defs: FlowDefinitionsLoader,
+  extraUserIds: string[],
+) {
+  const applicantIds = requestList.map((r) => r.reqParent.applicantId);
+  const loaded = await defs();
+  // 承認者の候補を取得するロール: 使うフローの段のロール。金額で選ぶフローは金額が分かるまで決まらないため、
+  // その種類の有効なフローの段をすべて含める
+  const usedFlowSteps = new Map<string, ApprovalFlowStep[]>();
+  for (const { reqParent } of requestList) {
+    const flows = flowNeedsAmount(loaded, reqParent)
+      ? (loaded.activeFlowsByType.get(reqParent.targetType) ?? [])
+      : [await resolveFlowFromDefinitions(loaded, reqParent, () => Promise.resolve(0))];
+    for (const flow of flows) {
+      if (flow) usedFlowSteps.set(flow.id, loaded.stepsByFlow.get(flow.id) ?? []);
+    }
+  }
+  const stepRoleIds = [...usedFlowSteps.values()].flat().map((s) => s.approverRoleId);
+
+  const [relatedLogsAll, roleRows, firstDeptByUser, candidates] = await Promise.all([
+    WorkflowTasksRepository.getWorkflowLogsByTargetIds(
+      db,
+      requestList.map((r) => r.targetId),
+    ),
+    WorkflowTasksRepository.getAllRoleNames(db),
+    loadFirstDepartmentByUser(db, applicantIds),
+    stepRoleIds.length > 0
+      ? WorkflowTasksRepository.getActiveApproverCandidates(db, stepRoleIds)
+      : Promise.resolve([]),
+  ]);
+  const roleNames = new Map(roleRows.map((r) => [r.id, r.name]));
+
+  const userIds = [
+    ...applicantIds,
+    ...extraUserIds,
+    ...relatedLogsAll.map((l) => l.approverId).filter((id): id is string => Boolean(id)),
+    ...candidates.map((c) => c.userId),
+  ];
+  const users = await WorkflowTasksRepository.getUsersByIds(db, userIds);
+  const userNames = new Map(users.map((u) => [u.id, u.name]));
+  // getUserName と同じ: 氏名が無ければ id
+  const nameOf = (userId: string) => userNames.get(userId) || userId;
+
+  // 金額は、フローを金額で選ぶ必要がある対象だけ取得する(以前は対象ごとに必ず取得していた)
+  const amountCache = new Map<string, Promise<number>>();
+  const amountNeeded = new Set(
+    requestList
+      .filter(({ reqParent }) => flowNeedsAmount(loaded, reqParent))
+      .map(({ targetType, targetId }) => `${targetType}:${targetId}`),
+  );
+  const getTargetAmount = async (targetType: string, targetId: string) => {
+    const key = `${targetType}:${targetId}`;
+    if (!amountNeeded.has(key)) return 0;
+    if (!amountCache.has(key)) amountCache.set(key, resolveTargetAmountForFlow(db, targetType, targetId));
+    return amountCache.get(key)!;
+  };
+
+  const caches = {
+    getTargetAmount,
+    resolveFlow: async (reqParent: MasterApprovalRequest, amount: number) =>
+      resolveFlowFromDefinitions(loaded, reqParent, () => Promise.resolve(amount)),
+    getFlowSteps: async (flowId: string) => loaded.stepsByFlow.get(flowId) ?? [],
+    // getWorkflowLogsForFlowProgress と同じ: 対象の履歴のうち、承認待ちか、申請の日時以降に処理されたもの(段の順)
+    getRelatedLogs: async (targetId: string, targetType: string, createdAt: unknown) => {
+      const since = createdAt ? new Date(createdAt as any).getTime() : null;
+      return relatedLogsAll.filter(
+        (l) =>
+          l.targetId === targetId &&
+          l.targetType === targetType &&
+          (l.status === "PENDING" ||
+            (since !== null && l.performedAt !== null && new Date(l.performedAt).getTime() >= since)),
+      );
+    },
+    getUserName: async (userId: string) => nameOf(userId),
+    getRoleName: async (roleId: string) => roleNames.get(roleId) || null,
+    // WorkflowEngine.resolveApprovers + getUserNamesByIds と同じ: 段の部署(無ければ申請の部署、
+    // さらに無ければ申請者の先頭の所属)のロール保持者(部署未指定の保持者を含む)の氏名
+    resolveCandidateNames: async (reqParent: MasterApprovalRequest, step: ApprovalFlowStep) => {
+      const deptSurrogateId =
+        step.targetDepartmentSurrogateId ||
+        reqParent.applicantDepartmentSurrogateId ||
+        firstDeptByUser.get(reqParent.applicantId) ||
+        null;
+      const allowed = new Set(
+        candidates
+          .filter(
+            (c) =>
+              c.roleId === step.approverRoleId &&
+              (!deptSurrogateId ||
+                c.departmentSurrogateId === deptSurrogateId ||
+                c.departmentSurrogateId === null),
+          )
+          .map((c) => c.userId),
+      );
+      if (allowed.size === 0) return null;
+      const names = users.filter((u) => allowed.has(u.id)).map((u) => u.name);
+      return names.length > 0 ? names.join(", ") : null;
+    },
+  };
+
+
+  return { caches, nameOf, firstDeptByUser };
+}
+
+// getPrimaryDepartmentId / resolveApprovers と同じ「user_roles の先頭の行」の部署を、ユーザーごとに返す
+export async function loadFirstDepartmentByUser(
+  db: any,
+  userIds: string[],
+): Promise<Map<string, string | null>> {
+  const rows = await WorkflowTasksRepository.getUserRolesByUserIds(db, userIds);
+  const firstDept = new Map<string, string | null>();
+  for (const row of rows) {
+    if (!firstDept.has(row.userId)) firstDept.set(row.userId, row.departmentSurrogateId || null);
+  }
+  return firstDept;
+}
+
+/**
+ * WorkflowEngine.resolveApprovers(db, applicantId, roleId, deptSurrogateId) の結果にログインユーザーが
+ * 含まれるかを、ログインユーザーのロール(user_roles の行)から計算する。
+ * deptSurrogateId には、resolveApprovers と同じく「段の部署 → 申請の部署 → 申請者の先頭の所属」の順で
+ * 決めた部署を渡す(無ければ null)。resolveApprovers は有効なユーザーだけを返すため、無効なら false。
+ */
+export function isResolvedApprover(params: {
+  myUserRoles: Array<{ roleId: string; departmentSurrogateId: string | null }>;
+  loginUserActive: boolean;
+  roleId: string;
+  deptSurrogateId: string | null;
+}): boolean {
+  const { myUserRoles, loginUserActive, roleId, deptSurrogateId } = params;
+  if (!loginUserActive) return false;
+  return myUserRoles.some(
+    (ur) =>
+      ur.roleId === roleId &&
+      (!deptSurrogateId ||
+        ur.departmentSurrogateId === deptSurrogateId ||
+        ur.departmentSurrogateId === null),
+  );
 }

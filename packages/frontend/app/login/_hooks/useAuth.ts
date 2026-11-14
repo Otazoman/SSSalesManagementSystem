@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { clearSharedApiCache } from "../../_shared/hooks/use-api-fetch";
 import { useRouter } from "next/navigation";
 import { LoginResponse, OtpChallenge, UserData } from "../_types";
 
@@ -29,6 +30,8 @@ export function useAuth() {
 
   // セッションの発行後の画面遷移(パスワードだけ・OTP の確認後の両方で使う)
   const goAfterLogin = (user: UserData) => {
+    // PERF-06: 前のユーザーのプロフィール・メニューを使い回さない
+    clearSharedApiCache();
     if (user.mustChangePassword === true) {
       router.push("/force-password-change");
       return;

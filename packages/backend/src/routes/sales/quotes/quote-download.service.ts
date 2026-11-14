@@ -9,7 +9,7 @@ import {
   MAX_OTP_REQUESTS_PER_WINDOW,
   readDownloadOtpSettings,
 } from "../../../platform/otp/download-otp-settings";
-import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
+import { enqueueNotification, sendNotificationNow } from "../../../platform/notifications/enqueue-notification";
 
 // Item4-f: quote.service.tsから分割。添付ファイルダウンロード・OTP付きダウンロードリンクを担当
 export class QuoteDownloadService {
@@ -101,7 +101,7 @@ export class QuoteDownloadService {
           createdAt: now,
         });
 
-        await enqueueNotification({
+        const notificationId = await enqueueNotification({
           dbLog: c.env.DB_LOG,
           category: "quote_download_otp",
           documentId: quoteId,
@@ -116,6 +116,8 @@ export class QuoteDownloadService {
             "心当たりのない場合は、このメールを破棄してください。",
           ].join("\n"),
         });
+        // PERF-08: 確認コードのメールは、定期処理(1分ごと)を待たずにすぐ送る
+        sendNotificationNow(c, notificationId);
       }
     }
 

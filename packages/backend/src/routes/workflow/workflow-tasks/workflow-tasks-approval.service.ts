@@ -43,13 +43,14 @@ export class WorkflowTasksApprovalService {
     const { logId, requestId, userId, comment } = params;
     const now = new Date();
 
+    // PERF-09: 履歴と申請は最初に1回だけ取得し、以降も同じ値を使う(以前は同じ条件で2回ずつ取得していた)。
+    // 書き込みは最後の batch(tx.commit)でまとめて行うため、途中で取り直しても同じ値になる
     const oldSnapshot = await WorkflowTasksRepository.getLogById(db, logId);
-    await assertCanDecideTask(
+    const reqParent = await WorkflowTasksRepository.getParentRequestById(
       db,
-      userId,
-      oldSnapshot,
-      await WorkflowTasksRepository.getParentRequestById(db, requestId),
+      requestId,
     );
+    await assertCanDecideTask(db, userId, oldSnapshot, reqParent);
 
     // BUG-049: 手番・申請の書き込みと、対象(伝票・マスタ)への反映を1回の batch で書き込む(途中で失敗して「承認済みなのに
     // 反映されていない」状態が残らないように)。メールは書き込みが成功した後に送る
@@ -64,11 +65,6 @@ export class WorkflowTasksApprovalService {
       userId,
       comment || null,
       now,
-    );
-
-    const reqParent = await WorkflowTasksRepository.getParentRequestById(
-      db,
-      requestId,
     );
 
     if (!reqParent) {
@@ -91,8 +87,8 @@ export class WorkflowTasksApprovalService {
       matchedFlow!.id,
     );
 
-    // 💡 直前のoldSnapshot取得と全く同じ条件で再取得しており冗長(既存挙動のまま維持、ISSUE-05のRepository移行時に判明した最適化余地として記録)
-    const currentLog = await WorkflowTasksRepository.getLogById(db, logId);
+    // PERF-09: 以前はここで同じ条件の getLogById をもう一度呼んでいた(ISSUE-05 で記録していた冗長な取得)
+    const currentLog = oldSnapshot;
 
     const currentStepIdx = steps.findIndex(
       (s: ApprovalFlowStep) => s.stepOrder === currentLog!.layer,
@@ -249,13 +245,13 @@ export class WorkflowTasksApprovalService {
     const { logId, requestId, userId, comment } = params;
     const now = new Date();
 
+    // PERF-09: 履歴と申請は最初に1回だけ取得し、以降も同じ値を使う(承認と同じ)
     const oldSnapshot = await WorkflowTasksRepository.getLogById(db, logId);
-    await assertCanDecideTask(
+    const reqParent = await WorkflowTasksRepository.getParentRequestById(
       db,
-      userId,
-      oldSnapshot,
-      await WorkflowTasksRepository.getParentRequestById(db, requestId),
+      requestId,
     );
+    await assertCanDecideTask(db, userId, oldSnapshot, reqParent);
 
     // BUG-049: 手番・申請の書き込みと、対象(伝票・マスタ)への反映を1回の batch で書き込む(途中で失敗して「承認済みなのに
     // 反映されていない」状態が残らないように)。メールは書き込みが成功した後に送る
@@ -281,11 +277,6 @@ export class WorkflowTasksApprovalService {
     // -------------------------------------------------------------
     // ★【追加】差戻し時に申請者へ通知メールを送信
     // -------------------------------------------------------------
-    const reqParent = await WorkflowTasksRepository.getParentRequestById(
-      db,
-      requestId,
-    );
-
     if (reqParent) {
       const remandAdapter = getTargetAdapter(reqParent.targetType);
       if (remandAdapter?.requiresImmediateWrites) {

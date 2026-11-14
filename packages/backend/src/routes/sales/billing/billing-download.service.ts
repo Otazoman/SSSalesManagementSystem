@@ -9,7 +9,7 @@ import {
   MAX_OTP_REQUESTS_PER_WINDOW,
   readDownloadOtpSettings,
 } from "../../../platform/otp/download-otp-settings";
-import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
+import { enqueueNotification, sendNotificationNow } from "../../../platform/notifications/enqueue-notification";
 
 // 追加要望: sales-invoice-download.service.tsと同じ方針(外部の取引先がメールのリンクから
 // 直接アクセスするOTPダウンロード)。請求(billing_headers)はsales_invoicesと異なり
@@ -77,7 +77,7 @@ export class BillingDownloadService {
           createdAt: now,
         });
 
-        await enqueueNotification({
+        const notificationId = await enqueueNotification({
           dbLog: c.env.DB_LOG,
           category: "billing_download_otp",
           documentId: billingHeaderId,
@@ -92,6 +92,8 @@ export class BillingDownloadService {
             "心当たりのない場合は、このメールを破棄してください。",
           ].join("\n"),
         });
+        // PERF-08: 確認コードのメールは、定期処理(1分ごと)を待たずにすぐ送る
+        sendNotificationNow(c, notificationId);
       }
     }
 

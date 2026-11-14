@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../_shared/hooks/use-api-fetch";
 
 export interface WorkflowUserRelation {
   roleId: string;
@@ -34,7 +34,7 @@ export function useWorkflowScreensAndUsers(enabled: boolean) {
     async function loadMasters() {
       try {
         const [resScreens, resUsers] = await Promise.all([
-          apiFetch<WorkflowScreenEntry[]>("/api/permissions/screens"),
+          apiFetchShared<WorkflowScreenEntry[]>("/api/permissions/screens"),
           apiFetch<WorkflowUserMasterEntry[]>("/api/users"),
         ]);
         setScreens(resScreens);

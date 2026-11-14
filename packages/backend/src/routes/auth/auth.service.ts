@@ -2,34 +2,7 @@ import { Context } from "hono";
 import { AuthRepository } from "./auth.repository";
 import { hashPassword, verifyPassword } from "../../utils/crypto";
 import { writeAuditLog } from "../../utils/logger";
-import {
-  isPartnerWorkflowGloballyEnabled,
-  isQuoteWorkflowGloballyEnabled,
-  isPartnerContactWorkflowGloballyEnabled,
-  isUnitWorkflowGloballyEnabled,
-  isLocationWorkflowGloballyEnabled,
-  isProductPriceWorkflowGloballyEnabled,
-  isProductWorkflowGloballyEnabled,
-  isAccountWorkflowGloballyEnabled,
-  isWarehouseWorkflowGloballyEnabled,
-  isBusinessLocationWorkflowGloballyEnabled,
-  isItemStructureWorkflowGloballyEnabled,
-  isReceivingWorkflowGloballyEnabled,
-  isShippingWorkflowGloballyEnabled,
-  isInventoryAdjustmentWorkflowGloballyEnabled,
-  isDamageWorkflowGloballyEnabled,
-  isDisposalWorkflowGloballyEnabled,
-  isReturnWorkflowGloballyEnabled,
-  isShippingInstructionWorkflowGloballyEnabled,
-  isShippingResultWorkflowGloballyEnabled,
-  isReceivingInstructionWorkflowGloballyEnabled,
-  isReceivingResultWorkflowGloballyEnabled,
-  isSalesOrderWorkflowGloballyEnabled,
-  isPurchaseRequisitionWorkflowGloballyEnabled,
-  isPurchaseOrderWorkflowGloballyEnabled,
-  isSalesInvoiceWorkflowGloballyEnabled,
-  isPurchaseRecognitionWorkflowGloballyEnabled,
-} from "../../workflow-engine/settings";
+import { readWorkflowFlags } from "../../workflow-engine/settings";
 import { Env } from "../../types/env";
 import {
   LoginInput,
@@ -604,8 +577,11 @@ export class AuthService {
         : [currentRoleId];
 
     const permissionSet = new Set<string>();
-    for (const roleId of roleIds) {
-      const rolePermissions = await this.fetchPermissionsForRole(roleId);
+    // PERF-04: ロールごとの権限の取得は互いに依存しないため、並行して行う
+    const permissionsByRole = await Promise.all(
+      roleIds.map((roleId) => this.fetchPermissionsForRole(roleId)),
+    );
+    for (const rolePermissions of permissionsByRole) {
       rolePermissions.forEach((p) => permissionSet.add(p));
     }
     const permissions = Array.from(permissionSet);
@@ -629,64 +605,18 @@ export class AuthService {
       isAuditEnabled,
     );
 
-    // Item5: 5つとも同じCOMPANY_SETTINGS KVの"config"キーを個別に読みに行くため、
-    // 逐次awaitだと5回分のKVレイテンシが直列に積み上がってしまう(実測でauth/profileが
-    // 4秒超に悪化する原因になっていた)。並列実行してレイテンシを1回分に抑える。
-    const [
-      isPartnerWfEnabled,
-      isQuoteWfEnabled,
-      isPartnerContactWfEnabled,
-      isUnitWfEnabled,
-      isLocationWfEnabled,
-      isProductPriceWfEnabled,
-      isProductWfEnabled,
-      isAccountWfEnabled,
-      isWarehouseWfEnabled,
-      isBusinessLocationWfEnabled,
-      isItemStructureWfEnabled,
-      isReceivingWfEnabled,
-      isShippingWfEnabled,
-      isInventoryWfEnabled,
-      isDamageWfEnabled,
-      isDisposalWfEnabled,
-      isReturnWfEnabled,
-      isShippingInstructionWfEnabled,
-      isShippingResultWfEnabled,
-      isReceivingInstructionWfEnabled,
-      isReceivingResultWfEnabled,
-      isSalesOrderWfEnabled,
-      isPurchaseRequisitionWfEnabled,
-      isPurchaseOrderWfEnabled,
-      isSalesInvoiceWfEnabled,
-      isPurchaseRecognitionWfEnabled,
-    ] = await Promise.all([
-      isPartnerWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isQuoteWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPartnerContactWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isUnitWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isLocationWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isProductPriceWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isProductWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isAccountWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isWarehouseWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isBusinessLocationWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isItemStructureWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReceivingWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isShippingWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isInventoryAdjustmentWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isDamageWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isDisposalWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReturnWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isShippingInstructionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isShippingResultWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReceivingInstructionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReceivingResultWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isSalesOrderWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPurchaseRequisitionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPurchaseOrderWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isSalesInvoiceWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPurchaseRecognitionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-    ]);
+    // PERF-04: 承認ワークフローのスイッチ(26個)は、会社設定(KV の "config")を1回だけ読んでまとめて判定する
+    // (以前はスイッチごとに同じキーを読み、26回 JSON として解釈していた)。
+    // 読めない・壊れている時は、以前と同じく全て OFF にする
+    let companyConfig: Record<string, any> | null = null;
+    try {
+      if (this.env.COMPANY_SETTINGS) {
+        companyConfig = await getCompanySettings(this.env.COMPANY_SETTINGS);
+      }
+    } catch (error) {
+      console.error("承認ワークフローの設定(会社設定)の読み取りに失敗しました:", error);
+    }
+    const workflowFlags = readWorkflowFlags(companyConfig);
 
     const notificationSettings = await this.repo.findNotificationSettings(
       userId,
@@ -721,32 +651,7 @@ export class AuthService {
         companyName: companyName || "サンプル 販売管理",
         permissions: permissions,
         departments: departments,
-        isPartnerWfEnabled: isPartnerWfEnabled,
-        isQuoteWfEnabled: isQuoteWfEnabled,
-        isPartnerContactWfEnabled: isPartnerContactWfEnabled,
-        isUnitWfEnabled: isUnitWfEnabled,
-        isLocationWfEnabled: isLocationWfEnabled,
-        isProductPriceWfEnabled: isProductPriceWfEnabled,
-        isProductWfEnabled: isProductWfEnabled,
-        isAccountWfEnabled: isAccountWfEnabled,
-        isWarehouseWfEnabled: isWarehouseWfEnabled,
-        isBusinessLocationWfEnabled: isBusinessLocationWfEnabled,
-        isItemStructureWfEnabled: isItemStructureWfEnabled,
-        isReceivingWfEnabled: isReceivingWfEnabled,
-        isShippingWfEnabled: isShippingWfEnabled,
-        isInventoryWfEnabled: isInventoryWfEnabled,
-        isDamageWfEnabled: isDamageWfEnabled,
-        isDisposalWfEnabled: isDisposalWfEnabled,
-        isReturnWfEnabled: isReturnWfEnabled,
-        isShippingInstructionWfEnabled: isShippingInstructionWfEnabled,
-        isShippingResultWfEnabled: isShippingResultWfEnabled,
-        isReceivingInstructionWfEnabled: isReceivingInstructionWfEnabled,
-        isReceivingResultWfEnabled: isReceivingResultWfEnabled,
-        isSalesOrderWfEnabled: isSalesOrderWfEnabled,
-        isPurchaseRequisitionWfEnabled: isPurchaseRequisitionWfEnabled,
-        isPurchaseOrderWfEnabled: isPurchaseOrderWfEnabled,
-        isSalesInvoiceWfEnabled: isSalesInvoiceWfEnabled,
-        isPurchaseRecognitionWfEnabled: isPurchaseRecognitionWfEnabled,
+        ...workflowFlags,
         slackUserId: notificationSettings?.slackUserId || null,
         notificationChannel: notificationSettings?.notificationChannel || "email",
       },

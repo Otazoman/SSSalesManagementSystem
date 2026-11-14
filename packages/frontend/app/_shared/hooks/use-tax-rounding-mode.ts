@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "./use-api-fetch";
+import { apiFetchShared } from "./use-api-fetch";
 import { DEFAULT_TAX_ROUNDING_MODE, toTaxRoundingMode, type TaxRoundingMode } from "../tax-amounts";
 
 /**
@@ -12,7 +12,7 @@ export function useTaxRoundingMode(): TaxRoundingMode {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ tax_rounding_mode?: string }>("/api/company-settings", {
+    apiFetchShared<{ tax_rounding_mode?: string }>("/api/company-settings", {
       defaultErrorMessage: "会社設定の取得に失敗しました",
     })
       .then((settings) => {

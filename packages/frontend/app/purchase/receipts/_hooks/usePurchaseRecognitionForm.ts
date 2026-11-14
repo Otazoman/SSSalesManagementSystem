@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   PurchaseRecognitionRecord,
   PartnerMaster,
@@ -113,7 +113,7 @@ export function usePurchaseRecognitionForm({
   useEffect(() => {
     async function loadCompanySettings() {
       try {
-        const data = await apiFetch<CompanySettingsResponse>("/api/company-settings");
+        const data = await apiFetchShared<CompanySettingsResponse>("/api/company-settings");
         setCompanyName(data.company_name || "");
         setCompanyAddress(data.company_address || "");
         setCompanyTel(data.company_tel || "");
@@ -157,7 +157,7 @@ export function usePurchaseRecognitionForm({
       setPaymentTerms(initialData.payment_terms || initialData.paymentTerms || "貴社お支払基準に準拠");
 
       if (dbCompName.trim() === "" && dbCompAddr.trim() === "" && dbCompTel.trim() === "") {
-        apiFetch<CompanySettingsResponse>("/api/company-settings")
+        apiFetchShared<CompanySettingsResponse>("/api/company-settings")
           .then((compData) => {
             setCompanyName(compData.company_name || "");
             setCompanyAddress(compData.company_address || "");

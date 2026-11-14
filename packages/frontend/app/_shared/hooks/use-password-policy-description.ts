@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "./use-api-fetch";
+import { apiFetchShared } from "./use-api-fetch";
 import { describePasswordPolicy, toPasswordPolicy } from "../password-policy";
 
 /**
@@ -11,7 +11,7 @@ export function usePasswordPolicyDescription(): string | null {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<Record<string, unknown>>("/api/company-settings", {
+    apiFetchShared<Record<string, unknown>>("/api/company-settings", {
       defaultErrorMessage: "会社設定の取得に失敗しました",
     })
       .then((settings) => {

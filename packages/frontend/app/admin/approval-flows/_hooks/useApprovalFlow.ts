@@ -6,7 +6,7 @@ import {
   DepartmentOption,
   BuilderStep,
 } from "../_types";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import { useCsvDownload } from "../../../_shared/hooks/use-csv-download";
 import { useCsvImport } from "../../../_shared/hooks/use-csv-import";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
@@ -90,7 +90,7 @@ export function useApprovalFlow({
             `/api/approval-flows?${flowsParams.toString()}`,
           ).catch(() => []),
           apiFetch<RoleRecord[]>("/api/roles").catch(() => []),
-          apiFetch<any[]>("/api/permissions/screens").catch(() => []),
+          apiFetchShared<any[]>("/api/permissions/screens").catch(() => []),
           apiFetch<DepartmentOption[]>(
             "/api/departments?filter=active_and_future",
           ).catch(() => []),

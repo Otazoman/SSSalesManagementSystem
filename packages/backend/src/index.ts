@@ -62,18 +62,18 @@ app.use("/api/*", async (c, next) => {
     return await next();
   }
 
-  const db = drizzle(c.env.DB, { schema });
-  const userCountResult = await db
-    .select({ value: count() })
-    .from(schema.users);
-  const totalUsers = userCountResult[0]?.value || 0;
-
   // 初期救済：ユーザー数が完全に0件の時は、判定APIと初期登録APIのみAPIキーなしで通過を許可
-  if (totalUsers === 0) {
-    if (
-      c.req.path === "/api/users/count" ||
-      c.req.path === "/api/users/setup-admin"
-    ) {
+  // PERF-05: 件数の問い合わせは、結果を使うこの2つのAPIの時だけ行う(以前は全APIで毎回数えていた)
+  if (
+    c.req.path === "/api/users/count" ||
+    c.req.path === "/api/users/setup-admin"
+  ) {
+    const db = drizzle(c.env.DB, { schema });
+    const userCountResult = await db
+      .select({ value: count() })
+      .from(schema.users);
+    const totalUsers = userCountResult[0]?.value || 0;
+    if (totalUsers === 0) {
       return await next();
     }
   }

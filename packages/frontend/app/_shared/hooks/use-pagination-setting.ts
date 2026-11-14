@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "./use-api-fetch";
+import { apiFetchShared } from "./use-api-fetch";
 
 interface CompanySettingsPaginationFields {
   is_pagination_enabled?: boolean;
@@ -17,7 +17,7 @@ export function usePaginationSetting() {
   useEffect(() => {
     async function load() {
       try {
-        const settings = await apiFetch<CompanySettingsPaginationFields>(
+        const settings = await apiFetchShared<CompanySettingsPaginationFields>(
           "/api/company-settings",
           { defaultErrorMessage: "会社設定の取得に失敗しました" },
         );

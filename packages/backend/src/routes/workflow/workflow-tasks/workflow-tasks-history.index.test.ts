@@ -149,16 +149,38 @@ describe("GET /history", () => {
       env,
     );
     expect(res.status).toBe(200);
+    // PERF-02: ページ指定が無くても、ページ単位の形({data, pagination, isAdmin, counts})で返す
     const body = (await res.json()) as {
-      histories: Array<{ targetType: string; targetId: string }>;
+      data: Array<{ targetType: string; targetId: string }>;
+      pagination: { page: number; limit: number; total: number };
       isAdmin: boolean;
     };
     expect(body.isAdmin).toBe(true);
+    expect(body.pagination).toMatchObject({ page: 1, limit: 50 });
     expect(
-      body.histories.some(
+      body.data.some(
         (h) => h.targetType === "master_units" && h.targetId === "PCS",
       ),
     ).toBe(true);
+  });
+
+  it("PERF-02: 1ページの件数(limit)は 50 件までに切り詰める", async () => {
+    await seedUser("admin-1");
+    await seedRole("admin");
+    await db.insert(schema.userRoles).values({
+      userId: "admin-1",
+      roleId: "admin",
+      departmentSurrogateId: null,
+    });
+
+    const res = await workflowTasksRouter.request(
+      "/history?userId=admin-1&page=1&limit=500",
+      { headers: { Cookie: await sessionCookie("admin-1") } },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { pagination: { limit: number } };
+    expect(body.pagination.limit).toBe(50);
   });
 
   it("ログインしていない場合は401を返す", async () => {

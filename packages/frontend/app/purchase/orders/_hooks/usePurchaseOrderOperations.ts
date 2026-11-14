@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   PurchaseOrderRecord,
   PurchaseOrderItemRecord,
@@ -103,7 +103,7 @@ export function usePurchaseOrderOperations({
   const [isEmailRestrictedToContacts, setIsEmailRestrictedToContacts] = useState(false);
 
   useEffect(() => {
-    apiFetch<CompanySettingsResponse>("/api/company-settings")
+    apiFetchShared<CompanySettingsResponse>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(data.is_otp_download_restricted_to_contacts === true);
       })

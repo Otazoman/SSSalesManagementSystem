@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { clearSharedApiCache } from "../../../_shared/hooks/use-api-fetch";
 import { SystemSettings, UserProfile } from "../_types";
 
 export function useCompanySettings() {
@@ -155,6 +156,8 @@ export function useCompanySettings() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "更新に失敗しました");
+      // PERF-06: 会社設定と、それから決まるプロフィールの承認のスイッチを、各画面が取り直すようにする
+      clearSharedApiCache();
 
       setMessage("Cloudflare KVマスタ設定を上書き更新しました");
     } catch (err) {

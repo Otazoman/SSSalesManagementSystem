@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { env } from "cloudflare:test";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+
+// PERF-08: 確認コードのメールを登録の直後に送るため、実際の SMTP の代わりに送信の境界(sendEmail)を差し替える
+vi.mock("../../../utils/mailer", () => ({
+  sendEmail: vi.fn(async () => {}),
+}));
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
@@ -15,6 +20,7 @@ const R2_PATH = "quotes/QT-OTP-TEST/generated_quote.pdf";
 const REGISTERED_EMAIL = "registered@example.com";
 const UNREGISTERED_EMAIL = "unregistered@example.com";
 const RATE_LIMIT_EMAIL = "rate-limit-target@example.com";
+const SEND_NOW_EMAIL = "send-now@example.com";
 
 async function seedQuoteWithAttachment() {
   const db = drizzle(env.DB, { schema });
@@ -47,6 +53,18 @@ async function seedQuoteWithAttachment() {
     partnerId: PARTNER_ID,
     contactType: "SECONDARY",
     email: RATE_LIMIT_EMAIL,
+    isEmailTarget: true,
+    status: "active",
+    createdBy: "SYSTEM",
+    createdAt: now,
+    updatedBy: "SYSTEM",
+    updatedAt: now,
+  });
+  await db.insert(schema.partnerContacts).values({
+    id: "PC-OTP-SEND-NOW",
+    partnerId: PARTNER_ID,
+    contactType: "SECONDARY",
+    email: SEND_NOW_EMAIL,
     isEmailTarget: true,
     status: "active",
     createdBy: "SYSTEM",
@@ -110,6 +128,30 @@ async function getLatestOtpCode(email: string): Promise<string> {
 describe("Item4-c: OTPダウンロード", () => {
   beforeAll(async () => {
     await seedQuoteWithAttachment();
+  });
+
+  it("PERF-08: 確認コードのメールは、定期処理を待たずに応答の直後に送られる", async () => {
+    const ctx = createExecutionContext();
+    const res = await quotesRouter.request(
+      `/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: SEND_NOW_EMAIL }),
+      },
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    await waitOnExecutionContext(ctx);
+
+    const dbLog = drizzle(env.DB_LOG, { schema: auditSchema });
+    const mailRows = await dbLog
+      .select()
+      .from(auditSchema.mailDeliveryLogs)
+      .where(eq(auditSchema.mailDeliveryLogs.recipientTo, SEND_NOW_EMAIL));
+    expect(mailRows).toHaveLength(1);
+    expect(mailRows[0]).toMatchObject({ category: "quote_download_otp", status: "SUCCESS" });
   });
 
   it("登録済み連絡先のメールアドレスならOTPが発行・記録される", async () => {

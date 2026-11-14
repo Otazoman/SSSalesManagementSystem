@@ -7,7 +7,7 @@ import {
   ScreenOption,
   STANDARD_ACTIONS,
 } from "../_types";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared, clearSharedApiCache } from "../../../_shared/hooks/use-api-fetch";
 import { useCsvDownload } from "../../../_shared/hooks/use-csv-download";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
 
@@ -52,7 +52,7 @@ export function useMatrixState({
         await Promise.all([
           apiFetch<PermissionRecord[]>("/api/permissions").catch(() => []),
           apiFetch<RoleRecord[]>("/api/roles").catch(() => []),
-          apiFetch<ScreenOption[]>("/api/permissions/screens").catch(
+          apiFetchShared<ScreenOption[]>("/api/permissions/screens").catch(
             () => [],
           ),
         ]);
@@ -177,6 +177,8 @@ export function useMatrixState({
         json: { permissionIds: checkedPermissionIds },
         defaultErrorMessage: "権限マトリクスの更新に失敗しました",
       });
+      // PERF-06: 権限から決まるプロフィール・メニューを取り直すようにする
+      clearSharedApiCache();
 
       const roleName =
         roles.find((r) => r.id === selectedRoleId)?.name || "対象ロール";
@@ -250,6 +252,7 @@ export function useMatrixState({
         { method: "POST", body: formData },
       );
       setMessage(data.message || "CSVインポートが完了しました");
+      clearSharedApiCache();
       void syncMasterData();
       void fetchRolePermissions();
     } catch (err) {

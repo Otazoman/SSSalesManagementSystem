@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   OrderRecord,
   PartnerMaster,
@@ -222,7 +222,7 @@ export function useOrderForm({
   useEffect(() => {
     async function loadCompanySettings() {
       try {
-        const data = await apiFetch<CompanySettingsResponse>("/api/company-settings");
+        const data = await apiFetchShared<CompanySettingsResponse>("/api/company-settings");
         setCompanyName(data.company_name || "");
         setCompanyZip(data.company_zip || "");
         setCompanyAddress(data.company_address || "");
@@ -238,7 +238,7 @@ export function useOrderForm({
   }, [editingId]);
 
   useEffect(() => {
-    apiFetch<CompanySettingsResponse>("/api/company-settings")
+    apiFetchShared<CompanySettingsResponse>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(data.is_otp_download_restricted_to_contacts === true);
       })
@@ -294,7 +294,7 @@ export function useOrderForm({
       setPrepaidAt(initialData.prepaidAt ? initialData.prepaidAt.split("T")[0] : "");
 
       if (dbCompName.trim() === "" && dbCompAddr.trim() === "" && dbCompTel.trim() === "") {
-        apiFetch<CompanySettingsResponse>("/api/company-settings")
+        apiFetchShared<CompanySettingsResponse>("/api/company-settings")
           .then((compData) => {
             setCompanyName(compData.company_name || "");
             setCompanyZip(compData.company_zip || "");

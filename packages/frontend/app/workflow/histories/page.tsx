@@ -27,7 +27,6 @@ export default function WorkflowHistoryPage() {
     filters,
     setFilters,
     counts,
-    paginationEnabled,
     page,
     setPage,
     limit,
@@ -133,8 +132,10 @@ export default function WorkflowHistoryPage() {
         />
       </div>
 
+      {/* PERF-02: 申請履歴は会社設定のページングの有無にかかわらず、常にページ送りを出す(API の上限は50件) */}
       <Pagination
-        paginationEnabled={paginationEnabled}
+        paginationEnabled
+        limitOptions={[20, 50]}
         page={page}
         totalPages={totalPages}
         total={total}

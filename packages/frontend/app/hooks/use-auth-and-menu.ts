@@ -2,6 +2,10 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { UserState, MenuItem, MenuSection } from "../types";
+import { apiFetchShared, ApiFetchError } from "../_shared/hooks/use-api-fetch";
+
+// 以前の res.json() と同じ型(応答の中身をそのまま扱う)
+type ResponseJson = Awaited<ReturnType<Response["json"]>>;
 
 export function useAuthAndMenu(isAuthPage: boolean) {
   const pathname = usePathname();
@@ -17,13 +21,14 @@ export function useAuthAndMenu(isAuthPage: boolean) {
         return;
       }
       try {
-        const [profileRes, screensRes] = await Promise.all([
-          fetch("/api/auth/profile", { method: "GET", credentials: "include" }),
-          fetch("/api/permissions/screens", {
-            method: "GET",
-            credentials: "include",
-          }),
+        // PERF-06: 画面を移るたびに呼ばれるため、30秒間は同じ結果を使い回す(apiFetchShared)。
+        // ログイン・ログアウト・会社設定の保存の時は破棄している
+        const [profileResult, screensResult] = await Promise.allSettled([
+          apiFetchShared<ResponseJson>("/api/auth/profile"),
+          apiFetchShared<ResponseJson>("/api/permissions/screens"),
         ]);
+        const isUnauthorized = (r: PromiseSettledResult<unknown>) =>
+          r.status === "rejected" && r.reason instanceof ApiFetchError && r.reason.status === 401;
 
         // 💡 明確な未認証(401)の場合のみログイン画面へ強制遷移させる。
         // それ以外(5xx・wrangler devの一時的な接続断など)はcatch節で処理し、
@@ -31,16 +36,17 @@ export function useAuthAndMenu(isAuthPage: boolean) {
         // (以前は下のcatch節が「fetch自体の失敗」も「401」も区別せず全てログイン画面へ
         // 飛ばしていたため、開発環境でwrangler devの接続が一瞬途切れただけで
         // ログイン中のセッションが強制的に破棄されているように見える不具合があった)
-        if (profileRes.status === 401 || screensRes.status === 401) {
+        if (isUnauthorized(profileResult) || isUnauthorized(screensResult)) {
           setUser(null);
           if (!isAuthPage) window.location.href = "/login";
           return;
         }
 
-        if (!profileRes.ok || !screensRes.ok) throw new Error("取得失敗");
+        if (profileResult.status === "rejected") throw profileResult.reason;
+        if (screensResult.status === "rejected") throw screensResult.reason;
 
-        const profileData = await profileRes.json();
-        const screensData = await screensRes.json();
+        const profileData = profileResult.value;
+        const screensData = screensResult.value;
 
         const normalizedRoleId = (
           profileData.roleId || "general_user"

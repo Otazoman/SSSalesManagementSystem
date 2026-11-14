@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch } from "../hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../hooks/use-api-fetch";
 
 // REQ-003: 見積・受注・売上の「発行元・自社情報」に、営業拠点マスタの住所などを展開する選択欄。
 // 拠点を選ぶと、会社名は「会社名 拠点名」(例: ○○株式会社 大阪営業所)、郵便番号・住所・電話・FAX は拠点の値にする
@@ -75,7 +75,7 @@ export function BusinessLocationSelect({
         if (!cancelled) setLocations(list);
       })
       .catch((err) => console.error("営業拠点マスタの取得に失敗しました", err));
-    apiFetch<CompanySettings>("/api/company-settings")
+    apiFetchShared<CompanySettings>("/api/company-settings")
       .then((settings) => {
         if (!cancelled) setCompany(settings);
       })

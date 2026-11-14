@@ -9,7 +9,7 @@ import {
   MAX_OTP_REQUESTS_PER_WINDOW,
   readDownloadOtpSettings,
 } from "../../../platform/otp/download-otp-settings";
-import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
+import { enqueueNotification, sendNotificationNow } from "../../../platform/notifications/enqueue-notification";
 
 // sales-order-download.service.ts/quote-download.service.tsと同じ方針(OTP発行連打による悪用防止の
 // レート制限含む)
@@ -80,7 +80,7 @@ export class PurchaseOrderDownloadService {
           createdAt: now,
         });
 
-        await enqueueNotification({
+        const notificationId = await enqueueNotification({
           dbLog: c.env.DB_LOG,
           category: "purchase_order_download_otp",
           documentId: orderId,
@@ -95,6 +95,8 @@ export class PurchaseOrderDownloadService {
             "心当たりのない場合は、このメールを破棄してください。",
           ].join("\n"),
         });
+        // PERF-08: 確認コードのメールは、定期処理(1分ごと)を待たずにすぐ送る
+        sendNotificationNow(c, notificationId);
       }
     }
 

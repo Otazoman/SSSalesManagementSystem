@@ -9,7 +9,7 @@ import {
   MAX_OTP_REQUESTS_PER_WINDOW,
   readDownloadOtpSettings,
 } from "../../../platform/otp/download-otp-settings";
-import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
+import { enqueueNotification, sendNotificationNow } from "../../../platform/notifications/enqueue-notification";
 
 // K-4-1: quote-download.service.tsと同じ方針(OTPダウンロード用documentTypeは
 // "sales_invoice"で新規、既存の納品書メール機能が使うmail_template_settingsのid
@@ -89,7 +89,7 @@ export class SalesInvoiceDownloadService {
           createdAt: now,
         });
 
-        await enqueueNotification({
+        const notificationId = await enqueueNotification({
           dbLog: c.env.DB_LOG,
           category: "sales_invoice_download_otp",
           documentId: invoiceId,
@@ -104,6 +104,8 @@ export class SalesInvoiceDownloadService {
             "心当たりのない場合は、このメールを破棄してください。",
           ].join("\n"),
         });
+        // PERF-08: 確認コードのメールは、定期処理(1分ごと)を待たずにすぐ送る
+        sendNotificationNow(c, notificationId);
       }
     }
 

@@ -17,6 +17,7 @@ vi.mock("../../../workflow-engine/notifier", () => ({
 
 import { WorkflowTasksApprovalService } from "./workflow-tasks-approval.service";
 import { sendWorkflowMail } from "../../../workflow-engine/notifier";
+import { WorkflowTasksRepository } from "./workflow-tasks.repository";
 
 const mockedSendWorkflowMail = vi.mocked(sendWorkflowMail);
 
@@ -956,6 +957,63 @@ describe("WorkflowTasksApprovalService.remandTask", () => {
     expect(logs[0].action).toBe("REMAND_TASK");
     expect(logs[0].userId).toBe("approver-1");
   });
+});
+
+// PERF-09: 1回の承認・差戻しの中で、同じ履歴(getLogById)・同じ申請(getParentRequestById)を取得するのは1回ずつ
+describe("承認・差戻しの問い合わせ(PERF-09)", () => {
+  async function seedTwoStepRequest() {
+    await seedUser("applicant-1", { email: "applicant1@example.com" });
+    await seedUser("approver-1");
+    await seedUser("approver-2", { email: "approver2@example.com" });
+    await seedRole("role1");
+    await seedRole("role2");
+    await seedUserRole("approver-1", "role1", null);
+    await seedUserRole("approver-2", "role2", null);
+    await seedPartner("partner-1", "テスト取引先", "applicant-1");
+    await seedApprovalFlow("flow-1", "master_partners", [
+      { order: 1, roleId: "role1" },
+      { order: 2, roleId: "role2" },
+    ]);
+    await db.insert(schema.masterApprovalRequests).values({
+      id: "req-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      requestType: "REGISTER",
+      status: "PENDING",
+      applicantId: "applicant-1",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.workflowLogs).values({
+      id: "log-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      approverRoleId: "role1",
+      layer: 1,
+      status: "PENDING",
+      requestId: "req-1",
+    });
+  }
+
+  for (const [label, call] of [
+    ["承認", callApproveTask],
+    ["差戻し", callRemandTask],
+  ] as const) {
+    it(`${label}: 履歴と申請の取得は1回ずつ`, async () => {
+      await seedTwoStepRequest();
+      const logSpy = vi.spyOn(WorkflowTasksRepository, "getLogById");
+      const requestSpy = vi.spyOn(WorkflowTasksRepository, "getParentRequestById");
+      try {
+        const res = await call({ logId: "log-1", requestId: "req-1", userId: "approver-1", comment: "確認" });
+        expect(res.status).toBe(200);
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(requestSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        logSpy.mockRestore();
+        requestSpy.mockRestore();
+      }
+    });
+  }
 });
 
 describe("resolveEditPath: 承認のtargetTypeと画面resourceが異なる伝票", () => {

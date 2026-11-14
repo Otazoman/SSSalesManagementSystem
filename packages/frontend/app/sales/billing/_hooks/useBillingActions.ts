@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import { BillingDetail, UnbilledSalesInvoice } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { todayJst } from "../../../_shared/jst-date";
@@ -98,7 +98,7 @@ export function useBillingActions({
   const [selectedBillingIds, setSelectedBillingIds] = useState<string[]>([]);
 
   useEffect(() => {
-    apiFetch<{ is_otp_download_restricted_to_contacts?: boolean }>("/api/company-settings")
+    apiFetchShared<{ is_otp_download_restricted_to_contacts?: boolean }>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(data.is_otp_download_restricted_to_contacts === true);
       })

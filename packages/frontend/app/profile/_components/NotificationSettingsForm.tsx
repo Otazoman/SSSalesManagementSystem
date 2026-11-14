@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clearSharedApiCache } from "../../_shared/hooks/use-api-fetch";
 import { Button } from "../../_shared/ui/Button";
 
 interface NotificationSettingsFormProps {
@@ -46,6 +47,8 @@ export function NotificationSettingsForm({
       if (!res.ok) {
         throw new Error(data.message || "通知設定の更新に失敗しました");
       }
+      // PERF-06: プロフィールを取り直すようにする
+      clearSharedApiCache("/api/auth/profile");
 
       setMessage("通知設定を更新しました");
     } catch (err) {

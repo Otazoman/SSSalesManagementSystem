@@ -59,6 +59,19 @@ interface RawDoc {
   completed: boolean;
 }
 
+// PERF-11: 完了の判定まで組み立てた案件(名前・承認の状況・担当はまだ付けていない)
+interface ProgressCase {
+  root: ProgressRoot;
+  partnerId: string | null;
+  title: string | null;
+  projectId: string | null;
+  stages: Record<ProgressStageKey, RawDoc[]>;
+  // 伝票ごとの完了の状態(手動設定を反映済み)。stages と同じ並び
+  completion: Record<ProgressStageKey, { completed: boolean; manual: boolean }[]>;
+  stageStatuses: Record<ProgressStageKey, ProgressStageStatus>;
+  caseState: "COMPLETED" | "IN_PROGRESS";
+}
+
 // 部門+ロールの担当は assigneeRef="部門surrogateId:ロールID"
 function splitDeptRole(ref: string): { deptId: string; roleId: string } {
   const index = ref.indexOf(":");
@@ -135,27 +148,38 @@ export class ProgressService {
     limit: number,
     maxScan: number,
   ): Promise<{ items: ProgressRow[]; nextOffset: number | null }> {
-    const items: ProgressRow[] = [];
+    // PERF-11: 走査の各回では、完了の判定に必要な分(案件の伝票と完了の状態)だけを組み立てる。
+    // 名前・承認の状況・担当の解決は、最後に返す行にだけ1回行う(以前は走査の回ごとに全ての行で行っていた)
+    const selected: ProgressCase[] = [];
+    const finish = async (nextOffset: number | null) => ({
+      items: await this.decorateCases(selected),
+      nextOffset,
+    });
     let offset = startOffset;
     while (offset - startOffset < maxScan) {
       const batchSize = Math.min(SCAN_BATCH_SIZE, startOffset + maxScan - offset);
       const roots = await this.repo.findRoots(query, batchSize, offset);
-      if (roots.length === 0) return { items, nextOffset: null };
-      const rows = await this.buildRows(roots);
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        if (state !== "all" && (state === "completed") !== (row.caseState === "COMPLETED")) continue;
-        items.push(row);
-        if (items.length >= limit) {
+      if (roots.length === 0) return finish(null);
+      const cases = await this.buildCases(roots);
+      for (let i = 0; i < cases.length; i++) {
+        const progressCase = cases[i];
+        if (state !== "all" && (state === "completed") !== (progressCase.caseState === "COMPLETED")) continue;
+        selected.push(progressCase);
+        if (selected.length >= limit) {
           const consumed = offset + i + 1;
-          const isEnd = i === rows.length - 1 && roots.length < batchSize;
-          return { items, nextOffset: isEnd ? null : consumed };
+          const isEnd = i === cases.length - 1 && roots.length < batchSize;
+          return finish(isEnd ? null : consumed);
         }
       }
       offset += roots.length;
-      if (roots.length < batchSize) return { items, nextOffset: null };
+      if (roots.length < batchSize) return finish(null);
     }
-    return { items, nextOffset: offset };
+    return finish(offset);
+  }
+
+  // 1ページ分の起点を、完了の判定まで組み立ててから表示用に仕上げる(state=all のページング用)
+  private async buildRows(roots: ProgressRoot[]): Promise<ProgressRow[]> {
+    return this.decorateCases(await this.buildCases(roots));
   }
 
   // 追加要望M-2-c: 検索結果のCSVエクスポート(インポートは提供しない)
@@ -196,7 +220,9 @@ export class ProgressService {
     return withBom(buildCsvContent(headers, lines));
   }
 
-  private async buildRows(roots: ProgressRoot[]): Promise<ProgressRow[]> {
+  // PERF-11: 案件(起点)ごとに、各工程の伝票と完了の状態(伝票の画面での手動設定を反映)・案件全体の状態を求める。
+  // 走査で「進行中/完了」を絞り込むのに必要な分だけで、名前・承認の状況・担当はまだ付けない
+  private async buildCases(roots: ProgressRoot[]): Promise<ProgressCase[]> {
     const rootIdsOf = (kind: ProgressRoot["kind"]) => roots.filter((r) => r.kind === kind).map((r) => r.id);
     const salesOrderRootIds = rootIdsOf("sales_order");
     const quoteRootIds = rootIdsOf("quote");
@@ -457,12 +483,42 @@ export class ProgressService {
       rawRows.push({ root, partnerId, title, projectId, stages });
     }
 
-    // ---- 担当者名・取引先名・承認進捗・担当設定の解決(1ページ分をまとめて) ----
+    // 伝票の画面で手動設定された完了/進行中(工程キー+伝票ID)。進捗確認は表示のみで、設定は各伝票の画面から行う
+    const allRawDocs = rawRows.flatMap((r) => PROGRESS_STAGE_KEYS.flatMap((k) => r.stages[k]));
+    const overrides = await this.repo.findDocumentOverrides(allRawDocs.map((d) => d.id));
+    const docOverride = new Map(overrides.map((o) => [`${o.stageKey}::${o.documentId}`, o.forcedState]));
+
+    return rawRows.map(({ root, partnerId, title, projectId, stages }): ProgressCase => {
+      const completion = Object.fromEntries(
+        PROGRESS_STAGE_KEYS.map((key) => [
+          key,
+          stages[key].map((d) => applyCompletionOverride(docOverride.get(`${key}::${d.id}`), d.completed)),
+        ]),
+      ) as ProgressCase["completion"];
+      const stageStatuses = Object.fromEntries(
+        PROGRESS_STAGE_KEYS.map((key) => [key, computeStageStatus(completion[key])]),
+      ) as Record<ProgressStageKey, ProgressStageStatus>;
+      return {
+        root,
+        partnerId,
+        title,
+        projectId,
+        stages,
+        completion,
+        stageStatuses,
+        caseState: computeCaseState(stageStatuses),
+      };
+    });
+  }
+
+  // PERF-11: 返す行にだけ、担当者名・取引先名・プロジェクト名・承認の進み具合・担当設定・次工程を付ける(まとめて1回)
+  private async decorateCases(cases: ProgressCase[]): Promise<ProgressRow[]> {
+    if (cases.length === 0) return [];
+    const rawRows = cases;
     const allDocs = rawRows.flatMap((r) => PROGRESS_STAGE_KEYS.flatMap((k) => r.stages[k]));
-    const [owners, caseAssignments, overrides] = await Promise.all([
+    const [owners, caseAssignments] = await Promise.all([
       this.repo.findStageOwners(),
       this.repo.findCaseAssignments(rawRows.map((r) => r.root.id)),
-      this.repo.findDocumentOverrides(allDocs.map((d) => d.id)),
     ]);
     const deptRoleOwners = owners.filter((o) => o.assigneeType === "DEPT_ROLE").map((o) => splitDeptRole(o.assigneeRef));
     const [partnerNames, userNames, approvalById, roleNames, projectNames, deptNames] = await Promise.all([
@@ -480,9 +536,6 @@ export class ProgressService {
       this.repo.findProjectNames(rawRows.map((r) => r.projectId).filter((id): id is string => !!id)),
       this.repo.findDepartmentNames(deptRoleOwners.map((d) => d.deptId)),
     ]);
-    // 伝票の画面で手動設定された完了/進行中(工程キー+伝票ID)。進捗確認は表示のみで、設定は各伝票の画面から行う
-    const docOverride = new Map(overrides.map((o) => [`${o.stageKey}::${o.documentId}`, o.forcedState]));
-
     // 担当の解決順: 案件×工程の個別割当 > 工程の既定担当(個人 or ロール)
     const ownerByStage = new Map(owners.map((o) => [o.stageKey, o]));
     const caseKey = (kind: string, id: string, stage: string) => `${kind}::${id}::${stage}`;
@@ -511,12 +564,12 @@ export class ProgressService {
       return { name, source: "stage" };
     };
 
-    return rawRows.map(({ root, partnerId, title, projectId, stages }): ProgressRow => {
+    return rawRows.map(({ root, partnerId, title, projectId, stages, completion, stageStatuses, caseState }): ProgressRow => {
       const resolved = Object.fromEntries(
         PROGRESS_STAGE_KEYS.map((key) => [
           key,
           stages[key].map(
-            (d): ProgressStageDoc => ({
+            (d, index): ProgressStageDoc => ({
               id: d.id,
               status: d.status,
               // 伝票自身の担当者列がある工程はそれを優先し、無い工程は個別割当/工程の既定担当で補う
@@ -524,18 +577,11 @@ export class ProgressService {
                 ? nameOf(d.assigneeEmployeeNumber)
                 : (resolveAssignee(root.kind, root.id, key)?.name ?? null),
               approval: approvalById.get(d.id) ?? null,
-              ...applyCompletionOverride(docOverride.get(`${key}::${d.id}`), d.completed),
+              ...completion[key][index],
             }),
           ),
         ]),
       ) as Record<ProgressStageKey, ProgressStageDoc[]>;
-
-      const stageStatuses = Object.fromEntries(
-        PROGRESS_STAGE_KEYS.map((key) => [
-          key,
-          computeStageStatus(resolved[key]),
-        ]),
-      ) as Record<ProgressStageKey, ProgressStageStatus>;
 
       const nextSteps = computeNextStages(root.kind, (key) => stages[key].length > 0).map((next) => {
         const assignee = resolveAssignee(root.kind, root.id, next.stageKey);
@@ -557,7 +603,7 @@ export class ProgressService {
         projectName: projectId ? (projectNames.get(projectId) ?? null) : null,
         stages: resolved,
         stageStatuses,
-        caseState: computeCaseState(stageStatuses),
+        caseState,
         nextSteps,
         assignments,
       };

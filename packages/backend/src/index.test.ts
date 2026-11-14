@@ -219,6 +219,93 @@ describe("管理者だけのAPIの確認(adminGuard)", () => {
   });
 });
 
+// PERF-05: 全 API 共通の前処理を軽くする(判定の結果は変えない)
+describe("全 API 共通の前処理(PERF-05)", () => {
+  const API_KEY = { "X-API-KEY": "test-api-key" };
+
+  // D1 に送った SQL を記録する env
+  function envRecordingSql() {
+    const statements: string[] = [];
+    const db = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (query: string) => {
+            statements.push(query);
+            return target.prepare(query);
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    return { testEnv: { ...env, DB: db }, statements };
+  }
+  const isUsersCountSql = (sql: string) => /count\(\*\)/i.test(sql) && /from\s+"users"/i.test(sql);
+
+  // SESSION_SECRET を読んだ回数(= cookie の署名を検証した回数)を数える env
+  function envCountingSessionChecks() {
+    const counter = { reads: 0 };
+    const secret = {
+      get: async () => {
+        counter.reads += 1;
+        return env.SESSION_SECRET.get();
+      },
+    };
+    return { testEnv: { ...env, SESSION_SECRET: secret }, counter };
+  }
+
+  it("ユーザーが0件の時、件数の確認と初期登録の API だけは API キーなしで通り、他は 401 になる", async () => {
+    await db.delete(schema.users);
+    const countRes = await app.request("/api/users/count", {}, env);
+    expect(countRes.status).toBe(200);
+    const setup = await app.request(
+      "/api/users/setup-admin",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) },
+      env,
+    );
+    expect(setup.status).not.toBe(401);
+    expect((await app.request("/api/units", {}, env)).status).toBe(401);
+  });
+
+  it("ユーザーがいる時は、件数の確認の API も API キーなしでは 401 になる", async () => {
+    expect((await app.request("/api/users/count", {}, env)).status).toBe(401);
+  });
+
+  it("users の件数の問い合わせは、件数の確認と初期登録の API の時だけ行う", async () => {
+    const other = envRecordingSql();
+    expect((await app.request("/api/units", { headers: API_KEY }, other.testEnv)).status).toBe(200);
+    expect(other.statements.filter(isUsersCountSql)).toHaveLength(0);
+
+    const count = envRecordingSql();
+    await app.request("/api/users/count", {}, count.testEnv);
+    expect(count.statements.filter(isUsersCountSql).length).toBeGreaterThan(0);
+  });
+
+  it("1つのリクエストの中では、セッションの cookie の検証を1回だけ行う", async () => {
+    const createdAt = new Date();
+    await db.insert(schema.roles).values({ id: "admin", name: "システム管理者", createdAt }).onConflictDoNothing();
+    await db.insert(schema.userRoles).values({ userId: "user-001", roleId: "admin", departmentSurrogateId: null });
+    const token = await signSessionToken(
+      { userId: "user-001", employeeNumber: "EMP001", name: "テストユーザー", role: "admin", deptName: "", companyName: "", isAuditEnabled: false },
+      await env.SESSION_SECRET.get(),
+      3600,
+    );
+    const { testEnv, counter } = envCountingSessionChecks();
+    try {
+      // sessionGuard(取り消しの確認)と adminGuard(管理者の確認)の両方がセッションを使う
+      const res = await app.request(
+        "/api/d1-explorer/databases",
+        { headers: { ...API_KEY, Cookie: `session_token=${token}` } },
+        testEnv,
+      );
+      expect(res.status).toBe(200);
+      expect(counter.reads).toBe(1);
+    } finally {
+      await db.delete(schema.userRoles);
+    }
+  });
+});
+
 // BUG-024: 無効化・パスワード変更・ログアウトの後は、それまでのログイン(cookie)を使えない
 describe("ログインの取り消し(sessionGuard)", () => {
   const API_KEY = { "X-API-KEY": "test-api-key" };

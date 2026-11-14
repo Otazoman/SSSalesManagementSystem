@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { clearSharedApiCache } from "./_shared/hooks/use-api-fetch";
 import { useRouter, usePathname } from "next/navigation";
 import "./globals.css";
 import { PermissionProvider } from "./context/permissioncontext";
@@ -72,6 +73,8 @@ export default function RootLayout({
     } catch (err) {
       console.error("ログアウト処理に失敗しました", err);
     }
+    // PERF-06: 前のユーザーのプロフィール・メニューを使い回さない
+    clearSharedApiCache();
 
     router.push("/login");
   };

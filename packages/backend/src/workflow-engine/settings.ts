@@ -1,6 +1,75 @@
 import { KVNamespace } from "@cloudflare/workers-types";
 
 /**
+ * PERF-04: 承認ワークフローのスイッチ(26個)。項目名は auth/profile の応答と同じ、値は会社設定(KV の "config")のキー。
+ * 並びは auth/profile の応答の並びに合わせている。
+ */
+const WORKFLOW_FLAG_CONFIG_KEYS = {
+  isPartnerWfEnabled: "is_partner_approval_enabled",
+  isQuoteWfEnabled: "is_quote_approval_enabled",
+  isPartnerContactWfEnabled: "is_partner_contact_approval_enabled",
+  isUnitWfEnabled: "is_unit_approval_enabled",
+  isLocationWfEnabled: "is_location_approval_enabled",
+  isProductPriceWfEnabled: "is_product_price_approval_enabled",
+  isProductWfEnabled: "is_product_approval_enabled",
+  isAccountWfEnabled: "is_account_approval_enabled",
+  isWarehouseWfEnabled: "is_warehouse_approval_enabled",
+  isBusinessLocationWfEnabled: "is_business_location_approval_enabled",
+  isItemStructureWfEnabled: "is_item_structure_approval_enabled",
+  isReceivingWfEnabled: "is_receiving_approval_enabled",
+  isShippingWfEnabled: "is_shipping_approval_enabled",
+  isInventoryWfEnabled: "is_inventory_approval_enabled",
+  isDamageWfEnabled: "is_damage_approval_enabled",
+  isDisposalWfEnabled: "is_disposal_approval_enabled",
+  isReturnWfEnabled: "is_return_approval_enabled",
+  isShippingInstructionWfEnabled: "is_shipping_instruction_approval_enabled",
+  isShippingResultWfEnabled: "is_shipping_result_approval_enabled",
+  isReceivingInstructionWfEnabled: "is_receiving_instruction_approval_enabled",
+  isReceivingResultWfEnabled: "is_receiving_result_approval_enabled",
+  isSalesOrderWfEnabled: "is_sales_order_approval_enabled",
+  isPurchaseRequisitionWfEnabled: "is_purchase_requisition_approval_enabled",
+  isPurchaseOrderWfEnabled: "is_purchase_order_approval_enabled",
+  isSalesInvoiceWfEnabled: "is_sales_approval_enabled",
+  isPurchaseRecognitionWfEnabled: "is_purchase_approval_enabled",
+} as const;
+
+export type WorkflowFlagName = keyof typeof WORKFLOW_FLAG_CONFIG_KEYS;
+export type WorkflowFlags = Record<WorkflowFlagName, boolean>;
+
+/**
+ * PERF-04: 解釈済みの会社設定(getCompanySettings の結果)から、26個のスイッチをまとめて返す。
+ * true と "true" だけを ON とし、それ以外(未設定・false・"false"・設定がオブジェクトでない)は OFF。
+ */
+export function readWorkflowFlags(config: unknown): WorkflowFlags {
+  const record =
+    config && typeof config === "object" ? (config as Record<string, unknown>) : null;
+  const flags = {} as WorkflowFlags;
+  for (const [name, configKey] of Object.entries(WORKFLOW_FLAG_CONFIG_KEYS)) {
+    const value = record?.[configKey];
+    flags[name as WorkflowFlagName] = value === true || value === "true";
+  }
+  return flags;
+}
+
+// 1つのスイッチを KV から読む(is〜WorkflowGloballyEnabled の共通部分)。KV が無い・未設定・読めない・
+// JSON として壊れている時は false(失敗の時はスイッチごとの名前を付けてログに出す)
+async function readWorkflowFlagFromKv(
+  kv: any,
+  name: WorkflowFlagName,
+  label: string,
+): Promise<boolean> {
+  if (!kv) return false;
+  try {
+    const configStr = await kv.get("config");
+    if (!configStr) return false;
+    return readWorkflowFlags(JSON.parse(configStr))[name];
+  } catch (error) {
+    console.error(`${label}のパースに失敗しました:`, error);
+    return false;
+  }
+}
+
+/**
  * 会社一括設定：取引先マスタのワークフロー承認機能が有効化されているかを即時判定する
  * (旧is_master_approval_enabled/isMasterWorkflowGloballyEnabled。Item5で他マスタが
  * 個別のフラグに分かれた後もこのフラグだけ汎用的な「master」名のまま取り残されており、
@@ -10,26 +79,7 @@ import { KVNamespace } from "@cloudflare/workers-types";
 export async function isPartnerWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-
-  try {
-    // 💡 1. まず一括設定が保存されている "config" キーを取得します
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-
-    // 💡 2. 文字列からJSONオブジェクトへ変換します
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-
-    // 💡 3. オブジェクトの中にある本物の承認フラグをジャッジします
-    return (
-      parsed.is_partner_approval_enabled === true ||
-      parsed.is_partner_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("取引先ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isPartnerWfEnabled", "取引先ワークフロー設定");
 }
 
 /**
@@ -40,23 +90,7 @@ export async function isPartnerWorkflowGloballyEnabled(
 export async function isQuoteWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-
-    return (
-      parsed.is_quote_approval_enabled === true ||
-      parsed.is_quote_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("見積承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isQuoteWfEnabled", "見積承認ワークフロー設定");
 }
 
 /**
@@ -78,56 +112,17 @@ export async function determineInitialStatus(
 export async function isPartnerContactWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_partner_contact_approval_enabled === true ||
-      parsed.is_partner_contact_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("取引先担当者承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isPartnerContactWfEnabled", "取引先担当者承認ワークフロー設定");
 }
 
 export async function isUnitWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_unit_approval_enabled === true ||
-      parsed.is_unit_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("単位承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isUnitWfEnabled", "単位承認ワークフロー設定");
 }
 
 export async function isLocationWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_location_approval_enabled === true ||
-      parsed.is_location_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("ロケーション承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isLocationWfEnabled", "ロケーション承認ワークフロー設定");
 }
 
 export async function determinePartnerContactInitialStatus(
@@ -157,71 +152,19 @@ export async function determineLocationInitialStatus(
  * どこからも参照されていなかった。
  */
 export async function isProductWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_product_approval_enabled === true ||
-      parsed.is_product_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("品目承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isProductWfEnabled", "品目承認ワークフロー設定");
 }
 
 export async function isProductPriceWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_product_price_approval_enabled === true ||
-      parsed.is_product_price_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("品目単価承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isProductPriceWfEnabled", "品目単価承認ワークフロー設定");
 }
 
 export async function isAccountWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_account_approval_enabled === true ||
-      parsed.is_account_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("勘定科目承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isAccountWfEnabled", "勘定科目承認ワークフロー設定");
 }
 
 export async function isWarehouseWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_warehouse_approval_enabled === true ||
-      parsed.is_warehouse_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("倉庫承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isWarehouseWfEnabled", "倉庫承認ワークフロー設定");
 }
 
 /**
@@ -232,20 +175,7 @@ export async function isWarehouseWorkflowGloballyEnabled(kv: any): Promise<boole
 export async function isItemStructureWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_item_structure_approval_enabled === true ||
-      parsed.is_item_structure_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("品目構成承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isItemStructureWfEnabled", "品目構成承認ワークフロー設定");
 }
 
 export async function determineItemStructureInitialStatus(
@@ -287,20 +217,7 @@ export async function determineWarehouseInitialStatus(
 export async function isBusinessLocationWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_business_location_approval_enabled === true ||
-      parsed.is_business_location_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("営業拠点承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isBusinessLocationWfEnabled", "営業拠点承認ワークフロー設定");
 }
 
 export async function determineBusinessLocationInitialStatus(
@@ -321,58 +238,19 @@ export async function determineBusinessLocationInitialStatus(
 export async function isReceivingWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_receiving_approval_enabled === true ||
-      parsed.is_receiving_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("入庫承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isReceivingWfEnabled", "入庫承認ワークフロー設定");
 }
 
 export async function isShippingWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_shipping_approval_enabled === true ||
-      parsed.is_shipping_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("出庫承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isShippingWfEnabled", "出庫承認ワークフロー設定");
 }
 
 export async function isInventoryAdjustmentWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_inventory_approval_enabled === true ||
-      parsed.is_inventory_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("棚卸調整承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isInventoryWfEnabled", "棚卸調整承認ワークフロー設定");
 }
 
 /**
@@ -382,20 +260,7 @@ export async function isInventoryAdjustmentWorkflowGloballyEnabled(
  * 別途追加不要(inventory-stock.adapter.tsのreclassifications probe参照)。
  */
 export async function isDamageWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_damage_approval_enabled === true ||
-      parsed.is_damage_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("品質区分変更承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isDamageWfEnabled", "品質区分変更承認ワークフロー設定");
 }
 
 /**
@@ -404,20 +269,7 @@ export async function isDamageWorkflowGloballyEnabled(kv: any): Promise<boolean>
  * 別途追加不要(inventory-stock.adapter.tsのdisposals probe参照)。
  */
 export async function isDisposalWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_disposal_approval_enabled === true ||
-      parsed.is_disposal_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("廃棄決定承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isDisposalWfEnabled", "廃棄決定承認ワークフロー設定");
 }
 
 /**
@@ -427,20 +279,7 @@ export async function isDisposalWorkflowGloballyEnabled(kv: any): Promise<boolea
  * (inventory-stock.adapter.tsのreturns probe参照)。
  */
 export async function isReturnWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_return_approval_enabled === true ||
-      parsed.is_return_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("返品承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isReturnWfEnabled", "返品承認ワークフロー設定");
 }
 
 /**
@@ -448,20 +287,7 @@ export async function isReturnWorkflowGloballyEnabled(kv: any): Promise<boolean>
  * 発行させない(inventory-stock.adapter.tsのshipment instruction probe参照)。
  */
 export async function isShippingInstructionWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_shipping_instruction_approval_enabled === true ||
-      parsed.is_shipping_instruction_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("出荷指示発行承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isShippingInstructionWfEnabled", "出荷指示発行承認ワークフロー設定");
 }
 
 /**
@@ -470,40 +296,14 @@ export async function isShippingInstructionWorkflowGloballyEnabled(kv: any): Pro
  * 場合にshipments.service.tsが参照する。
  */
 export async function isShippingResultWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_shipping_result_approval_enabled === true ||
-      parsed.is_shipping_result_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("出荷実績反映承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isShippingResultWfEnabled", "出荷実績反映承認ワークフロー設定");
 }
 
 /**
  * Item6 Phase6-4: 外部倉庫向け入荷指示の発行承認。
  */
 export async function isReceivingInstructionWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_receiving_instruction_approval_enabled === true ||
-      parsed.is_receiving_instruction_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("入荷指示発行承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isReceivingInstructionWfEnabled", "入荷指示発行承認ワークフロー設定");
 }
 
 /**
@@ -512,20 +312,7 @@ export async function isReceivingInstructionWorkflowGloballyEnabled(kv: any): Pr
  * 場合にreceipts.service.tsが参照する。
  */
 export async function isReceivingResultWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_receiving_result_approval_enabled === true ||
-      parsed.is_receiving_result_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("入荷実績反映承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isReceivingResultWfEnabled", "入荷実績反映承認ワークフロー設定");
 }
 
 /**
@@ -533,20 +320,7 @@ export async function isReceivingResultWorkflowGloballyEnabled(kv: any): Promise
  * ON時のみsales-order-crud.service.tsのsubmitForApprovalが与信確認(creditLimitとの比較)を行う。
  */
 export async function isSalesOrderWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_sales_order_approval_enabled === true ||
-      parsed.is_sales_order_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("受注承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isSalesOrderWfEnabled", "受注承認ワークフロー設定");
 }
 
 /**
@@ -555,20 +329,7 @@ export async function isSalesOrderWorkflowGloballyEnabled(kv: any): Promise<bool
  * 定義済みだったが、これまでどこからも参照されていなかった。
  */
 export async function isPurchaseOrderWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_purchase_order_approval_enabled === true ||
-      parsed.is_purchase_order_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("発注承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isPurchaseOrderWfEnabled", "発注承認ワークフロー設定");
 }
 
 /**
@@ -579,20 +340,7 @@ export async function isPurchaseOrderWorkflowGloballyEnabled(kv: any): Promise<b
 export async function isPurchaseRequisitionWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_purchase_requisition_approval_enabled === true ||
-      parsed.is_purchase_requisition_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("購買申請承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isPurchaseRequisitionWfEnabled", "購買申請承認ワークフロー設定");
 }
 
 /**
@@ -601,20 +349,7 @@ export async function isPurchaseRequisitionWorkflowGloballyEnabled(
  * 定義済みだったが、これまでどこからも参照されていなかった。
  */
 export async function isSalesInvoiceWorkflowGloballyEnabled(kv: any): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_sales_approval_enabled === true ||
-      parsed.is_sales_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("売上承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isSalesInvoiceWfEnabled", "売上承認ワークフロー設定");
 }
 
 /**
@@ -625,18 +360,5 @@ export async function isSalesInvoiceWorkflowGloballyEnabled(kv: any): Promise<bo
 export async function isPurchaseRecognitionWorkflowGloballyEnabled(
   kv: any,
 ): Promise<boolean> {
-  if (!kv) return false;
-  try {
-    const configStr = await kv.get("config");
-    if (!configStr) return false;
-    const parsed = JSON.parse(configStr);
-    if (!parsed || typeof parsed !== "object") return false;
-    return (
-      parsed.is_purchase_approval_enabled === true ||
-      parsed.is_purchase_approval_enabled === "true"
-    );
-  } catch (error) {
-    console.error("仕入承認ワークフロー設定のパースに失敗しました:", error);
-    return false;
-  }
+  return readWorkflowFlagFromKv(kv, "isPurchaseRecognitionWfEnabled", "仕入承認ワークフロー設定");
 }
