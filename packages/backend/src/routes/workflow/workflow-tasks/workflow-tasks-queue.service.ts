@@ -1,4 +1,5 @@
 import { getTargetAdapter } from "../../../workflow-engine/target-adapters/registry";
+import { pickDisplayNames, resolvePreviewDisplayNames } from "./preview-display-names";
 import {
   WorkflowTasksRepository,
   type UserRole,
@@ -145,6 +146,12 @@ export class WorkflowTasksQueueService {
       );
     }
 
+    // BUG-089: プレビューの中の番号の名前を、表ごとに1回ずつまとめて引く
+    const allNames = await resolvePreviewDisplayNames(
+      db,
+      [...previewByRequest.values()].map((p) => p.previewData),
+    );
+
     return rows.map(({ log, reqParent }) => {
       const preview = previewByRequest.get(reqParent.id)!;
       return {
@@ -159,6 +166,7 @@ export class WorkflowTasksQueueService {
         applicantDepartmentId: firstDeptByUser.get(reqParent.applicantId) ?? null,
         createdAt: reqParent.createdAt,
         previewData: preview.previewData,
+        displayNames: pickDisplayNames(allNames, [preview.previewData]),
         flowProgress: flowProgressByRequest.get(reqParent.id)!,
       };
     });

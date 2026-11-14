@@ -8,6 +8,7 @@
 import { ItemStructuresRepository } from "../../routes/master/item-structures/item-structures.repository";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import { resolveMasterPreview } from "./master-pending-change";
 import type {
   TargetAdapter,
   ApplyApprovedParams,
@@ -61,6 +62,7 @@ async function applyApproved({
 
 async function getTaskPreview({
   db,
+  requestId,
   targetId,
 }: TaskPreviewParams): Promise<TaskPreviewResult> {
   const repo = ItemStructuresRepository.fromDb(db);
@@ -69,22 +71,26 @@ async function getTaskPreview({
     targetName: structure
       ? `${structure.parentItemId} → ${structure.childItemId} (REV ${structure.revision})`
       : "不明な品目構成",
-    previewData: structure,
+    previewData: (await resolveMasterPreview(db, requestId, structure)).newData,
   };
 }
 
 async function getHistoryPreview({
   db,
+  requestId,
   targetId,
+  requestType,
 }: HistoryPreviewParams): Promise<HistoryPreviewResult> {
   const repo = ItemStructuresRepository.fromDb(db);
   const structure = await repo.findById(targetId);
+  // BUG-089: 変更申請は、退避した変更後の内容を新しい内容、今の行を変更前の内容として出す
+  const pending = await resolveMasterPreview(db, requestId, structure);
   return {
     targetName: structure
       ? `${structure.parentItemId} → ${structure.childItemId} (REV ${structure.revision})`
       : "不明な品目構成",
-    snapshotNew: structure,
-    snapshotOld: null,
+    snapshotNew: pending.newData,
+    snapshotOld: requestType === "UPDATE" ? pending.oldData : null,
   };
 }
 

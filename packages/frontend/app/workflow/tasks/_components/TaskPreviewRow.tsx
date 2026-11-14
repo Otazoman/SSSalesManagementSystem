@@ -41,6 +41,7 @@ export function TaskPreviewRow({
               targetType={task.targetType}
               mode="task"
               newData={task.previewData}
+              displayNames={task.displayNames}
             />
           </div>
         </div>

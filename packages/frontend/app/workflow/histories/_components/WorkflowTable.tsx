@@ -376,6 +376,7 @@ export function WorkflowTable({
                             newData={history.snapshotNew}
                             oldData={history.snapshotOld}
                             isUpdate={history.requestType === "UPDATE"}
+                            displayNames={history.displayNames}
                           />
 
                           {/* 添付書類は取引先マスタ固有の項目のため、汎用プレビューとは別枠で表示する */}

@@ -1,4 +1,5 @@
 import { WorkflowEngine } from "../../../workflow-engine/engine";
+import { pickDisplayNames, resolvePreviewDisplayNames } from "./preview-display-names";
 import { getTargetAdapter } from "../../../workflow-engine/target-adapters/registry";
 import {
   WorkflowTasksRepository,
@@ -361,6 +362,12 @@ export class WorkflowTasksHistoryService {
       );
     }
 
+    // BUG-089: プレビューの中の番号の名前を、表ごとに1回ずつまとめて引く
+    const allNames = await resolvePreviewDisplayNames(
+      db,
+      [...previewByRequest.values()].flatMap((p) => [p.snapshotNew, p.snapshotOld]),
+    );
+
     return rows.map(({ log, reqParent }) => {
       const preview = previewByRequest.get(reqParent.id)!;
       return {
@@ -379,6 +386,7 @@ export class WorkflowTasksHistoryService {
         approverName: log.approverId ? nameOf(log.approverId) : null,
         snapshotNew: preview.snapshotNew,
         snapshotOld: preview.snapshotOld,
+        displayNames: pickDisplayNames(allNames, [preview.snapshotNew, preview.snapshotOld]),
         parentStatus: reqParent.status,
         flowProgress: flowProgressByRequest.get(reqParent.id)!,
       };

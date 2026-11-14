@@ -143,6 +143,11 @@ const registry: Record<string, TargetAdapter> = {
   inventory_audit: inventoryAuditAdapter,
 };
 
+/** 登録されている申請の種類(BUG-089: プレビューの設定の漏れを確かめるテストで使う) */
+export function listTargetTypes(): string[] {
+  return Object.keys(registry);
+}
+
 export function getTargetAdapter(targetType: string): TargetAdapter | undefined {
   return registry[targetType];
 }
