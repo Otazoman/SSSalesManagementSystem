@@ -8,6 +8,7 @@ import { usePermissionContext } from "../../context/permissioncontext";
 import { usePurchaseRequisitionOperations } from "./_hooks/usePurchaseRequisitionOperations";
 import { PurchaseRequisitionForm } from "./_components/PurchaseRequisitionForm";
 import { PurchaseRequisitionTable } from "./_components/PurchaseRequisitionTable";
+import { PurchaseRequisitionPreview } from "./_components/PurchaseRequisitionPreview";
 import { PurchaseRequisitionSearchForm } from "./_components/PurchaseRequisitionSearchForm";
 import { SalesOrderPickerModal } from "./_components/SalesOrderPickerModal";
 import { PurchaseOrderPickerModal } from "./_components/PurchaseOrderPickerModal";
@@ -122,6 +123,9 @@ export default function PurchaseRequisitionsPage() {
     isSubmitting,
     handleClearForm,
     handleSelectEdit,
+    previewRequisition,
+    setPreviewRequisition,
+    handleOpenPreview,
     handlePrefillFromSalesOrder,
     handlePrefillFromPurchaseOrder,
     handlePrefillFromReorderSuggestion,
@@ -320,10 +324,17 @@ export default function PurchaseRequisitionsPage() {
             onSelectEdit={handleSelectEdit}
             onDeleteLink={handleDeleteLink}
             onCopyToNewDraft={handleCopyToNewDraft}
+            onPreview={handleOpenPreview}
             sortBy={sortBy}
             sortDirection={sortDirection}
             sortKeys={sortKeys}
             onSortChange={setSort}
+          />
+          <PurchaseRequisitionPreview
+            requisition={previewRequisition}
+            suppliers={suppliers}
+            allItems={allItems}
+            onClose={() => setPreviewRequisition(null)}
           />
           {/* BUG-032: 会社設定の「一覧のページ分割」に従う */}
           <Pagination

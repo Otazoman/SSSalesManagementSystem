@@ -92,7 +92,7 @@ describe("AdminUnitsPage(units)", () => {
     expect(screen.getByText("📐 単位マスタ")).toBeInTheDocument();
   });
 
-  it("「新規個別登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規個別登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(fullPermissions());
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
     const Page = await importPage();
@@ -105,10 +105,56 @@ describe("AdminUnitsPage(units)", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "➕ 新規個別登録・CSVインポート" }),
     );
-    expect(screen.getByText("新規個別単位登録")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("新規個別単位登録");
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規個別単位登録")).not.toBeInTheDocument();
+  });
+
+  it("入力した後に✕で閉じる時は破棄の確認を出し、続けるなら閉じない(REQ-024)", async () => {
+    mockUsePagePermissions.mockReturnValue(fullPermissions());
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const Page = await importPage();
+
+    render(<Page />);
+    await waitFor(() => expect(screen.queryByText("読み込み中...")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "➕ 新規個別登録・CSVインポート" }));
+    await userEvent.type(screen.getByPlaceholderText("例: PCS, KG, M"), "BOX");
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith("保存していない編集を破棄しますか？");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("登録に成功したらモーダルを閉じて一覧にメッセージを出す。失敗したらモーダルの中にエラーを出して閉じない(REQ-024)", async () => {
+    mockUsePagePermissions.mockReturnValue(fullPermissions());
+    let failRegister = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.toString().includes("/api/units/register") && init?.method === "POST") {
+          return failRegister ? jsonResponse({ message: "既に登録されています" }, 400) : jsonResponse({ success: true });
+        }
+        return jsonResponse([]);
+      }),
+    );
+    const Page = await importPage();
+
+    render(<Page />);
+    await waitFor(() => expect(screen.queryByText("読み込み中...")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "➕ 新規個別登録・CSVインポート" }));
+    await userEvent.type(screen.getByPlaceholderText("例: PCS, KG, M"), "BOX");
+    await userEvent.type(screen.getByPlaceholderText("例: 個, キログラム"), "箱");
+
+    await userEvent.click(screen.getByRole("button", { name: "登録" }));
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("既に登録されています"));
+
+    failRegister = false;
+    await userEvent.click(screen.getByRole("button", { name: "登録" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("単位を新規登録しました")).toBeInTheDocument();
   });
 
   it("canCreate:falseの場合は新規登録ボタンが無効になる", async () => {
