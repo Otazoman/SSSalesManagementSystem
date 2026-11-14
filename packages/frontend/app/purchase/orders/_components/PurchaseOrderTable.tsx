@@ -1,5 +1,6 @@
 "use client";
 
+import { formatJstDate } from "../../../_shared/jst-date";
 import { DataTable } from "../../../_shared/ui/DataTable";
 import { PurchaseOrderRecord, PartnerLookup } from "../_types";
 import { StatusBadge } from "../../../_shared/ui/StatusBadge";
@@ -24,6 +25,8 @@ interface PurchaseOrderTableProps {
   sortDirection?: "asc" | "desc";
   sortKeys?: { key: string; direction: "asc" | "desc" }[];
   onSortChange?: (key: string) => void;
+  // BUG-101: 「内容確認」(見積・購買申請の一覧と同じ参照用パネル)
+  onPreview?: (r: PurchaseOrderRecord) => void;
 }
 
 export function PurchaseOrderTable({
@@ -43,6 +46,7 @@ export function PurchaseOrderTable({
   sortDirection,
   sortKeys,
   onSortChange,
+  onPreview,
 }: PurchaseOrderTableProps) {
   const partnerName = (partnerId?: string | null) =>
     partners.find((p) => p.id === partnerId)?.name || partnerId || "-";
@@ -52,11 +56,14 @@ export function PurchaseOrderTable({
       columns={[
         { key: "select", label: "選択", align: "center" },
         { key: "id", label: "発注番号", sortable: true },
+        // BUG-095: 発注日
+        { key: "orderDate", label: "発注日", sortable: true },
         { key: "title", label: "件名", sortable: true },
         { key: "partnerId", label: "仕入先", sortable: true },
         { key: "status", label: "ステータス", sortable: true },
         { key: "attachments", label: "添付" },
         { key: "totalAmount", label: "合計金額", align: "right", sortable: true },
+        { key: "preview", label: "内容確認", align: "center" },
         { key: "actions", label: "操作", align: "center" },
       ]}
       data={orders}
@@ -79,6 +86,9 @@ export function PurchaseOrderTable({
             />
           </td>
           <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{r.id}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+            {r.orderDate ? formatJstDate(new Date(r.orderDate)) : "-"}
+          </td>
           <td className="px-4 py-3 font-semibold text-slate-900">{r.title || "-"}</td>
           <td className="px-4 py-3 text-xs text-slate-600">{partnerName(r.partnerId)}</td>
           <td className="px-4 py-3">
@@ -95,6 +105,16 @@ export function PurchaseOrderTable({
           </td>
           <td className="px-4 py-3 text-right text-xs font-mono text-slate-700">
             ¥{Number(r.totalAmount || 0).toLocaleString()}
+          </td>
+          <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => onPreview?.(r)}
+              disabled={!onPreview}
+              className="text-xs font-bold px-2 py-1 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+            >
+              👁️ 内容確認
+            </button>
           </td>
           <td className="px-4 py-3 text-center space-x-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
             <button

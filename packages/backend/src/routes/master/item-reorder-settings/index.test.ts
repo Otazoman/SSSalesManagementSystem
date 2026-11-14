@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../../../db/schema";
 import { itemReorderSettingsRouter } from "./index";
+import { eq } from "drizzle-orm";
+import { getTargetAdapter } from "../../../workflow-engine/target-adapters/registry";
 
 /**
  * Item9 Phase7: 発注点/安全在庫マスタ(item_reorder_settings)のCRUD・CSV往復・
@@ -285,5 +287,105 @@ describe("Item9 Phase7: 欠品自動提案②(発注点/安全在庫方式)の�
       itemId: string;
     }>;
     expect(candidates.map((c) => c.itemId)).toEqual(["ITEM-4"]);
+  });
+});
+
+describe("発注点/安全在庫マスタの承認(BUG-098)", () => {
+  async function setApproval(enabled: boolean) {
+    await env.COMPANY_SETTINGS.put("config", JSON.stringify(enabled ? { is_item_reorder_setting_approval_enabled: true } : {}));
+  }
+  const findSetting = async (id: string) =>
+    (await db.select().from(schema.itemReorderSettings).where(eq(schema.itemReorderSettings.id, id)))[0];
+
+  beforeEach(async () => {
+    await db.delete(schema.masterApprovalContexts);
+    await db.delete(schema.masterApprovalRequests);
+    await db.delete(schema.users);
+    await db.insert(schema.users).values({
+      id: "user-001",
+      employeeNumber: "EMP001",
+      email: "test@example.com",
+      name: "テストユーザー",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await seedItemAndWarehouse("ITEM-1", "WH-1");
+  });
+  afterEach(async () => {
+    await setApproval(false);
+  });
+
+  it("承認 ON の新規登録は仮登録になり、承認されるまで発注点の提案に出ない。承認すると有効になって出る", async () => {
+    await setApproval(true);
+    await seedStock("ITEM-1", "WH-1", 5);
+    const res = await request("/register", "POST", { itemId: "ITEM-1", warehouseId: "WH-1", reorderPoint: 10, safetyStock: 20 });
+    const { id, status } = (await res.json()) as { id: string; status: string };
+    expect(status).toBe("temporary");
+    expect(await (await request("/low-stock-candidates", "GET")).json()).toEqual([]);
+
+    await getTargetAdapter("master_item_reorder_settings")!.applyApproved({
+      db,
+      reqParent: { id: "REQ-1", targetId: id, targetType: "master_item_reorder_settings", requestType: "REGISTER", applicantId: "user-001" },
+      userId: "user-001",
+      now,
+    });
+    expect((await findSetting(id)).status).toBe("active");
+    expect(((await (await request("/low-stock-candidates", "GET")).json()) as unknown[]).length).toBe(1);
+  });
+
+  it("承認 OFF の新規登録は今まで通り有効。今ある行の状態は有効(列の既定値)", async () => {
+    const res = await request("/register", "POST", { itemId: "ITEM-1", warehouseId: "WH-1", reorderPoint: 1, safetyStock: 2 });
+    const { id } = (await res.json()) as { id: string };
+    expect((await findSetting(id)).status).toBe("active");
+  });
+
+  it("変更申請: 今の内容のまま temporary にロックでき、承認で退避した内容を反映する", async () => {
+    const res = await request("/register", "POST", { itemId: "ITEM-1", warehouseId: "WH-1", reorderPoint: 1, safetyStock: 2 });
+    const { id } = (await res.json()) as { id: string };
+    await request(`/${id}`, "PUT", { itemId: "ITEM-1", warehouseId: "WH-1", reorderPoint: 1, safetyStock: 2, status: "temporary" });
+    expect((await findSetting(id)).status).toBe("temporary");
+
+    await db.insert(schema.masterApprovalRequests).values({
+      id: "REQ-2",
+      targetType: "master_item_reorder_settings",
+      targetId: id,
+      requestType: "UPDATE",
+      status: "PENDING",
+      applicantId: "user-001",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.masterApprovalContexts).values({
+      id: "CTX-2",
+      requestId: "REQ-2",
+      generalMemo: JSON.stringify({ itemId: "ITEM-1", warehouseId: "WH-1", reorderPoint: 30, safetyStock: 50, memo: "見直し", status: "active" }),
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    const adapter = getTargetAdapter("master_item_reorder_settings")!;
+    const preview = await adapter.getTaskPreview!({ db, requestId: "REQ-2", targetId: id });
+    expect(preview.targetName).toBe("品目ITEM-1 / 倉庫WH-1");
+    expect(preview.previewData).toMatchObject({ reorderPoint: 30, safetyStock: 50 });
+
+    await adapter.applyApproved({
+      db,
+      reqParent: { id: "REQ-2", targetId: id, targetType: "master_item_reorder_settings", requestType: "UPDATE", applicantId: "user-001" },
+      userId: "user-001",
+      now,
+    });
+    expect(await findSetting(id)).toMatchObject({ reorderPoint: 30, safetyStock: 50, memo: "見直し", status: "active" });
+  });
+
+  it("承認 ON の間は CSV で取り込めない", async () => {
+    await setApproval(true);
+    const formData = new FormData();
+    formData.append("file", new Blob(["itemId,warehouseId,reorderPoint,safetyStock\nITEM-1,WH-1,1,2\n"], { type: "text/csv" }), "r.csv");
+    const ctx = createExecutionContext();
+    const res = await itemReorderSettingsRouter.request("/bulk-register", { method: "POST", body: formData }, env, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(400);
+    expect(await db.select().from(schema.itemReorderSettings)).toEqual([]);
   });
 });

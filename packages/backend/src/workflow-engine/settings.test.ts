@@ -30,6 +30,9 @@ const CASES: Array<[keyof typeof settings, string]> = [
   ["isPurchaseOrderWorkflowGloballyEnabled", "is_purchase_order_approval_enabled"],
   ["isSalesInvoiceWorkflowGloballyEnabled", "is_sales_approval_enabled"],
   ["isPurchaseRecognitionWorkflowGloballyEnabled", "is_purchase_approval_enabled"],
+  // BUG-097・BUG-098
+  ["isProjectWorkflowGloballyEnabled", "is_project_approval_enabled"],
+  ["isItemReorderSettingWorkflowGloballyEnabled", "is_item_reorder_setting_approval_enabled"],
 ];
 
 function fakeKv(value: string | null | Error) {
@@ -70,16 +73,16 @@ describe("is〜WorkflowGloballyEnabled(kv)", () => {
 });
 
 describe("readWorkflowFlags(config)", () => {
-  it("解釈済みの会社設定から、26個のスイッチをまとめて返す", () => {
+  it("解釈済みの会社設定から、28個のスイッチをまとめて返す(BUG-097・BUG-098 で2つ追加)", () => {
     const flags = (settings as Record<string, unknown>).readWorkflowFlags as
       | ((config: unknown) => Record<string, boolean>)
       | undefined;
     expect(typeof flags).toBe("function");
     const all = flags!(Object.fromEntries(CASES.map(([, k]) => [k, true])));
-    expect(Object.keys(all)).toHaveLength(26);
+    expect(Object.keys(all)).toHaveLength(28);
     expect(Object.values(all).every((v) => v === true)).toBe(true);
     const none = flags!(null);
-    expect(Object.keys(none)).toHaveLength(26);
+    expect(Object.keys(none)).toHaveLength(28);
     expect(Object.values(none).every((v) => v === false)).toBe(true);
   });
 });

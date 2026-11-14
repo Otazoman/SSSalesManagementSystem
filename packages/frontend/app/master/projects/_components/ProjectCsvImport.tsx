@@ -7,6 +7,8 @@ interface ProjectCsvImportProps {
   editingProject?: ProjectRecord | null;
   isSubmitting?: boolean;
   onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+  // BUG-097: 承認 ON の間は CSV で取り込めない(承認を通さずに登録できてしまうため)
+  isProjectWfEnabled?: boolean;
 }
 
 export function ProjectCsvImport({
@@ -14,18 +16,25 @@ export function ProjectCsvImport({
   editingProject = null,
   isSubmitting = false,
   onImportCsv,
+  isProjectWfEnabled = false,
 }: ProjectCsvImportProps) {
-  const isImportDisabled = !canCreate || !!editingProject || isSubmitting;
+  const isImportDisabled = !canCreate || !!editingProject || isSubmitting || isProjectWfEnabled;
 
   return (
     <div className="bg-white p-5 rounded-lg flex flex-col justify-between border border-slate-200 shadow-sm">
       <div>
         <div className="flex justify-between items-center border-b pb-1 mb-2">
           <h3 className="text-xs font-bold text-slate-900">プロジェクトCSV一括インポート</h3>
-          {editingProject && (
+          {editingProject ? (
             <span className="text-[9px] bg-amber-50 text-amber-700 px-1 rounded font-medium">
               ※編集中は利用できません
             </span>
+          ) : (
+            isProjectWfEnabled && (
+              <span className="text-[9px] bg-amber-50 text-amber-700 px-1 rounded font-medium">
+                ※承認機能が有効な間は利用できません
+              </span>
+            )
           )}
         </div>
         <p className="text-[10px] text-slate-500 leading-relaxed">

@@ -197,7 +197,7 @@ export function SecuritySettings({
                 マスタ種別ごとの「承認フロー機能」を有効化する
               </p>
               <p className="text-[11px] text-slate-600">
-                ONにしたマスタ種別のみ、新規登録・変更時に定義された承認申請が必要になります。現時点で実際に機能するのは「取引先」のみです(他のマスタ種別は今後実装予定のため設定を保持するのみ)。
+                ON にしたマスタは、新規登録・変更の時に承認申請が必要になります。
               </p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -224,6 +224,12 @@ export function SecuritySettings({
                   {
                     key: "is_business_location_approval_enabled",
                     label: "営業拠点",
+                  },
+                  // BUG-097・BUG-098
+                  { key: "is_project_approval_enabled", label: "プロジェクト" },
+                  {
+                    key: "is_item_reorder_setting_approval_enabled",
+                    label: "発注点/安全在庫",
                   },
                 ] as const
               ).map(({ key, label }) => (

@@ -23,6 +23,9 @@ export interface SystemSettings {
   // 新規要望: 営業拠点マスタ(2026-09-23新設)
   is_business_location_approval_enabled: boolean;
   is_tax_category_approval_enabled: boolean;
+  // BUG-097・BUG-098
+  is_project_approval_enabled: boolean;
+  is_item_reorder_setting_approval_enabled: boolean;
   // Item4-e: 伝票単位の承認フラグ(旧is_document_approval_enabledという単一グローバルフラグを置き換え)。
   // 現時点で実際に機能を持つのはis_quote_approval_enabledのみ(他7つは将来のItem7-10実装時に使用)。
   is_quote_approval_enabled: boolean;

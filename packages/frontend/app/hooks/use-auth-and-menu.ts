@@ -73,6 +73,8 @@ export function useAuthAndMenu(isAuthPage: boolean) {
           isPartnerContactWfEnabled:
             profileData.isPartnerContactWfEnabled || false,
           isUnitWfEnabled: profileData.isUnitWfEnabled || false,
+          isProjectWfEnabled: profileData.isProjectWfEnabled || false,
+          isItemReorderSettingWfEnabled: profileData.isItemReorderSettingWfEnabled || false,
           isLocationWfEnabled: profileData.isLocationWfEnabled || false,
           isProductPriceWfEnabled:
             profileData.isProductPriceWfEnabled || false,

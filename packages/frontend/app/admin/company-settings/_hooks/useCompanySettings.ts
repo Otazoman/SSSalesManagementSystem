@@ -24,6 +24,8 @@ export function useCompanySettings() {
     is_warehouse_approval_enabled: false,
     is_location_approval_enabled: false,
     is_business_location_approval_enabled: false,
+    is_project_approval_enabled: false,
+    is_item_reorder_setting_approval_enabled: false,
     is_tax_category_approval_enabled: false,
     is_quote_approval_enabled: false,
     is_sales_order_approval_enabled: false,

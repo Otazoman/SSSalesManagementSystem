@@ -23,6 +23,8 @@ const PURCHASE_ORDERS_SORT_COLUMNS = {
   title: schema.orders.title,
   status: schema.orders.status,
   partnerId: schema.orders.partnerId,
+  // BUG-095: 一覧の「発注日」で並べ替える
+  orderDate: schema.orders.orderDate,
   createdAt: schema.orders.createdAt,
 };
 

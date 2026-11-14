@@ -308,6 +308,21 @@ export function usePurchaseOrderOperations({
     setError("");
   }, [currentUserEmployeeNumber]);
 
+  // BUG-101: 一覧の「内容確認」。一覧の行は明細を含まないため、詳細を取得してから参照用パネルに出す
+  const [previewOrder, setPreviewOrder] = useState<PurchaseOrderRecord | null>(null);
+  const handleOpenPreview = useCallback(async (record: PurchaseOrderRecord) => {
+    setError("");
+    try {
+      setPreviewOrder(
+        await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${record.id}`, {
+          defaultErrorMessage: "発注詳細の取得に失敗しました",
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "発注詳細の取得に失敗しました");
+    }
+  }, []);
+
   // 一覧の検索結果(searchOrders)は明細を含まないため、必ず詳細取得(GET /api/purchase-orders/:id)
   // でヘッダー・明細・添付を取り直してからフォームへ反映する(sales/quotesのhandleOpenEditFormと同じ方針)。
   // 一覧の行データをそのまま使うと明細が空のままフォームが開き、上書き保存で明細が全消しされる
@@ -1081,6 +1096,9 @@ export function usePurchaseOrderOperations({
     total,
     totalPages,
     orders,
+    previewOrder,
+    setPreviewOrder,
+    handleOpenPreview,
     sortBy: sortKeys[0]?.key ?? null,
     sortDirection: sortKeys[0]?.direction ?? "asc",
     sortKeys,

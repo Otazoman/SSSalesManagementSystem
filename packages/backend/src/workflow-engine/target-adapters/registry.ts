@@ -24,6 +24,8 @@ import { purchaseOrdersAdapter } from "./purchase-orders.adapter";
 import { purchaseRecognitionsAdapter } from "./purchase-recognitions.adapter";
 import { partnerContactsAdapter } from "./partner-contacts.adapter";
 import { unitsAdapter } from "./units.adapter";
+import { projectsAdapter } from "./projects.adapter";
+import { itemReorderSettingsAdapter } from "./item-reorder-settings.adapter";
 import { locationsAdapter } from "./locations.adapter";
 import { productPricesAdapter } from "./product-prices.adapter";
 import { productsAdapter } from "./products.adapter";
@@ -128,6 +130,10 @@ const registry: Record<string, TargetAdapter> = {
   purchase_recognitions: purchaseRecognitionsAdapter,
   master_contacts: partnerContactsAdapter,
   master_units: unitsAdapter,
+  // BUG-097
+  master_projects: projectsAdapter,
+  // BUG-098
+  master_item_reorder_settings: itemReorderSettingsAdapter,
   master_locations: locationsAdapter,
   master_prices: productPricesAdapter,
   master_products: productsAdapter,

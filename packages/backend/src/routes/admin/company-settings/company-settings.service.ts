@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS: UpdateCompanySettingsInput = {
   is_location_approval_enabled: false,
   is_business_location_approval_enabled: false,
   is_tax_category_approval_enabled: false,
+  is_project_approval_enabled: false,
+  is_item_reorder_setting_approval_enabled: false,
   is_quote_approval_enabled: false,
   is_sales_order_approval_enabled: false,
   is_purchase_requisition_approval_enabled: false,
@@ -166,6 +168,9 @@ export class CompanySettingsService {
         body.is_business_location_approval_enabled,
       is_tax_category_approval_enabled:
         body.is_tax_category_approval_enabled,
+      is_project_approval_enabled: body.is_project_approval_enabled,
+      is_item_reorder_setting_approval_enabled:
+        body.is_item_reorder_setting_approval_enabled,
       is_quote_approval_enabled: body.is_quote_approval_enabled,
       is_sales_order_approval_enabled: body.is_sales_order_approval_enabled,
       is_purchase_requisition_approval_enabled:

@@ -8,6 +8,7 @@ import { usePermissionContext } from "../../context/permissioncontext";
 import { usePurchaseOrderOperations } from "./_hooks/usePurchaseOrderOperations";
 import { PurchaseOrderForm } from "./_components/PurchaseOrderForm";
 import { PurchaseOrderTable } from "./_components/PurchaseOrderTable";
+import { PurchaseOrderPreview } from "./_components/PurchaseOrderPreview";
 import { PurchaseRequisitionPickerModal } from "./_components/PurchaseRequisitionPickerModal";
 import { SalesOrderShortagePickerModal } from "./_components/SalesOrderShortagePickerModal";
 import { PurchaseOrderReorderPickerModal } from "./_components/PurchaseOrderReorderPickerModal";
@@ -156,6 +157,9 @@ export default function PurchaseOrdersPage() {
     isEmailRestrictedToContacts,
     handleClearForm,
     handleSelectEdit,
+    previewOrder,
+    setPreviewOrder,
+    handleOpenPreview,
     handleCopyToNewForm,
     handleSubmit,
     handleSaveDeliveryDatesOnly,
@@ -413,11 +417,18 @@ export default function PurchaseOrdersPage() {
             onSelectEdit={handleSelectEdit}
             onDeleteLink={handleDeleteLink}
             onCopy={handleCopyToNewForm}
+            onPreview={handleOpenPreview}
             canCopy={canCreate && !isPurchaseOrderWfEnabled}
             sortBy={sortBy}
             sortDirection={sortDirection}
             sortKeys={sortKeys}
             onSortChange={setSort}
+          />
+          <PurchaseOrderPreview
+            order={previewOrder}
+            suppliers={suppliers}
+            allItems={allItems}
+            onClose={() => setPreviewOrder(null)}
           />
           {/* BUG-032: 会社設定の「一覧のページ分割」に従う */}
           <Pagination

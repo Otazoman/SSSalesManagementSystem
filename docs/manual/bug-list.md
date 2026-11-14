@@ -26,12 +26,13 @@
 | BUG-092 | 対応予定 | 中 | 検収書・納品書・請求書(PDF) | 担当者の欄に、従業員番号(検収書)や固定の文言「営業部 担当者」(請求書)が出る。納品書に不要な登録番号が出る |
 | BUG-093 | 対応予定 | 低 | 出荷・入荷(履歴) | 履歴の「作成者」が従業員番号で、氏名が分からない |
 | BUG-094 | 確認待ち(2026-11-14 Staging 反映済み) | 中 | 支払管理(消込) | 支払額が 0 円の支払は、金額を入力できず消込を完了できない |
-| BUG-095 | 対応予定 | 低 | 発注管理(一覧) | 一覧に発注日の列が無い |
+| BUG-095 | 確認待ち(Staging 未反映) | 低 | 発注管理(一覧) | 一覧に発注日の列が無い |
 | BUG-096 | 対応予定 | 低 | 商談管理(登録) | 新規登録の時、商談担当(自社)が空欄で始まる(ログイン中のユーザーが入っていない) |
-| BUG-097 | 対応予定 | 中 | プロジェクトマスタ | 承認機能を有効にしても、承認申請が無い(承認の仕組みも会社設定のスイッチも無い) |
-| BUG-098 | 対応予定 | 中 | 発注点/安全在庫マスタ | 承認機能を有効にしても、承認申請が機能しない(同上。DB変更あり) |
+| BUG-097 | 確認待ち(Staging 未反映) | 中 | プロジェクトマスタ | 承認機能を有効にしても、承認申請が無い(承認の仕組みも会社設定のスイッチも無い) |
+| BUG-098 | 確認待ち(Staging 未反映・DB の変更あり) | 中 | 発注点/安全在庫マスタ | 承認機能を有効にしても、承認申請が機能しない(同上。DB変更あり) |
 | BUG-099 | 確認待ち(2026-11-15 Staging 反映済み) | 中 | 購買申請 | 一覧に、見積にある「内容確認」・添付のあり/なし・申請日が無い |
 | BUG-100 | 再確認待ち(ユーザー) | 中 | 請求管理(消込) | 発行済みの0円の請求で「0円で消込を完了する」が出ない(BUG-094 の確認で、支払は直ったが請求は出ないとユーザーから指摘) |
+| BUG-101 | 確認待ち(Staging 未反映) | 中 | 発注管理 | 一覧に、見積・受注・売上・仕入・購買申請にある「内容確認」が無い |
 
 ## 要望一覧
 
@@ -755,6 +756,9 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
 - 対象: `frontend/app/purchase/orders/_components/PurchaseOrderTable.tsx`(53行目からの列定義)、発注の一覧 API の並べ替えの許可キー
 - 変更内容: 「発注番号」の次に「発注日」(orderDate、並べ替え可)を足す。日付の表示は `_shared/jst-date.ts` を使う。
 - 確認方法: PurchaseOrderTable.test.tsx で列と値が出ること。
+- 対応(2026-11-15、BUG-101 と同時に。同じ一覧の変更のため段階4から前倒し): `PurchaseOrderTable.tsx` の「発注番号」の次に「発注日」(日本時間の日付、並べ替え可)を足した。
+  一覧の API の並べ替えの許可キーに orderDate を足した(`purchase-order.repository.ts`。既存のキーは変えていない)。
+  - 確認の結果: PurchaseOrderTable.test.tsx に列と日付の表示、purchase-order-crud.service.test.ts に発注日の昇順・降順を足した(許可キーが無いと失敗することを確かめた)。
 
 ### BUG-096 商談の担当(自社)の初期値
 
@@ -784,6 +788,35 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
     itemReorderSettings を読んでいる箇所を grep で洗い出す)は、有効な設定だけを使うようにする。変更の申請中は、承認されるまで変更前の値を使う。
 - 確認方法: 単位マスタの承認のテストと同じ観点(新規・変更・差戻し・取下げ)。スイッチ OFF で既存の projects・item-reorder-settings のテストが通ること。
   仮登録・申請中の発注点が提案に使われないこと。承認フローの取込用 CSV に、2つの種類のフローを足す(sampledata/ は変えない)。
+
+- 対応(2026-11-15):
+  - 共通: 会社設定に `is_project_approval_enabled`・`is_item_reorder_setting_approval_enabled`(既定 OFF)を足した(company-settings の schema・service、
+    workflow-engine/settings.ts の WORKFLOW_FLAG_CONFIG_KEYS。auth/profile は readWorkflowFlags をそのまま返すため isProjectWfEnabled・isItemReorderSettingWfEnabled が
+    自動で増える。会社設定の読み取りは増えていない)。画面は types.ts・permissioncontext・use-auth-and-menu・use-page-permission・会社設定の型と初期値・SecuritySettings に足した。
+    SecuritySettings の古い説明(「現時点で実際に機能するのは取引先のみ」)は「ON にしたマスタは、新規登録・変更の時に承認申請が必要になります。」に直した。
+    settings.test.ts のスイッチの数を 26 → 28 にした(足した2つを CASES に足した)。
+  - 承認フローの種類の一覧は、画面マスタ(/api/permissions/screens)から作られ、master_projects・master_item_reorder_settings は既に画面マスタにあるため変更不要だった。
+  - BUG-089 のテスト: preview-specs.ts に master_projects・master_item_reorder_settings を足した(漏れのテストは全21種類で通る)。REQ-016 の画面のパスのテストも21種類で通る。
+  - BUG-097(プロジェクト。DB の変更なし。projects.status は既にある):
+    - `projects.service.ts`: 新規登録の状態をサーバーで決める(承認 ON は temporary)。PUT に任意の status(active / temporary)を足した(変更申請の前のロック用。省略時は状態を変えない)。
+      承認 ON の間は CSV 取込を 400 で拒否する(承認を通さずに登録・変更できてしまうため)。
+    - `target-adapters/projects.adapter.ts`(新規)を registry に登録した。承認で REGISTER は active にし、UPDATE は退避データ(名前・メモ・期間・状態)を反映する。
+      差戻し・取下げは単位マスタと同じく何もしない(仮登録のまま。差戻しは画面から直して再申請する)。
+    - 画面: `useProjects.ts` に、承認 ON の時の「仮登録 → 申請」(新規)と「今の内容のまま temporary にロック → 変更後の内容で申請」(変更)、承認待ちの間のロック、申請部門の選択を足した。
+      `page.tsx` に「仮登録」のタブ(承認 ON の時)と、?editId で状態を問わず開く入口(修正して再申請・伝票を開く用)を足した。ボタンは「仮登録して申請」「変更を申請」。
+  - BUG-098(発注点/安全在庫。DB の変更あり。2026-11-15 ユーザー承認):
+    - DB: `item_reorder_settings` に `status`(text、NOT NULL、既定 'active')を足した。migration は `drizzle/main/0101_gigantic_stepford_cuckoos.sql`
+      (`ALTER TABLE item_reorder_settings ADD status text DEFAULT 'active' NOT NULL;` の1行。npm run db:generate-main で作った)。今ある行は active になり、動きは今と同じ。
+      **Staging・本番の DB には未適用**(反映の時に `wrangler d1 migrations apply` が要る)。
+    - `item-reorder-settings.service.ts`: 新規登録の状態をサーバーで決める。PUT に任意の status を足した。承認 ON の間は CSV 取込を拒否する。
+      発注の候補(low-stock-candidates)は active の設定だけを使う(仮登録は承認されるまで提案しない)。一覧の応答に status を足した。
+    - `target-adapters/item-reorder-settings.adapter.ts`(新規)を registry に登録した。プレビューの名前は「品目名 / 倉庫名」。
+    - 画面: `useItemReorderSettingForm.ts`・フォーム・CSV 取込・一覧(「状態」の列)・`page.tsx`(?editId の入口は共通の useDeepLinkId)に、プロジェクトと同じ流れを足した。
+  - 確認の結果: projects-approval.test.ts(5件)、item-reorder-settings/index.test.ts に4件、settings.test.ts、画面の useProjects.test.ts(4件)・
+    useItemReorderSettingForm.test.ts(3件)・projects/page.test.tsx に ?editId の1件。backend 全件(204ファイル・2165件)・両方の `npx tsc --noEmit` が通った。
+    画面全件は既知の useQuoteForm.test.ts の2件(日本時間の 0時〜9時に失敗する)だけ失敗した。変更した部分に新しい lint のエラーは無い
+    (useItemReorderSettingForm.ts の 27・127 行目、use-auth-and-menu.ts・ProjectForm.tsx に以前からのエラーがある)。
+  - マニュアル(master/projects.md・master/item-reorder-settings.md・admin/company-settings.md)に書き足した。
 
 ### REQ-007 帳票ダウンロードの OTP を「メール入力なし」にそろえる
 
@@ -1061,6 +1094,18 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
     (usePurchaseRequisitionOperations.ts の 118・130・252 行目に以前からのエラーがある)。
   - 別件: 画面のテスト全件では useQuoteForm.test.ts の2件が失敗した。テストが「今日」を UTC の日付(toISOString)で作っているため、日本時間の 0時〜9時に
     失敗する(画面は BUG-043 で日本時間に直してある)。今回の変更とは関係ない。テストの直し方はユーザーに相談する。
+
+### BUG-101 発注の一覧に内容確認が無い
+
+- 見つけた日: 2026-11-15(BUG-099 の確認の時に、ユーザーから指摘)
+- 今の作り: 見積・受注・売上・仕入の一覧と、BUG-099 で直した購買申請の一覧には「内容確認」(右の参照用パネル)があるが、発注の一覧だけ無かった。添付の列はある。
+- 対応(2026-11-15、BUG-095 と同時に):
+  - `PurchaseOrderTable.tsx` に「内容確認」の列を足した。`PurchaseOrderPreview.tsx`(新規)は購買申請と同じサイドパネルで、件名・仕入先・発注日・納期・
+    元の購買申請・明細(品目マスタの名前・数量×単価)・添付(ダウンロードのリンク)・合計を出す。開く時に詳細(GET /api/purchase-orders/:id)を取得する。
+  - マニュアル(docs/manual/purchase/orders.md)に書き足した。
+  - 確認の結果: PurchaseOrderTable.test.tsx に、内容確認を押すと onPreview を呼び行の編集は開かないこと・パネルの中身を足した。発注のテスト全件・
+    backend 全件(203ファイル・2146件)・両方の `npx tsc --noEmit` が通った。変更したファイルに lint のエラーは無い。
+    画面全件は、既知の useQuoteForm.test.ts の2件(日本時間の 0時〜9時に失敗する。BUG-099 の項を参照)だけ失敗した。
 
 ### BUG-100 発行済みの0円の請求で「0円で消込を完了する」が出ない
 

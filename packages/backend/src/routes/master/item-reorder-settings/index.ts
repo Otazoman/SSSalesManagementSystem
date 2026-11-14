@@ -105,7 +105,7 @@ itemReorderSettingsRouter.post(
   async (c) => {
     const input = c.req.valid("json");
     const result = await getService(c).create(c, input);
-    return c.json({ success: true, message: "発注点/安全在庫設定を登録しました", id: result.id });
+    return c.json({ success: true, message: "発注点/安全在庫設定を登録しました", id: result.id, status: result.status });
   },
 );
 

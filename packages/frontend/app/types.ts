@@ -19,6 +19,9 @@ export interface UserState {
   isQuoteWfEnabled: boolean;
   isPartnerContactWfEnabled: boolean;
   isUnitWfEnabled: boolean;
+  // BUG-097・BUG-098
+  isProjectWfEnabled?: boolean;
+  isItemReorderSettingWfEnabled?: boolean;
   isLocationWfEnabled: boolean;
   isProductPriceWfEnabled: boolean;
   isProductWfEnabled: boolean;

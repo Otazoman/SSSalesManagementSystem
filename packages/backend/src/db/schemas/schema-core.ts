@@ -620,6 +620,9 @@ export const itemReorderSettings = sqliteTable(
     reorderPoint: real("reorder_point").notNull().default(0),
     safetyStock: real("safety_stock").notNull().default(0),
     memo: text("memo"),
+    // BUG-098(2026-11-15 ユーザー承認済み): 承認の状態。承認 OFF の間・今ある行は active(今と同じ動き)。
+    // 承認 ON の時の新規登録は temporary(仮登録)で保存し、承認で active にする。temporary の行は発注点の提案に使わない
+    status: text("status").notNull().default("active"),
     ...withAuditColumns(),
   },
   (table) => [

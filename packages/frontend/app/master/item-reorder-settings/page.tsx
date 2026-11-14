@@ -2,6 +2,7 @@
 
 import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { useDeepLinkId } from "../../_shared/hooks/use-deep-link-id";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { usePagePermissions } from "../../hooks/use-page-permission";
@@ -23,8 +24,11 @@ import { useConfirm } from "../../_shared/hooks/use-confirm";
 
 export default function ItemReorderSettingsPage() {
   const confirm = useConfirm();
-  const { canCreate, canRead, canUpdate, canDelete, loading } =
+  const { canCreate, canRead, canUpdate, canDelete, loading, isItemReorderSettingWfEnabled, departments = [] } =
     usePagePermissions();
+  // BUG-098: 申請部門(複数の部門に所属する時に選ぶ。選ぶまでは所属部門の先頭。単位マスタと同じ)
+  const [selectedDepartmentId, setApplicantDepartmentSurrogateId] = useState<string | null>(null);
+  const applicantDepartmentSurrogateId = selectedDepartmentId ?? departments[0]?.surrogateId ?? null;
 
   const [showForm, setShowForm] = useState(false);
   const [items, setItems] = useState<ItemLookup[]>([]);
@@ -69,6 +73,20 @@ export default function ItemReorderSettingsPage() {
     setEditingData(null);
     setShowForm(false);
   };
+
+  // BUG-098: 承認履歴の「修正して再申請」・承認のプレビューの「伝票を開く」(?editId=xxx)で、その設定の編集フォームを開く
+  // (他画面からの ID 指定の共通の入口 useDeepLinkId を使う。一覧を読み込んだ後に1回だけ開く)
+  useDeepLinkId(
+    "editId",
+    (id) => {
+      const target = settings.find((s) => s.id === id);
+      if (target) {
+        setEditingData(target);
+        setShowForm(true);
+      }
+    },
+    !loading && canRead && settings.length > 0,
+  );
 
   const guard = useDiscardGuard(showForm);
   const requestCloseForm = async () => {
@@ -232,11 +250,16 @@ export default function ItemReorderSettingsPage() {
             }}
             onError={(msg) => setError(msg)}
             onClear={requestCloseForm}
+            isWfEnabled={isItemReorderSettingWfEnabled}
+            departments={departments}
+            applicantDepartmentSurrogateId={applicantDepartmentSurrogateId}
+            setApplicantDepartmentSurrogateId={setApplicantDepartmentSurrogateId}
           />
           <ItemReorderSettingCsvImport
             canCreate={canCreate}
             isSubmitting={isSubmitting}
             onImportCsv={handleImportCsv}
+            isWfEnabled={isItemReorderSettingWfEnabled}
           />
         </div>
       )}

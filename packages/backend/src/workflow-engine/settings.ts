@@ -16,6 +16,9 @@ const WORKFLOW_FLAG_CONFIG_KEYS = {
   isWarehouseWfEnabled: "is_warehouse_approval_enabled",
   isBusinessLocationWfEnabled: "is_business_location_approval_enabled",
   isItemStructureWfEnabled: "is_item_structure_approval_enabled",
+  // BUG-097・BUG-098: プロジェクトマスタ・発注点/安全在庫マスタの承認(既定 OFF)
+  isProjectWfEnabled: "is_project_approval_enabled",
+  isItemReorderSettingWfEnabled: "is_item_reorder_setting_approval_enabled",
   isReceivingWfEnabled: "is_receiving_approval_enabled",
   isShippingWfEnabled: "is_shipping_approval_enabled",
   isInventoryWfEnabled: "is_inventory_approval_enabled",
@@ -137,6 +140,26 @@ export async function determineUnitInitialStatus(
 ): Promise<"temporary" | "active"> {
   const isEnabled = await isUnitWorkflowGloballyEnabled(kv);
   return isEnabled ? "temporary" : "active";
+}
+
+// BUG-097: プロジェクトマスタの承認
+export async function isProjectWorkflowGloballyEnabled(kv: any): Promise<boolean> {
+  return readWorkflowFlagFromKv(kv, "isProjectWfEnabled", "プロジェクト承認ワークフロー設定");
+}
+
+// BUG-098: 発注点/安全在庫マスタの承認
+export async function isItemReorderSettingWorkflowGloballyEnabled(kv: any): Promise<boolean> {
+  return readWorkflowFlagFromKv(kv, "isItemReorderSettingWfEnabled", "発注点/安全在庫承認ワークフロー設定");
+}
+
+// BUG-097: プロジェクトマスタの新規登録の状態(承認 ON なら仮登録、OFF なら有効)
+export async function determineProjectInitialStatus(kv: any): Promise<"temporary" | "active"> {
+  return (await isProjectWorkflowGloballyEnabled(kv)) ? "temporary" : "active";
+}
+
+// BUG-098: 発注点/安全在庫マスタの新規登録の状態(承認 ON なら仮登録、OFF なら有効)
+export async function determineItemReorderSettingInitialStatus(kv: any): Promise<"temporary" | "active"> {
+  return (await isItemReorderSettingWorkflowGloballyEnabled(kv)) ? "temporary" : "active";
 }
 
 export async function determineLocationInitialStatus(

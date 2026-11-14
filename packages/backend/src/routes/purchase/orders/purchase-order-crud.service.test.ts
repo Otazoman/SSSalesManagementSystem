@@ -605,6 +605,19 @@ async function seedOrderItem(
   });
 }
 
+describe("BUG-095: 発注一覧を発注日で並べ替えられる", () => {
+  it("sortBy=orderDate の昇順・降順で並ぶ", async () => {
+    await seedOrder("PO-B", { orderDate: new Date("2026-11-10T00:00:00Z") });
+    await seedOrder("PO-A", { orderDate: new Date("2026-11-20T00:00:00Z") });
+    await seedOrder("PO-C", { orderDate: new Date("2026-11-01T00:00:00Z") });
+
+    const asc = (await (await callSearchOrders("buyer-1", "sortBy=orderDate&sortOrder=asc")).json()) as Array<{ id: string }>;
+    expect(asc.map((o) => o.id)).toEqual(["PO-C", "PO-B", "PO-A"]);
+    const desc = (await (await callSearchOrders("buyer-1", "sortBy=orderDate&sortOrder=desc")).json()) as Array<{ id: string }>;
+    expect(desc.map((o) => o.id)).toEqual(["PO-A", "PO-B", "PO-C"]);
+  });
+});
+
 describe("追加要望: 発注一覧の検索で注残(仕入計上が未済)の有無で絞り込める", () => {
   async function seedApprovedRecognition(
     id: string,

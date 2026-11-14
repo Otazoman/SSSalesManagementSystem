@@ -8,6 +8,7 @@ import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-wr
 import { parseCsv } from "../../../platform/csv/csv-parser";
 import { WarehouseStockReservationRepository } from "../../../platform/inventory/warehouse-stock-reservation.repository";
 import { SortQuery } from "../../../platform/http/sort";
+import { determineItemReorderSettingInitialStatus } from "../../../workflow-engine/settings";
 
 const RESOURCE_KEY = "master_item_reorder_settings";
 
@@ -33,13 +34,15 @@ export class ItemReorderSettingsService {
     const opId = await this.repo.getFallbackOperatorId(c);
     const now = new Date();
     const id = crypto.randomUUID();
-    await this.repo.insert(id, input, opId, now);
+    // BUG-098: クライアントの送信値は受け付けず、会社設定の承認フラグからサーバー側で決める(単位マスタと同じ)
+    const status = await determineItemReorderSettingInitialStatus(c.env.COMPANY_SETTINGS);
+    await this.repo.insert(id, { ...input, status: undefined }, opId, now, status);
 
     c.executionCtx.waitUntil(
-      logAuditEvent(c, "CREATE_ITEM_REORDER_SETTING", RESOURCE_KEY, id, null, { ...input }),
+      logAuditEvent(c, "CREATE_ITEM_REORDER_SETTING", RESOURCE_KEY, id, null, { ...input, status }),
     );
 
-    return { id };
+    return { id, status };
   }
 
   async update(c: Context<{ Bindings: Env }>, id: string, input: ItemReorderSettingPayload) {
@@ -94,6 +97,10 @@ export class ItemReorderSettingsService {
   }
 
   async importCsv(c: Context<{ Bindings: Env }>) {
+    // BUG-098: 承認 ON の間は、CSV で取り込むと承認を通さずに登録・変更できてしまうため受け付けない
+    if ((await determineItemReorderSettingInitialStatus(c.env.COMPANY_SETTINGS)) === "temporary") {
+      throw new BadRequestError("承認機能が有効な間は、CSV で発注点/安全在庫を取り込めません。画面から登録して申請してください");
+    }
     const opId = await this.repo.getFallbackOperatorId(c);
     const now = new Date();
 
@@ -167,7 +174,8 @@ export class ItemReorderSettingsService {
   // Item9 Phase7: 欠品自動提案②(発注点/安全在庫方式)。品目×倉庫の利用可能数量(在庫合計-引当済)が
   // 発注点を下回っている設定行のみを候補として返す。安全在庫まで補充する数量を提案する
   async getLowStockCandidates() {
-    const settings = await this.repo.findAll();
+    // BUG-098: 承認待ち・差戻しの仮登録(temporary)の設定は、承認されるまで提案に使わない
+    const settings = (await this.repo.findAll()).filter((s) => s.status === "active");
     if (settings.length === 0) return [];
 
     const availabilityByItem = new Map<string, Map<string, number>>();

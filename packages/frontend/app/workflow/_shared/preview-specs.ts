@@ -606,6 +606,32 @@ const MASTER_SPECS: Record<string, PreviewSpec> = {
     },
     hidden: MASTER_HIDDEN,
   },
+  // BUG-097
+  master_projects: {
+    table: "projects",
+    header: {
+      id: { label: "PJコード" },
+      name: { label: "プロジェクト名称" },
+      startDate: { label: "開始時期", format: "date" },
+      endDate: { label: "終了時期", format: "date" },
+      memo: { label: "メモ", format: "multiline" },
+      status: MASTER_STATUS,
+    },
+    hidden: MASTER_HIDDEN,
+  },
+  // BUG-098
+  master_item_reorder_settings: {
+    table: "itemReorderSettings",
+    header: {
+      itemId: { label: "品目", ref: "item" },
+      warehouseId: { label: "倉庫", ref: "warehouse" },
+      reorderPoint: { label: "発注点", format: "number" },
+      safetyStock: { label: "安全在庫", format: "number" },
+      memo: { label: "メモ", format: "multiline" },
+      status: MASTER_STATUS,
+    },
+    hidden: { ...MASTER_HIDDEN, id: "設定の番号(内部の番号)" },
+  },
   master_locations: {
     table: "locations",
     header: {
