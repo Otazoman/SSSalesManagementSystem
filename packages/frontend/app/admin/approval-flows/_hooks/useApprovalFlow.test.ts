@@ -72,13 +72,10 @@ describe("useApprovalFlow", () => {
     const { result } = renderHook(() => useApprovalFlow(baseArgs()));
 
     await waitFor(() => expect(result.current.flows.length).toBe(1));
-    // REQ-018: 画面を持たない申請の種類(入金・支払の消込)を末尾に足す
+    // BUG-103: 承認フローはメニュー単位のため、画面の一覧(業務・業務マスタ)だけを出す
     expect(result.current.screens.map((s) => s.resource)).toEqual([
       "master_units",
       "workflow_tasks",
-      "sales_payment_receipts",
-      "sales_cash_receipts",
-      "purchase_payment_disbursements",
     ]);
     expect(result.current.selectedRoleId).toBe("general_user");
   });

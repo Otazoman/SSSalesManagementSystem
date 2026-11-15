@@ -284,20 +284,23 @@ describe("直送完了(承認機能が有効)", () => {
     await seedUser("approver-1");
     await db.insert(schema.roles).values({ id: "approver_role", name: "approver_role", createdAt: now });
     await db.insert(schema.userRoles).values({ userId: "approver-1", roleId: "approver_role", departmentSurrogateId: null });
-    await db.insert(schema.approvalFlows).values({
-      id: "flow-inventory-stock",
-      name: "flow-inventory-stock",
-      requestType: "inventory_stock",
-      minAmount: 0,
-      maxAmount: 999999999,
-      isActive: true,
-    });
-    await db.insert(schema.approvalFlowSteps).values({
-      id: "flow-inventory-stock-step-1",
-      flowId: "flow-inventory-stock",
-      stepOrder: 1,
-      approverRoleId: "approver_role",
-    });
+    // BUG-103: 承認フローはメニュー単位(直送完了の入庫は入荷、出庫は出荷)
+    for (const menu of ["inventory_receiving", "inventory_shipping"]) {
+      await db.insert(schema.approvalFlows).values({
+        id: `flow-${menu}`,
+        name: `flow-${menu}`,
+        requestType: menu,
+        minAmount: 0,
+        maxAmount: 999999999,
+        isActive: true,
+      });
+      await db.insert(schema.approvalFlowSteps).values({
+        id: `flow-${menu}-step-1`,
+        flowId: `flow-${menu}`,
+        stepOrder: 1,
+        approverRoleId: "approver_role",
+      });
+    }
     await env.COMPANY_SETTINGS.put("config", JSON.stringify({ is_receiving_approval_enabled: true }));
   }
 

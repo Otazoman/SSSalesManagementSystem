@@ -140,7 +140,7 @@ describe("在庫へ移す(REQ-011(3))", () => {
   describe("入庫の承認が有効な時", () => {
     beforeEach(async () => {
       await env.COMPANY_SETTINGS.put("config", JSON.stringify({ is_receiving_approval_enabled: true }));
-      await db.insert(schema.approvalFlows).values({ id: "flow-st", name: "入庫", requestType: "inventory_stock", minAmount: 0, maxAmount: 999999999, isActive: true });
+      await db.insert(schema.approvalFlows).values({ id: "flow-st", name: "入庫", requestType: "inventory_receiving", minAmount: 0, maxAmount: 999999999, isActive: true });
       await db.insert(schema.approvalFlowSteps).values({ id: "flow-st-1", flowId: "flow-st", stepOrder: 1, approverRoleId: "approver_role" });
     });
 

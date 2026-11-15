@@ -154,8 +154,11 @@ describe("自社倉庫どうしの移動(REQ-006)", () => {
 
   it("出庫の承認が有効なら、出庫が承認されるまで出庫の承認待ちで、入庫できない", async () => {
     await env.COMPANY_SETTINGS.put("config", JSON.stringify({ is_shipping_approval_enabled: true, is_receiving_approval_enabled: true }));
-    await db.insert(schema.approvalFlows).values({ id: "flow-st", name: "入出庫", requestType: "inventory_stock", minAmount: 0, maxAmount: 999999999, isActive: true });
-    await db.insert(schema.approvalFlowSteps).values({ id: "flow-st-1", flowId: "flow-st", stepOrder: 1, approverRoleId: "approver_role" });
+    // BUG-103: 承認フローはメニュー単位(出庫は出荷、入庫は入荷)
+    for (const menu of ["inventory_shipping", "inventory_receiving"]) {
+      await db.insert(schema.approvalFlows).values({ id: `flow-${menu}`, name: menu, requestType: menu, minAmount: 0, maxAmount: 999999999, isActive: true });
+      await db.insert(schema.approvalFlowSteps).values({ id: `flow-${menu}-1`, flowId: `flow-${menu}`, stepOrder: 1, approverRoleId: "approver_role" });
+    }
     const { id, status } = await createTransfer();
     expect(status).toBe("SHIPPING_PENDING");
     const [item] = await itemsOf(id);

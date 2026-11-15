@@ -35,7 +35,7 @@
 | 13 | `product_prices_import_sample.csv` | 商品単価マスタ | 得意先別・数量別の販売単価、仕入先別の仕入単価 |
 | 14 | `products_bom_import_sample.csv` | 部品構成(BOM)マスタ | 製品の構成 |
 | 15 | `item_reorder_settings_import_sample.csv` | 発注点・安全在庫 | |
-| 16 | `approval_flows_import_sample.csv` | 承認フロー | 上記のロール・部署を使う。承認の申請ができる全ての種類(28件)。全ての段の承認者が、サンプルのユーザーの中にいる(申請は一般社員が行う想定。下の補足) |
+| 16 | `approval_flows_import_sample.csv` | 承認フロー | 上記のロール・部署を使う。メニュー単位の承認フロー(28件。BUG-103)。全ての段の承認者が、サンプルのユーザーの中にいる(申請は一般社員が行う想定。下の補足) |
 | 17 | `stock_receipts_import_sample.csv` | 入庫 | 在庫の元になる(入荷・完成品)。仕入先からの入荷は仕入先(`partnerId`)あり、組立完成品は仕入先なし |
 | 18 | `stock_shipments_import_sample.csv` | 出庫 | 入庫した在庫から出す |
 | 19 | `stock_audits_import_sample.csv` | 棚卸 | 差異のある行を1件含む |

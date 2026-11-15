@@ -425,7 +425,28 @@ async function resolveEditPath({
   return null;
 }
 
+// BUG-103: 承認フローはメニュー単位。入庫・入荷実績・入荷指示は「入荷」、出庫・出荷実績・出荷指示は「出荷」、
+// 品質区分変更・廃棄・返品は「在庫・棚卸管理」のフローを使う。documentKind で伝票の種類ごとに分けられる
+async function resolveFlowTarget({ db, targetType, targetId }: { db: any; targetType: string; targetId: string }) {
+  if (targetType === "inventory_instructions") {
+    if (await ShipmentInstructionsRepository.fromDb(db).findHeaderById(targetId)) {
+      return { requestType: "inventory_shipping", documentKind: "SHIPMENT_INSTRUCTION" };
+    }
+    if (await ReceiptInstructionsRepository.fromDb(db).findHeaderById(targetId)) {
+      return { requestType: "inventory_receiving", documentKind: "RECEIPT_INSTRUCTION" };
+    }
+    return null;
+  }
+  if (await ReceiptsRepository.fromDb(db).findHeaderById(targetId)) return { requestType: "inventory_receiving", documentKind: "RECEIPT" };
+  if (await ShipmentsRepository.fromDb(db).findHeaderById(targetId)) return { requestType: "inventory_shipping", documentKind: "SHIPMENT" };
+  if (await ReclassificationsRepository.fromDb(db).findById(targetId)) return { requestType: "inventory_audit", documentKind: "RECLASSIFICATION" };
+  if (await DisposalsRepository.fromDb(db).findById(targetId)) return { requestType: "inventory_audit", documentKind: "DISPOSAL" };
+  if (await ReturnsRepository.fromDb(db).findById(targetId)) return { requestType: "inventory_audit", documentKind: "RETURN" };
+  return null;
+}
+
 export const inventoryStockAdapter: TargetAdapter = {
+  resolveFlowTarget,
   // BUG-049: 書き込みの結果を使う処理(書き込み直後の再集計など)や R2 の後始末を含むため、承認の書き込みとはまとめず、先に実行する
   requiresImmediateWrites: true,
   applyApproved,

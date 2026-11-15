@@ -97,7 +97,7 @@ describe("フィクスチャのローダー", () => {
     const flows = await db.select().from(schema.approvalFlows);
     expect(flows).toHaveLength(1);
     expect(flows[0].maxAmount).toBe(500);
-    expect(loadFixtureRows("inventory-approval").approval_flows).toHaveLength(2);
+    expect(loadFixtureRows("inventory-approval").approval_flows).toHaveLength(3);
   });
 
   it("存在しないシナリオはエラー", () => {

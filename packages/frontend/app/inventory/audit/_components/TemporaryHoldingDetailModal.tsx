@@ -133,7 +133,8 @@ export function TemporaryHoldingDetailModal({
   const deletable = canDelete && !!detail && !detail.movements.some((m) => m.approvalStatus !== "REMANDED");
 
   return (
-    <Modal title={`📦 一時保管 [${holdingId}]`} size="2xl" onClose={onClose} warnOnDiscard>
+    // 払出・調整・在庫へ移すに成功したら(読み直したら)、未保存の編集の印を消す(保存した後の✕で確認を出さない)
+    <Modal title={`📦 一時保管 [${holdingId}]`} size="2xl" onClose={onClose} warnOnDiscard discardResetKey={reloadKey}>
       <div className="space-y-3 text-xs">
         <MessageBanner error={error} />
         {detail && (

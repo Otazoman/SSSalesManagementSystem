@@ -71,6 +71,10 @@ async function paymentReceiptPreview(db: any, targetId: string) {
 }
 
 export const paymentReceiptsAdapter: TargetAdapter = {
+  // BUG-103: 入金は「請求管理」の承認フローを使う(請求と同じメニュー。documentKind で分けられる)
+  async resolveFlowTarget() {
+    return { requestType: "sales_billing", documentKind: "PAYMENT_RECEIPT" };
+  },
   requiresImmediateWrites: true,
   async resolveAmount({ db, targetId }: ResolveAmountParams) {
     const receipt = await findPaymentReceipt(db, targetId);
@@ -130,6 +134,9 @@ async function setCashReceiptApproval(db: any, id: string, approvalStatus: strin
 }
 
 export const cashReceiptsAdapter: TargetAdapter = {
+  async resolveFlowTarget() {
+    return { requestType: "sales_billing", documentKind: "CASH_RECEIPT" };
+  },
   requiresImmediateWrites: true,
   async resolveAmount({ db, targetId }: ResolveAmountParams) {
     const receipt = await findCashReceipt(db, targetId);
@@ -213,6 +220,10 @@ async function disbursementPreview(db: any, targetId: string) {
 }
 
 export const paymentDisbursementsAdapter: TargetAdapter = {
+  // BUG-103: 支払の消込は「支払管理」の承認フローを使う
+  async resolveFlowTarget() {
+    return { requestType: "purchase_payment", documentKind: "PAYMENT_DISBURSEMENT" };
+  },
   requiresImmediateWrites: true,
   async resolveAmount({ db, targetId }: ResolveAmountParams) {
     const disbursement = await findDisbursement(db, targetId);

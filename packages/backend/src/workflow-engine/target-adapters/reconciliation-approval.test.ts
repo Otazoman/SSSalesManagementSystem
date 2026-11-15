@@ -67,9 +67,14 @@ async function enable(config: Record<string, boolean>) {
   await env.COMPANY_SETTINGS.put("config", JSON.stringify(config));
 }
 
-async function seedFlow(requestType: string) {
-  await db.insert(schema.approvalFlows).values({ id: `flow-${requestType}`, name: requestType, requestType, minAmount: 0, maxAmount: 999999999, isActive: true });
-  await db.insert(schema.approvalFlowSteps).values({ id: `step-${requestType}`, flowId: `flow-${requestType}`, stepOrder: 1, approverRoleId: "approver_role" });
+// BUG-103: 承認フローはメニュー単位(入金は請求管理、支払の消込は支払管理)。documentKind で伝票の種類ごとに分ける
+async function seedFlow(requestType: string, documentKind?: string) {
+  const id = `flow-${requestType}-${documentKind ?? "all"}`;
+  await db.insert(schema.approvalFlows).values({
+    id, name: id, requestType, minAmount: 0, maxAmount: 999999999, isActive: true,
+    ...(documentKind ? { matchField: "documentKind", matchValue: documentKind } : {}),
+  });
+  await db.insert(schema.approvalFlowSteps).values({ id: `step-${id}`, flowId: id, stepOrder: 1, approverRoleId: "approver_role" });
 }
 
 const audit = { createdBy: "applicant-1", createdAt: now, updatedBy: "applicant-1", updatedAt: now };
@@ -127,7 +132,7 @@ beforeEach(async () => {
 describe("請求への入金の承認(sales_payment_receipts)", () => {
   beforeEach(async () => {
     await enable({ is_cash_receipt_approval_enabled: true });
-    await seedFlow("sales_payment_receipts");
+    await seedFlow("sales_billing", "PAYMENT_RECEIPT");
     await seedBilling("BL-1");
   });
 
@@ -187,8 +192,8 @@ describe("請求への入金の承認(sales_payment_receipts)", () => {
 describe("単体入金の承認(sales_cash_receipts)と紐づけ", () => {
   beforeEach(async () => {
     await enable({ is_cash_receipt_approval_enabled: true });
-    await seedFlow("sales_cash_receipts");
-    await seedFlow("sales_payment_receipts");
+    await seedFlow("sales_billing", "CASH_RECEIPT");
+    await seedFlow("sales_billing", "PAYMENT_RECEIPT");
     await seedBilling("BL-1");
   });
 
@@ -235,7 +240,7 @@ describe("単体入金の承認(sales_cash_receipts)と紐づけ", () => {
 describe("支払の消込の承認(purchase_payment_disbursements)", () => {
   beforeEach(async () => {
     await enable({ is_payment_disbursement_approval_enabled: true });
-    await seedFlow("purchase_payment_disbursements");
+    await seedFlow("purchase_payment");
     await seedPayment("PY-1");
   });
 

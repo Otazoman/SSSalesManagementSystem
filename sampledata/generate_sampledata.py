@@ -394,18 +394,19 @@ flow("受注申請(通常)", "sales_orders", [("users", "", "作成・申請", "
 flow("受注申請(高額)", "sales_orders", [("users", "", "作成・申請", ""), SALES_MGR, SALES_GM], 1000000, MAX)
 flow("売上計上申請", "sales_invoices", [REQ, SALES_MGR, FINANCE], 0, MAX)
 flow("請求申請", "sales_billing", [REQ, SALES_MGR, FINANCE], 0, MAX)
-flow("入金(請求への入金)", "sales_payment_receipts", [REQ, FINANCE], 0, MAX)
-flow("入金(単体入金)", "sales_cash_receipts", [REQ, FINANCE], 0, MAX)
+# BUG-103: 承認フローはメニュー単位。入金は「請求管理」のフローで、分岐条件 documentKind で請求と分ける
+flow("入金(請求への入金)", "sales_billing", [REQ, FINANCE], 0, MAX, "documentKind", "PAYMENT_RECEIPT")
+flow("入金(単体入金)", "sales_billing", [REQ, FINANCE], 0, MAX, "documentKind", "CASH_RECEIPT")
 # 購買
 flow("購買申請(通常)", "purchase_requisitions", [REQ, PURCHASE_MGR], 0, MAX)
 flow("購買申請(前払)", "purchase_requisitions", [REQ, PURCHASE_MGR, ("finance_checker", "0005", "経理確認", "前払は経理の確認を必須にする")], 0, MAX, "requestType", "PREPAYMENT")
 flow("発注申請", "purchase_orders", [REQ, PURCHASE_MGR], 0, MAX)
-flow("仕入計上申請", "purchase_recognitions", [REQ, PURCHASE_MGR, FINANCE], 0, MAX)
-flow("支払の消込", "purchase_payment_disbursements", [REQ, FINANCE], 0, MAX)
-# 在庫(入庫・出庫・品質区分変更・廃棄・返品は inventory_stock、入荷指示・出荷指示は inventory_instructions)
-flow("入出庫・廃棄・返品申請", "inventory_stock", [REQ, WAREHOUSE_CHIEF], 0, MAX)
-flow("入荷指示・出荷指示申請", "inventory_instructions", [REQ, WAREHOUSE_CHIEF], 0, MAX)
-flow("棚卸計上申請", "inventory_audit", [REQ, WAREHOUSE_CHIEF], 0, MAX)
+flow("仕入計上申請", "purchase_receipts", [REQ, PURCHASE_MGR, FINANCE], 0, MAX)
+flow("支払の消込", "purchase_payment", [REQ, FINANCE], 0, MAX)
+# 在庫(BUG-103: メニュー単位。分岐条件の無いフローは、そのメニューの全ての伝票に使う)
+flow("入荷(入庫・入荷実績・入荷指示)", "inventory_receiving", [REQ, WAREHOUSE_CHIEF], 0, MAX)
+flow("出荷(出庫・出荷実績・出荷指示)", "inventory_shipping", [REQ, WAREHOUSE_CHIEF], 0, MAX)
+flow("在庫・棚卸(棚卸・品質区分変更・廃棄・返品)", "inventory_audit", [REQ, WAREHOUSE_CHIEF], 0, MAX)
 write("approval_flows_import_sample.csv",
       ["name", "requestType", "minAmount", "maxAmount", "isActive", "matchField", "matchValue", "approverRoleId", "targetDepartmentId", "stepName", "stepMemo"], FLOWS)
 

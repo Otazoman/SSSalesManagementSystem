@@ -54,6 +54,10 @@ async function getHistoryPreview({ db, targetId }: HistoryPreviewParams): Promis
 }
 
 export const billingAdapter: TargetAdapter = {
+  // BUG-103: 請求は「請求管理」の承認フロー(入金と同じメニュー。documentKind で分けられる)
+  async resolveFlowTarget() {
+    return { requestType: "sales_billing", documentKind: "BILLING" };
+  },
   resolveAmount,
   applyApproved,
   applyRemanded,

@@ -757,6 +757,13 @@
       "when": 1794725243764,
       "tag": "0107_warehouse_partners",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "6",
+      "when": 1794727897860,
+      "tag": "0108_approval_flows_by_menu",
+      "breakpoints": true
     }
   ]
 }

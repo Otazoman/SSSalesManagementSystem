@@ -224,6 +224,10 @@ async function getHistoryPreview({
 }
 
 export const purchaseRecognitionsAdapter: TargetAdapter = {
+  // BUG-103: 仕入は「仕入管理」(purchase_receipts)の承認フローを使う
+  async resolveFlowTarget() {
+    return { requestType: "purchase_receipts", documentKind: "PURCHASE_RECOGNITION" };
+  },
   resolveAmount,
   applyApproved,
   applyRemanded,

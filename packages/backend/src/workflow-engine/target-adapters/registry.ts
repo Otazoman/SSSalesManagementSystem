@@ -97,7 +97,18 @@ export interface ResolveEditPathParams {
   targetId: string;
 }
 
+/**
+ * BUG-103: 承認フローの選び方。承認フローはメニュー(画面マスタの resource)単位で作るため、申請の種類(targetType)ではなく、
+ * 伝票を作るメニューの種類で探す。documentKind は、同じメニューの中で伝票の種類ごとに承認者を変える時の分岐条件(matchField = documentKind)に使う
+ */
+export interface FlowTarget {
+  requestType: string;
+  documentKind?: string;
+}
+
 export interface TargetAdapter {
+  /** BUG-103: この申請に使う承認フローのメニューと伝票の種類。未定義の場合は targetType のフローを使う(マスタ・見積など、メニューと同じ種類) */
+  resolveFlowTarget?(params: { db: any; targetType: string; targetId: string }): Promise<FlowTarget | null>;
   /** 申請提出時の金額解決。未定義の場合は常に0として扱う(=金額レンジ0のフローにのみ一致) */
   resolveAmount?(params: ResolveAmountParams): Promise<number>;
   /** 最終承認確定時に実マスタテーブルへ反映する */
@@ -167,4 +178,11 @@ export function listTargetTypes(): string[] {
 
 export function getTargetAdapter(targetType: string): TargetAdapter | undefined {
   return registry[targetType];
+}
+
+/** BUG-103: 申請に使う承認フローのメニューと伝票の種類(アダプターが決めなければ、申請の種類そのもの) */
+export async function resolveFlowTarget(db: any, targetType: string, targetId: string): Promise<FlowTarget> {
+  const adapter = registry[targetType];
+  const target = adapter?.resolveFlowTarget ? await adapter.resolveFlowTarget({ db, targetType, targetId }) : null;
+  return target ?? { requestType: targetType };
 }

@@ -171,6 +171,8 @@ export function StockTransferDetailModal({
       size="2xl"
       onClose={onClose}
       warnOnDiscard
+      // 入庫・差異で完了に成功したら(読み直したら)、未保存の編集の印を消す(保存した後の✕で確認を出さない)
+      discardResetKey={reloadKey}
     >
       <div className="space-y-3 text-xs">
         <MessageBanner error={error} />
