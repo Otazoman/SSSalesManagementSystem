@@ -49,6 +49,7 @@ export type PDFInvoiceData = {
   quoteTitle?: string | null; // 件名
   deliveryDate?: string | null; // 納期
   deliveryPlace?: string | null; // 納品場所
+  deliveryPlaceAddress?: string | null; // REQ-009: 納品場所の所在地(発注書)
   paymentTerms?: string | null; // 支払条件
   expiryDate?: string | null; // 見積期限
   sourceQuoteNumber?: string | null; // REQ-002: ご発注書の元の見積番号
@@ -152,13 +153,17 @@ function drawPartnerAndConditionsBlock(
   // 条件テーブルの開始座標
   let currentY = height - 105;
 
-  if (layoutConfig.showConditionTable && layoutConfig.conditions.length > 0) {
+  // REQ-009: optional の行(発注書の「納品場所の所在地」など)は、値が空なら出さない(所在地の無い今までの発注は今までどおりの見た目)
+  const conditions = (layoutConfig.conditions as Array<{ key: string; label: string; optional?: boolean }>).filter(
+    (cond) => !cond.optional || !!data[cond.key as keyof PDFInvoiceData],
+  );
+  if (layoutConfig.showConditionTable && conditions.length > 0) {
     const tableTop = currentY;
     const rowHeight = 15;
     const tableWidth = 260;
     const labelWidth = 65;
 
-    layoutConfig.conditions.forEach(
+    conditions.forEach(
       (cond: { key: string; label: string }, idx: number) => {
         const y = tableTop - idx * rowHeight;
         const rawValue = data[cond.key as keyof PDFInvoiceData];
@@ -201,7 +206,7 @@ function drawPartnerAndConditionsBlock(
       },
     );
 
-    currentY -= layoutConfig.conditions.length * rowHeight;
+    currentY -= conditions.length * rowHeight;
 
     // 画面構成再編: 納品書(DELIVERY)は元々小計/消費税/合計を一切表示していなかったため、
     // layoutConfig.showTotals === false の場合はこの金額ボックス自体を描画しない

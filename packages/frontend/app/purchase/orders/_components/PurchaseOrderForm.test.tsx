@@ -46,6 +46,8 @@ function baseProps(overrides: Partial<Parameters<typeof PurchaseOrderForm>[0]> =
     setDeliveryDate: vi.fn(),
     deliveryPlace: "",
     setDeliveryPlace: vi.fn(),
+    deliveryPlaceAddress: "",
+    setDeliveryPlaceAddress: vi.fn(),
     deliveryLocationId: "",
     setDeliveryLocationId: vi.fn(),
     deliveryWarehouseId: "",

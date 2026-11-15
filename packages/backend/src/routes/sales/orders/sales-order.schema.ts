@@ -28,20 +28,20 @@ const optionalNumber = v.optional(
 
 // Item7: OTPダウンロードリクエスト(外部公開エンドポイント用、quotesと同型)
 export const RequestDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.email("有効なメールアドレス形式で入力してください"),
-  ),
+  )),
 });
 export type RequestDownloadOtpInput = v.InferOutput<
   typeof RequestDownloadOtpSchema
 >;
 
 export const VerifyDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.email("有効なメールアドレス形式で入力してください"),
-  ),
+  )),
   otp: v.pipe(
     v.string(),
     v.regex(/^\d{4,8}$/, "確認コードは4〜8桁の数字で入力してください"),

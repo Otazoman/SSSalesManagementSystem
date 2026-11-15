@@ -36,7 +36,8 @@
     "conditions": [
       { "key": "quoteTitle", "label": "件名" },
       { "key": "deliveryDate", "label": "希望納期" },
-      { "key": "deliveryPlace", "label": "納品場所" }
+      { "key": "deliveryPlace", "label": "納品場所" },
+      { "key": "deliveryPlaceAddress", "label": "所在地", "optional": true }
     ]
   },
   "ORDER_ACKNOWLEDGMENT": {

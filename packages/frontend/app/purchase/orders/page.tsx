@@ -105,6 +105,8 @@ export default function PurchaseOrdersPage() {
     setDeliveryDate,
     deliveryPlace,
     setDeliveryPlace,
+    deliveryPlaceAddress,
+    setDeliveryPlaceAddress,
     deliveryLocationId,
     setDeliveryLocationId,
     deliveryWarehouseId,
@@ -492,6 +494,8 @@ export default function PurchaseOrdersPage() {
             setDeliveryDate={setDeliveryDate}
             deliveryPlace={deliveryPlace}
             setDeliveryPlace={setDeliveryPlace}
+            deliveryPlaceAddress={deliveryPlaceAddress}
+            setDeliveryPlaceAddress={setDeliveryPlaceAddress}
             deliveryLocationId={deliveryLocationId}
             setDeliveryLocationId={setDeliveryLocationId}
             deliveryWarehouseId={deliveryWarehouseId}

@@ -100,7 +100,7 @@ export class QuoteService {
     return this.download.getDownloadStream(id, attachmentId);
   }
 
-  requestDownloadOtp(c: Context, quoteId: string, attachmentId: string, email: string) {
+  requestDownloadOtp(c: Context, quoteId: string, attachmentId: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, quoteId, attachmentId, email);
   }
 
@@ -108,7 +108,7 @@ export class QuoteService {
     c: Context,
     quoteId: string,
     attachmentId: string,
-    email: string,
+    email: string | undefined,
     otp: string,
   ) {
     return this.download.verifyDownloadOtp(c, quoteId, attachmentId, email, otp);

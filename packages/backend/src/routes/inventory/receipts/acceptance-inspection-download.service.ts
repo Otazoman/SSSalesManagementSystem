@@ -1,16 +1,8 @@
 import { Context } from "hono";
 import { ReceiptsRepository } from "./receipts.repository";
+import { toRecipientEmails, sendDocumentOtpToRecipients, verifyDocumentOtp } from "../../../platform/otp/document-otp";
 import { PartnerContactsRepository } from "../../master/partner-contacts/partner-contacts.repository";
-import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
-import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
-import { OtpRepository } from "../../../platform/otp/otp-repository";
-import { generateOtpCode } from "../../../platform/otp/generate-otp-code";
-import {
-  OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES,
-  MAX_OTP_REQUESTS_PER_WINDOW,
-  readDownloadOtpSettings,
-} from "../../../platform/otp/download-otp-settings";
-import { enqueueNotification, sendNotificationNow } from "../../../platform/notifications/enqueue-notification";
+import { NotFoundError } from "../../../platform/http/http-error";
 
 // purchase-order-download.service.tsと同じ方針(OTP発行連打による悪用防止のレート制限含む)
 const DOCUMENT_TYPE = "acceptance_inspection";
@@ -26,7 +18,7 @@ export class AcceptanceInspectionDownloadService {
     return { attachment };
   }
 
-  async requestDownloadOtp(c: Context, receiptId: string, attachmentId: string, email: string) {
+  async requestDownloadOtp(c: Context, receiptId: string, attachmentId: string, _email?: string) {
     const receipt = await this.repo.findHeaderById(receiptId);
     if (!receipt) throw new NotFoundError("指定された入庫が見つかりません");
 
@@ -35,110 +27,21 @@ export class AcceptanceInspectionDownloadService {
       throw new NotFoundError("指定されたファイルレコードが見つかりません");
     }
 
-    const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const restrictToContacts = systemConfig.is_otp_download_restricted_to_contacts !== false;
-
-    let shouldSend = true;
-    if (restrictToContacts) {
-      if (!receipt.partnerId) {
-        shouldSend = false;
-      } else {
-        const contactsRepo = new PartnerContactsRepository(c.env.DB);
-        const contacts = await contactsRepo.findActiveContactsForDocument(receipt.partnerId, "acceptance_inspection");
-        shouldSend = contacts.some(
-          (contact) => contact.email?.trim().toLowerCase() === email.trim().toLowerCase(),
-        );
-      }
-    }
-
-    if (shouldSend) {
-      const otpRepo = new OtpRepository(c.env.DB_OTP);
-      const now = new Date();
-      const normalizedEmail = email.trim().toLowerCase();
-
-      const windowStart = new Date(now.getTime() - OTP_REQUEST_RATE_LIMIT_WINDOW_MINUTES * 60_000);
-      const recentCount = await otpRepo.countRecentChallenges(
-        DOCUMENT_TYPE,
-        receiptId,
-        attachmentId,
-        normalizedEmail,
-        windowStart,
-      );
-
-      if (recentCount < MAX_OTP_REQUESTS_PER_WINDOW) {
-        const otpDigitCount = readDownloadOtpSettings(systemConfig).digitCount;
-        const otpExpiryMinutes = readDownloadOtpSettings(systemConfig).expiryMinutes;
-        const otpCode = generateOtpCode(otpDigitCount);
-        const expiresAt = new Date(now.getTime() + otpExpiryMinutes * 60_000);
-
-        await otpRepo.insertChallenge({
-          id: crypto.randomUUID(),
-          documentType: DOCUMENT_TYPE,
-          documentId: receiptId,
-          attachmentId,
-          email: normalizedEmail,
-          otpCode,
-          expiresAt,
-          createdAt: now,
-        });
-
-        const notificationId = await enqueueNotification({
-          dbLog: c.env.DB_LOG,
-          category: "acceptance_inspection_download_otp",
-          documentId: receiptId,
-          recipientTo: email,
-          subject: "【検収書ダウンロード】確認コードのご案内",
-          body: [
-            "検収書ダウンロードの確認コードは以下の通りです。",
-            "",
-            otpCode,
-            "",
-            `このコードは発行から${otpExpiryMinutes}分間有効です。`,
-            "心当たりのない場合は、このメールを破棄してください。",
-          ].join("\n"),
-        });
-        // PERF-08: 確認コードのメールは、定期処理(1分ごと)を待たずにすぐ送る
-        sendNotificationNow(c, notificationId);
-      }
-    }
-
-    return {
-      success: true,
-      message: "入力されたメールアドレスが有効な場合、確認コードを送信しました。メールをご確認ください。",
-    };
+    // REQ-007: メールアドレスの入力をやめ、登録済みの宛先の全員に同じ確認コードを送る(入荷指示書と同じ)。照合・回数制限は帳票の単位
+    const emails = toRecipientEmails(receipt.partnerId ? await new PartnerContactsRepository(c.env.DB).findActiveContactsForDocument(receipt.partnerId, "acceptance_inspection") : []);
+    return sendDocumentOtpToRecipients(c, {
+      documentType: DOCUMENT_TYPE,
+      documentId: receiptId,
+      attachmentId: attachmentId,
+      emails,
+      category: "acceptance_inspection_download_otp",
+      label: "検収書",
+    });
   }
 
-  async verifyDownloadOtp(c: Context, receiptId: string, attachmentId: string, email: string, otp: string) {
-    const otpRepo = new OtpRepository(c.env.DB_OTP);
-    const now = new Date();
-    const normalizedEmail = email.trim().toLowerCase();
-    const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
-    const maxAttempts = readDownloadOtpSettings(systemConfig).maxAttempts;
-
-    const challenge = await otpRepo.findLatestActiveChallenge(
-      DOCUMENT_TYPE,
-      receiptId,
-      attachmentId,
-      normalizedEmail,
-      now,
-    );
-    if (!challenge) {
-      throw new BadRequestError(
-        "確認コードが無効か期限切れです。お手数ですが再度メールアドレスをご入力ください。",
-      );
-    }
-
-    if (challenge.attemptCount >= maxAttempts) {
-      throw new BadRequestError("試行回数の上限に達しました。お手数ですが再度メールアドレスをご入力ください。");
-    }
-
-    if (challenge.otpCode !== otp.trim()) {
-      await otpRepo.incrementAttempt(challenge.id, challenge.attemptCount + 1);
-      const remaining = maxAttempts - challenge.attemptCount - 1;
-      throw new BadRequestError(`確認コードが正しくありません。(残り試行可能回数: ${remaining}回)`);
-    }
-
-    await otpRepo.markVerified(challenge.id, now);
+  // REQ-007: 確認コードの照合は帳票の単位(メールアドレスは使わない。送られてきても無視する)
+  async verifyDownloadOtp(c: Context, receiptId: string, attachmentId: string, _email: string | undefined, otp: string) {
+    await verifyDocumentOtp(c, { documentType: DOCUMENT_TYPE, documentId: receiptId, attachmentId: attachmentId, otp });
 
     const attachment = await this.repo.findAttachmentByIdAndReceiptId(attachmentId, receiptId);
     if (!attachment || !attachment.attachmentR2Path) {

@@ -1,6 +1,7 @@
 import { PurchaseOrderRepository } from "./purchase-order.repository";
 import { ReceiptsRepository } from "../../inventory/receipts/receipts.repository";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
+import { isOutsideInventoryLine } from "../../../platform/inventory/service-items";
 
 export interface ReceiptProgressItem {
   orderItemId: string;
@@ -27,7 +28,8 @@ export class PurchaseOrderReceiptService {
     // BUG-065: サービス品目(役務)は入荷しないため、入荷の残数量(入荷指示・入庫の作成用)に含めない
     const allItems = await this.repo.findOrderItems(orderId);
     const serviceItemIds = await this.repo.findServiceItemIds(allItems.map((i: any) => i.itemId));
-    const items = allItems.filter((i: any) => !serviceItemIds.has(i.itemId));
+    // REQ-011(1): 品目マスタに無い明細(直接入力)も含めない
+    const items = allItems.filter((i: any) => !isOutsideInventoryLine(i, serviceItemIds));
     const itemIds = items.map((i: any) => i.id);
 
     const receivedRows = await this.receiptsRepo.getReceivedQuantitiesByOrderItemIds(itemIds);
@@ -55,6 +57,10 @@ export class PurchaseOrderReceiptService {
       throw new NotFoundError(`発注明細が見つかりません: ${orderItemId}`);
     }
     // BUG-065: サービス品目(役務)は入荷の対象外
+    // REQ-011(1): 品目マスタに無い明細(直接入力)も入荷の対象外
+    if (orderItems.inputType === "DIRECT") {
+      throw new BadRequestError(`発注明細[${orderItemId}]は品目マスタに無いため、入荷の対象外です(一時保管で管理できます)`);
+    }
     if ((await this.repo.findServiceItemIds([orderItems.itemId])).size > 0) {
       throw new BadRequestError(`発注明細[${orderItemId}]はサービス品目(役務)のため、入荷の対象外です`);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { InstructionMailButton } from "./InstructionMailButton";
 import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
@@ -249,7 +250,7 @@ export function ReceiptInstructionPanel({
         )}
 
         <h3 className="text-sm font-bold text-slate-800">
-          📦 入荷指示の新規登録(外部倉庫向け)
+          📦 入荷指示の新規登録
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -288,7 +289,7 @@ export function ReceiptInstructionPanel({
           </div>
           <div>
             <label className="text-sm text-slate-700 block mb-1">
-              外部倉庫
+              倉庫
             </label>
             <select
               value={form.warehouseId}
@@ -298,7 +299,7 @@ export function ReceiptInstructionPanel({
               <option value="">選択してください</option>
               {form.warehouses.map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.id} ({w.name})
+                  {w.id} ({w.name}){w.warehouseType === "EXTERNAL" ? "・外部" : "・自社"}
                 </option>
               ))}
             </select>
@@ -636,6 +637,15 @@ export function ReceiptInstructionPanel({
                   >
                     📄 PDFを表示
                   </Button>
+                )}
+                {/* REQ-012: 案内メールは PDF の発行と同時に送らず、この操作で送る */}
+                {i.instructionDocumentR2Path && (
+                  <InstructionMailButton
+                    kind="receipt"
+                    instructionId={i.id}
+                    warehouseId={i.warehouseId}
+                    onResult={(result) => setMessageState(result)}
+                  />
                 )}
                 <Button
                   size="sm"

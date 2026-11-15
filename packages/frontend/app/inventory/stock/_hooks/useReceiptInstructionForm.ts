@@ -46,6 +46,8 @@ export interface ReceiptInstructionCreatePrefill {
     instructedQuantity: number;
     orderItemId: string;
   }>;
+  // BUG-091: 発注の納品場所に指定した倉庫(deliveryWarehouseId)。選択肢にある時だけ初期値にする
+  warehouseId?: string | null;
 }
 
 export function useReceiptInstructionForm(
@@ -97,8 +99,8 @@ export function useReceiptInstructionForm(
           apiFetch<PartnerRecord[]>("/api/partners?status=active"),
           apiFetch<ProductRecord[]>("/api/products?status=active"),
         ]);
-        // 入荷指示は外部倉庫のみ、仕入先(SUPPLIER/BOTH)のみを選択肢にする
-        setWarehouses(whs.filter((w) => w.warehouseType === "EXTERNAL"));
+        // REQ-010: 入荷指示は自社倉庫・外部倉庫のどちらにも作れる(出荷指示と同じ)。直送用の倉庫だけ除く。仕入先(SUPPLIER/BOTH)のみを選択肢にする
+        setWarehouses(whs.filter((w) => w.warehouseType !== "DIRECT"));
         setPartners(partnerList.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH"));
         setProducts(prods);
       } catch (err: unknown) {
@@ -153,6 +155,15 @@ export function useReceiptInstructionForm(
       );
     })();
   }, [editTarget, createPrefill]);
+
+  // BUG-091: 発注の納品先倉庫を初期値にする(倉庫の選択肢を読み込んだ後、選択肢にある時だけ。直送用の倉庫などは入れない)
+  useEffect(() => {
+    const prefillWarehouseId = createPrefill?.warehouseId;
+    if (editTarget || !prefillWarehouseId || !warehouses.some((w) => w.id === prefillWarehouseId)) return;
+    void (async () => {
+      setWarehouseId(prefillWarehouseId);
+    })();
+  }, [editTarget, createPrefill, warehouses]);
 
   const addLine = () => {
     setError("");
@@ -211,7 +222,7 @@ export function useReceiptInstructionForm(
       return;
     }
     if (!warehouseId) {
-      setError("外部倉庫を選択してください");
+      setError("倉庫を選択してください");
       return;
     }
     if (lines.length === 0) {

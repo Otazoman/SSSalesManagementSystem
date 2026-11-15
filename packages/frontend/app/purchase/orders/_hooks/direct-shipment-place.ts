@@ -27,8 +27,23 @@ export function formatDirectShipmentPlace(
   return text ? `直送: ${text}` : "直送";
 }
 
-/** 受注から直送先を組み立てる。取得できなかった部分は空欄のまま(画面で直せる) */
-export async function fetchDirectShipmentPlace(salesOrderId: string): Promise<string> {
+// REQ-009: 納品場所を名称と所在地に分けた形。名称は「直送: 得意先名(納品先名)」、所在地は納品先の住所
+// (納品先が無ければ受注の納品場所(自由入力)、それも無ければ得意先の住所)
+export function splitDirectShipmentPlace(
+  partner: AddressParts | null,
+  destination: AddressParts | null,
+  salesOrderDeliveryPlace: string | null | undefined,
+): { name: string; address: string } {
+  const postal = (zip: string | null | undefined) => (zip ? `〒${zip}` : "");
+  const name = ["直送:", partner?.name || "", destination?.name || ""].filter(Boolean).join(" ");
+  const address = destination
+    ? [postal(destination.postalCode), destination.address || ""].filter(Boolean).join(" ")
+    : salesOrderDeliveryPlace || [postal(partner?.postalCode), partner?.address || ""].filter(Boolean).join(" ");
+  return { name: name === "直送:" ? "直送" : name, address };
+}
+
+/** 受注から直送先を組み立てる(REQ-009: 名称と所在地に分けて返す)。取得できなかった部分は空欄のまま(画面で直せる) */
+export async function fetchDirectShipmentPlace(salesOrderId: string): Promise<{ name: string; address: string }> {
   const order = await apiFetch<{
     partnerId: string;
     deliveryPlace?: string | null;
@@ -47,5 +62,5 @@ export async function fetchDirectShipmentPlace(salesOrderId: string): Promise<st
   // 取引先一覧の ID 検索は部分一致のため、同じ ID のものを選ぶ
   const partner = partners.find((p) => p.id === order.partnerId) ?? null;
   const destination = destinations.find((d) => d.id === order.deliveryDestinationId) ?? null;
-  return formatDirectShipmentPlace(partner, destination, order.deliveryPlace);
+  return splitDirectShipmentPlace(partner, destination, order.deliveryPlace);
 }

@@ -118,7 +118,8 @@ export class SalesInvoiceCrudService {
     // BUG-065: サービス品目(役務)は出荷しないため、設定に関わらず受注数量を基準にする
     const serviceItemIds = await this.repo.findServiceItemIds(items.map((item: any) => item.itemId));
     return items.map((item: any) => {
-      const usesFulfilled = requiresShipment && !serviceItemIds.has(item.itemId);
+      // REQ-011(1): 品目マスタに無い明細(直接入力)も、出荷しないため受注数量を基準にする
+      const usesFulfilled = requiresShipment && item.inputType !== "DIRECT" && !serviceItemIds.has(item.itemId);
       const basisQuantity = usesFulfilled
         ? shippedByOrderItem.get(item.id) || 0
         : item.quantity;
@@ -207,7 +208,10 @@ export class SalesInvoiceCrudService {
       }
 
       // BUG-065: サービス品目(役務)は設定に関わらず受注数量を基準にする
-      const usesFulfilled = requiresShipment && !(await this.repo.findServiceItemIds([orderItem.itemId])).has(orderItem.itemId ?? "");
+      const usesFulfilled =
+        requiresShipment &&
+        orderItem.inputType !== "DIRECT" &&
+        !(await this.repo.findServiceItemIds([orderItem.itemId])).has(orderItem.itemId ?? "");
       const basisQuantity = usesFulfilled
         ? shippedByOrderItem.get(orderItemId) || 0
         : orderItem.quantity;

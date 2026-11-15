@@ -5,6 +5,15 @@ import * as schema from "../../db/schema";
 // BUG-056・BUG-065: 品目マスタでサービス(isService)の品目id。サービス(役務)は在庫を持たないため、在庫の引当・
 // 不足確認・出荷・入荷の対象外にし、「出荷済み(入荷済み)数量まで」の設定でも受注(発注)数量まで計上できるようにする。
 // D1は1文100変数までのため、90件ずつ問い合わせる
+// REQ-011(1): 品目マスタに無い明細(直接入力 inputType = "DIRECT")も、在庫・入荷・出荷の対象外にする(サービス品と同じ扱い)。
+// 品目マスタに無い物は在庫に混ぜず、一時保管(REQ-011(2))で管理する
+export function isOutsideInventoryLine(
+  line: { itemId?: string | null; inputType?: string | null },
+  serviceItemIds: Set<string>,
+): boolean {
+  return line.inputType === "DIRECT" || (!!line.itemId && serviceItemIds.has(line.itemId));
+}
+
 export async function selectServiceItemIds(
   db: DrizzleD1Database<typeof schema>,
   itemIds: Array<string | null | undefined>,

@@ -39,6 +39,14 @@ export function PurchaseOrderPreview({ order, suppliers, allItems, onClose }: Pu
           </div>
         </div>
       </div>
+      {(order.deliveryPlace || order.deliveryPlaceAddress) && (
+        <div>
+          <label className="text-slate-600 font-bold block text-[10px]">納品場所</label>
+          <div className="font-bold text-slate-800 mt-0.5">{order.deliveryPlace || "-"}</div>
+          {/* REQ-009: 納品場所の所在地 */}
+          {order.deliveryPlaceAddress && <div className="text-slate-700 mt-0.5">{order.deliveryPlaceAddress}</div>}
+        </div>
+      )}
       {order.requestId && (
         <div>
           <label className="text-slate-600 font-bold block text-[10px]">元の購買申請</label>

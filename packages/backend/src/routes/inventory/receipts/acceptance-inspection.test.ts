@@ -229,7 +229,8 @@ describe("検収書OTPダウンロード(発注書と同じメールアドレス
     expect(text).toBe("dummy-acceptance-inspection-pdf");
   });
 
-  it("登録済み連絡先制限が有効な場合、未登録メールアドレスへはOTPを送信しない(200は返すが記録は無い)", async () => {
+  // REQ-007: 入力したメールアドレスは使わない。登録済みの宛先にだけ送り、入力したアドレスには送らない
+  it("入力したメールアドレスに関わらず、登録済みの宛先にだけ確認コードを送る", async () => {
     const res = await postJson(`/download-request/${HEADER_APPROVED_ID}/${ATTACHMENT_APPROVED_ID}`, {
       email: "unknown@example.com",
     });
@@ -240,7 +241,13 @@ describe("検収書OTPダウンロード(発注書と同じメールアドレス
       .select()
       .from(otpSchema.otpChallenges)
       .where(eq(otpSchema.otpChallenges.documentId, HEADER_APPROVED_ID));
-    expect(rows).toHaveLength(0);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r.email === "unknown@example.com")).toBe(false);
+  });
+
+  it("登録済みの宛先が無い帳票は、確認コードを発行できない(400)", async () => {
+    const res = await postJson(`/download-request/${HEADER_NO_CONTACT_ID}/${ATTACHMENT_NO_CONTACT_ID}`, {});
+    expect(res.status).toBe(400);
   });
 
   it("存在しない入庫IDへのOTP発行要求は404を返す", async () => {

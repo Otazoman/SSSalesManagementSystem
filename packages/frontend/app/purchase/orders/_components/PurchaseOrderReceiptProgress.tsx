@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { OutsideInventoryNote, type OutsideInventoryLine } from "../../../_shared/ui/OutsideInventoryNote";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { Button } from "../../../_shared/ui/Button";
@@ -21,6 +22,8 @@ interface PurchaseOrderReceiptProgressProps {
   // REQ-005 第2段階: 直送の発注なら、入荷指示の代わりに「直送完了」を出す。対象は受注明細とつながる発注明細だけ
   directSalesOrderId?: string | null;
   directLinkedOrderItemIds?: string[];
+  // REQ-011(1): 品目マスタに無い明細(直接入力)。入荷の対象外として表の下に灰色で出す
+  outsideInventoryLines?: OutsideInventoryLine[];
 }
 
 // Item9: 承認済み発注の入荷状況(明細ごとの入荷済/残数量)を表示し、残数量がある明細から
@@ -31,6 +34,7 @@ export function PurchaseOrderReceiptProgress({
   orderId,
   directSalesOrderId = null,
   directLinkedOrderItemIds = [],
+  outsideInventoryLines = [],
 }: PurchaseOrderReceiptProgressProps) {
   const router = useRouter();
   const [items, setItems] = useState<ReceiptProgressItem[]>([]);
@@ -113,6 +117,8 @@ export function PurchaseOrderReceiptProgress({
           ))}
         </tbody>
       </table>
+
+      <OutsideInventoryNote lines={outsideInventoryLines} />
 
       {directMessage && (
         <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-lg">

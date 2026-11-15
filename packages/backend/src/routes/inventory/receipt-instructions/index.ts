@@ -6,6 +6,7 @@ import { ReceiptInstructionsService } from "./receipt-instructions.service";
 import { ReceiptInstructionPdfService } from "./receipt-instruction-pdf.service";
 import { ReceiptInstructionDownloadService } from "./receipt-instruction-download.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { sendInstructionEmail } from "../instruction-mail.service";
 import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
@@ -99,7 +100,7 @@ receiptInstructionsRouter.get(
 receiptInstructionsRouter.post(
   "/register",
   describeMutationRoute({
-    summary: "外部倉庫向け入荷指示の作成",
+    summary: "入荷指示の作成(自社倉庫・外部倉庫)",
     tags: ["receipt-instructions"],
     json: createReceiptInstructionSchema,
     successDescription: "作成成功(承認機能ONの場合は承認を申請)",
@@ -349,6 +350,38 @@ receiptInstructionsRouter.post(
         fileBase64,
         csv,
       });
+    } catch (err) {
+      return respondError(c, err);
+    }
+  },
+);
+
+// REQ-012: 入荷指示書の案内メールを送る(以前は PDF の発行と同時に自動で送っていた。納品書・検収書と同じく明示の操作にした)
+const SendInstructionEmailSchema = v.looseObject({
+  recipientEmail: v.pipe(
+    v.string(),
+    v.nonEmpty("送信先メールアドレスは必須です"),
+    v.email("有効なメールアドレスの形式で入力してください"),
+  ),
+});
+
+receiptInstructionsRouter.post(
+  "/:id/send-email",
+  describeApiRoute({
+    summary: "入荷指示書の案内メール送信",
+    tags: ["receipt-instructions"],
+    json: SendInstructionEmailSchema,
+    responses: {
+      200: { description: "送信を予約した" },
+      400: { description: "メールアドレスの不備、または PDF が未発行" },
+      404: { description: "対象の指示書が見つからない" },
+    },
+  }),
+  async (c) => {
+    const parsed = v.safeParse(SendInstructionEmailSchema, await c.req.json());
+    if (!parsed.success) return respondValidationError(c, parsed.issues);
+    try {
+      return c.json(await sendInstructionEmail(c, "receipt", c.req.param("id"), parsed.output.recipientEmail));
     } catch (err) {
       return respondError(c, err);
     }

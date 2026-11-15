@@ -153,11 +153,11 @@ export class SalesOrderService {
     return this.download.getDownloadStream(id, attachmentId);
   }
 
-  requestDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string) {
+  requestDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, orderId, attachmentId, email);
   }
 
-  verifyDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string, otp: string) {
+  verifyDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string | undefined, otp: string) {
     return this.download.verifyDownloadOtp(c, orderId, attachmentId, email, otp);
   }
 

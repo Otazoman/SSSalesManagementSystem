@@ -218,6 +218,8 @@ export class PurchaseOrderCrudService {
       companyFax: body.companyFax || null,
       deliveryDate: body.deliveryDate || null,
       deliveryPlace: body.deliveryPlace || null,
+      // REQ-009: 納品場所の所在地
+      deliveryPlaceAddress: body.deliveryPlaceAddress || null,
       deliveryLocationId: body.deliveryLocationId || null,
       deliveryWarehouseId: body.deliveryWarehouseId || null,
       paymentTerms: body.paymentTerms || null,
@@ -340,6 +342,8 @@ export class PurchaseOrderCrudService {
       companyFax: body.companyFax || null,
       deliveryDate: body.deliveryDate || null,
       deliveryPlace: body.deliveryPlace || null,
+      // REQ-009: 納品場所の所在地
+      deliveryPlaceAddress: body.deliveryPlaceAddress || null,
       deliveryLocationId: body.deliveryLocationId || null,
       deliveryWarehouseId: body.deliveryWarehouseId || null,
       paymentTerms: body.paymentTerms || null,

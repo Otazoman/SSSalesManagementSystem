@@ -71,19 +71,19 @@ export type BulkRegisterReceiptInput = v.InferOutput<typeof bulkRegisterReceiptS
 // 検収書発行(方式A、purchase-order.schema.tsのRequestDownloadOtpSchema等と同型): 発注書と同じ
 // メールアドレス入力型のOTPダウンロード(受け身の一斉送信ではなく、相手が自分でメールを入力する)
 export const RequestAcceptanceInspectionDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.nonEmpty("メールアドレスは必須です"),
     v.email("有効なメールアドレスの形式で入力してください"),
-  ),
+  )),
 });
 
 export const VerifyAcceptanceInspectionDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.nonEmpty("メールアドレスは必須です"),
     v.email("有効なメールアドレスの形式で入力してください"),
-  ),
+  )),
   otp: v.pipe(
     v.string(),
     v.regex(/^\d{4,8}$/, "確認コードは4〜8桁の数字で入力してください"),

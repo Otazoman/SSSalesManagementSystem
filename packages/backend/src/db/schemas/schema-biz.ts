@@ -748,6 +748,8 @@ export const orders = sqliteTable("orders", {
   companyFax: text("company_fax"),
   deliveryDate: text("delivery_date"),
   deliveryPlace: text("delivery_place"),
+  // REQ-009(2026-11-15 ユーザー承認済み): 納品場所の所在地。deliveryPlace は「納品場所名」として使う。今ある発注は空のまま
+  deliveryPlaceAddress: text("delivery_place_address"),
   // 新規要望(2026-09-23): 発注の納品場所を「拠点用」「倉庫用」の2つの独立した選択欄から選べる
   // ようにする(あわせて上のdeliveryPlace自由入力も引き続き使える)。選択時はdeliveryPlaceへ
   // 名称をコピーする方式(表示上の実体は従来どおりdeliveryPlace1本のまま、FK列は選択状態の

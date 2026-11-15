@@ -502,6 +502,7 @@ export class PurchaseOrderRepository {
           companyFax: data.companyFax,
           deliveryDate: data.deliveryDate,
           deliveryPlace: data.deliveryPlace,
+          deliveryPlaceAddress: data.deliveryPlaceAddress,
           paymentTerms: data.paymentTerms,
           purchasePersonEmployeeNumber: data.purchasePersonEmployeeNumber,
           inputPersonEmployeeNumber: data.inputPersonEmployeeNumber,

@@ -255,3 +255,35 @@ describe("BUG-065: サービス品目(isService)は入荷の対象外", () => {
     expect(((await res.json()) as { message: string }).message).toContain("サービス");
   });
 });
+
+// REQ-011(1): 品目マスタに無い明細(直接入力)は、サービス品と同じく入荷の対象外(在庫に混ぜず、一時保管で管理する)
+describe("REQ-011(1): 品目マスタに無い明細(直接入力)は入荷の対象外", () => {
+  const DIRECT_ORDER_ITEM_ID = "PO-DIRECT-LINE";
+  beforeEach(async () => {
+    await db.insert(schema.orderItems).values({
+      id: DIRECT_ORDER_ITEM_ID,
+      orderId: ORDER_ID,
+      itemId: "FREE-001",
+      itemName: "特注の部品(マスタ外)",
+      inputType: "DIRECT",
+      quantity: 2,
+      unitPrice: 3000,
+      sortOrder: 1,
+    });
+  });
+
+  it("入荷の残数量(入荷指示・入庫の画面用)に、直接入力の明細を含めない", async () => {
+    const body = (await (await getReceiptProgress(ORDER_ID)).json()) as Array<{ orderItemId: string }>;
+    expect(body.map((b) => b.orderItemId)).toEqual([ORDER_ITEM_ID]);
+  });
+
+  it("直接入力の発注明細を入庫しようとすると400になり、一時保管を案内する", async () => {
+    const res = await postReceipt({
+      receivedDate: now.toISOString().slice(0, 10),
+      orderId: ORDER_ID,
+      items: [{ itemId: "FREE-001", warehouseId: "WH1", locationId: "LOC1", quantity: 1, orderItemId: DIRECT_ORDER_ITEM_ID }],
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("品目マスタに無い");
+  });
+});

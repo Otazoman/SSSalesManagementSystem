@@ -28,12 +28,12 @@ const optionalNumber = v.optional(
 
 // Item9 Phase5: OTPダウンロードリクエスト(外部公開エンドポイント用、quotes/sales_ordersと同型)
 export const RequestDownloadOtpSchema = v.object({
-  email: v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください")),
+  email: v.optional(v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください"))),
 });
 export type RequestDownloadOtpInput = v.InferOutput<typeof RequestDownloadOtpSchema>;
 
 export const VerifyDownloadOtpSchema = v.object({
-  email: v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください")),
+  email: v.optional(v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください"))),
   otp: v.pipe(v.string(), v.regex(/^\d{4,8}$/, "確認コードは4〜8桁の数字で入力してください")),
 });
 export type VerifyDownloadOtpInput = v.InferOutput<typeof VerifyDownloadOtpSchema>;
@@ -153,6 +153,8 @@ export const PurchaseOrderPayloadSchema = v.looseObject({
   companyFax: optionalString,
   deliveryDate: optionalString,
   deliveryPlace: optionalString,
+  // REQ-009: 納品場所の所在地(任意)
+  deliveryPlaceAddress: optionalString,
   // 新規要望(2026-09-23): 納品場所の「拠点用」「倉庫用」選択(いずれか一方、両方null=手入力のみも可)
   deliveryLocationId: optionalString,
   deliveryWarehouseId: optionalString,

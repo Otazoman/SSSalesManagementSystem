@@ -162,8 +162,9 @@ export class ReceiptInstructionsService {
 
     const warehouse = await warehousesRepo.findById(input.warehouseId);
     if (!warehouse) throw new NotFoundError(`倉庫が見つかりません: ${input.warehouseId}`);
-    if (warehouse.warehouseType !== "EXTERNAL") {
-      throw new BadRequestError("入荷指示は外部倉庫向けのみ作成できます");
+    // REQ-010: 出荷指示と同じく、自社倉庫(INTERNAL)・外部倉庫(EXTERNAL)のどちらにも作れる。直送用の倉庫(DIRECT)は在庫を持たないため除く
+    if (warehouse.warehouseType === "DIRECT") {
+      throw new BadRequestError("直送用の倉庫には入荷指示を作成できません");
     }
 
     // BUG-071: 発注から作った入荷指示は、発注・発注明細とのつながりを記録する(入庫へ引き継ぎ、

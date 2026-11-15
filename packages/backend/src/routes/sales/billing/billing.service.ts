@@ -107,11 +107,11 @@ export class BillingService {
   }
 
   // --- 追加要望: OTPダウンロード(外部公開) ---
-  requestDownloadOtp(c: Context, id: string, email: string) {
+  requestDownloadOtp(c: Context, id: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, id, email);
   }
 
-  verifyDownloadOtp(c: Context, id: string, email: string, otp: string) {
+  verifyDownloadOtp(c: Context, id: string, email: string | undefined, otp: string) {
     return this.download.verifyDownloadOtp(c, id, email, otp);
   }
 }

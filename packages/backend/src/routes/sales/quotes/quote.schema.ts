@@ -18,20 +18,20 @@ const optionalNumber = v.optional(
 
 // Item4-c: OTPダウンロードリクエスト(外部公開エンドポイント用)
 export const RequestDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.email("有効なメールアドレス形式で入力してください"),
-  ),
+  )),
 });
 export type RequestDownloadOtpInput = v.InferOutput<
   typeof RequestDownloadOtpSchema
 >;
 
 export const VerifyDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.email("有効なメールアドレス形式で入力してください"),
-  ),
+  )),
   // 桁数は会社設定(otp_digit_count)で可変のため、ここでは「数字のみ・妥当な桁数レンジ」の緩い検証に留め、
   // 実際の一致判定はサービス層でDB保存済みのコードと直接比較する
   otp: v.pipe(

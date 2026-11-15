@@ -217,9 +217,13 @@ export function SalesOrderShortagePickerModal({
     }
 
     let deliveryPlace: string | null = null;
+    // REQ-009: 納品場所の所在地
+    let deliveryPlaceAddress: string | null = null;
     if (isDirectShipment) {
       try {
-        deliveryPlace = await fetchDirectShipmentPlace(selectedOrder!.id);
+        const place = await fetchDirectShipmentPlace(selectedOrder!.id);
+        deliveryPlace = place.name;
+        deliveryPlaceAddress = place.address || null;
       } catch (err) {
         console.error("直送先(受注の得意先・納品先)の取得に失敗しました", err);
         deliveryPlace = "直送";
@@ -234,6 +238,7 @@ export function SalesOrderShortagePickerModal({
       isDirectShipment,
       directSalesOrderId: isDirectShipment ? selectedOrder!.id : null,
       deliveryPlace,
+      deliveryPlaceAddress,
     });
     onClose();
   };

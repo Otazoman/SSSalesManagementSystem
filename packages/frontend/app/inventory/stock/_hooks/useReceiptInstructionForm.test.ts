@@ -115,3 +115,45 @@ describe("useReceiptInstructionForm: BUG-071 発注から作った入荷指示",
     expect(body.items.map((i: { orderItemId: string }) => i.orderItemId)).toEqual(["POI-1", "POI-2"]);
   });
 });
+
+// REQ-010・BUG-091: 倉庫の選択肢と、発注の納品先倉庫の引き継ぎ
+describe("useReceiptInstructionForm: REQ-010 倉庫の選択肢・BUG-091 発注の納品先倉庫", () => {
+  const WAREHOUSES = [
+    { id: "WH-IN", name: "本社倉庫", warehouseType: "INTERNAL" },
+    { id: "WH-EX", name: "外部倉庫", warehouseType: "EXTERNAL" },
+    { id: "WH-DIR", name: "直送", warehouseType: "DIRECT" },
+  ];
+  function mockWithWarehouses() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const u = url.toString();
+        if (u.includes("/api/warehouses")) return jsonResponse(WAREHOUSES);
+        if (u.includes("/api/products")) return jsonResponse([{ id: "ITEM-1", name: "テスト品目A" }]);
+        return jsonResponse([]);
+      }),
+    );
+  }
+  const PREFILL_IN = { ...PREFILL, warehouseId: "WH-IN" };
+  const PREFILL_DIRECT = { ...PREFILL, warehouseId: "WH-DIR" };
+
+  it("自社倉庫・外部倉庫を選べ、直送用の倉庫は選択肢に出さない", async () => {
+    mockWithWarehouses();
+    const { result } = renderHook(() => useReceiptInstructionForm(vi.fn(), null, EMPTY_DEPARTMENTS, null));
+    await waitFor(() => expect(result.current.warehouses.map((w) => w.id)).toEqual(["WH-IN", "WH-EX"]));
+  });
+
+  it("発注の納品先倉庫が選択肢にあれば、倉庫の初期値にする", async () => {
+    mockWithWarehouses();
+    const { result } = renderHook(() => useReceiptInstructionForm(vi.fn(), null, EMPTY_DEPARTMENTS, PREFILL_IN));
+    await waitFor(() => expect(result.current.warehouseId).toBe("WH-IN"));
+  });
+
+  it("発注の納品先倉庫が選択肢に無ければ(直送用など)、初期値にしない", async () => {
+    mockWithWarehouses();
+    const { result } = renderHook(() => useReceiptInstructionForm(vi.fn(), null, EMPTY_DEPARTMENTS, PREFILL_DIRECT));
+    await waitFor(() => expect(result.current.partnerId).toBe("SUPP-1"));
+    await waitFor(() => expect(result.current.warehouses).toHaveLength(2));
+    expect(result.current.warehouseId).toBe("");
+  });
+});

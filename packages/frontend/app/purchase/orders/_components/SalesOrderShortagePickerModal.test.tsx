@@ -137,7 +137,9 @@ describe("SalesOrderShortagePickerModal: 受注から発注を作成(すべて�
     expect(data.items[0]).toMatchObject({ itemId: "ITEM-1", quantity: 5, salesOrderItemId: "SOI-1" });
     expect(data.isDirectShipment).toBe(true);
     expect(data.directSalesOrderId).toBe("SO-1");
-    expect(data.deliveryPlace).toBe("直送: 得意先A 大阪倉庫 〒530-0001 大阪市北区1-1");
+    // REQ-009: 納品場所は名称と所在地に分けて渡す
+    expect(data.deliveryPlace).toBe("直送: 得意先A 大阪倉庫");
+    expect(data.deliveryPlaceAddress).toBe("〒530-0001 大阪市北区1-1");
   });
 
   it("直送を指定しなければ、直送の受注・直送先は渡さない", async () => {

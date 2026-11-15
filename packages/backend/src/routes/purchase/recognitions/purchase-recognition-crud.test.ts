@@ -500,6 +500,18 @@ describe("PurchaseRecognitionCrudService: BUG-065 サービス品目は「入荷
     expect(created.success).toBe(true);
   });
 
+  // REQ-011(1): 品目マスタに無い明細(直接入力)も、入荷しないため発注数量まで計上できる
+  it("入荷済み数量が0でも、品目マスタに無い明細(直接入力)は発注数量まで計上できる", async () => {
+    const lineId = await seedOrder("PO-SVC", 10);
+    await db.update(schema.orderItems).set({ itemId: "FREE-1", inputType: "DIRECT", itemName: "マスタ外" }).where(eq(schema.orderItems.id, lineId));
+    const b = { ...body(lineId, "FREE-1"), items: [{ ...body(lineId, "FREE-1").items[0], inputType: "DIRECT" }] };
+    const formData = new FormData();
+    formData.append("recognitionData", JSON.stringify(b));
+
+    const created = await withContext((c) => getService(c).createRecognition(c, formData, b as any));
+    expect(created.success).toBe(true);
+  });
+
   it("在庫品目の明細は、これまでどおり入荷済み数量を超えると計上できない", async () => {
     const stockLineId = await seedOrder("PO-SVC", 10);
     const b = body(stockLineId, "ITEM-1");

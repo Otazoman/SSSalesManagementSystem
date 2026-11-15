@@ -419,6 +419,26 @@ describe("BUG-065: サービス品目(isService)は出荷の対象外", () => {
     expect(body.map((b) => b.salesOrderItemId)).toEqual(["SOI-1"]);
   });
 
+  // REQ-011(1): 品目マスタに無い明細(直接入力)も、サービス品と同じく出荷の対象外
+  it("出荷の残数量に、品目マスタに無い明細(直接入力)を含めない。全ての在庫品目を出荷すれば出荷済みになる", async () => {
+    await seedItemMasterAndStock("ITEM-1", 100);
+    await seedOrder("O-1", { status: "DRAFT" });
+    await seedOrderItem("O-1", { id: "SOI-1", itemId: "ITEM-1", quantity: 10, inputType: "MASTER" });
+    await seedOrderItem("O-1", { id: "SOI-FREE", itemId: "FREE-1", itemName: "マスタ外", quantity: 3, inputType: "DIRECT", sortOrder: 1 });
+    await callSubmitForApproval("O-1", "applicant-1");
+
+    const body = (await (await callGetShipmentProgress("O-1")).json()) as Array<{ salesOrderItemId: string }>;
+    expect(body.map((b) => b.salesOrderItemId)).toEqual(["SOI-1"]);
+
+    const res = await postShipment({
+      shippedDate: "2026-08-20",
+      items: [{ locationId: "LOC1", itemId: "ITEM-1", quantity: 10, salesOrderItemId: "SOI-1" }],
+    });
+    expect(res.status).toBe(200);
+    const order = await db.select().from(schema.salesOrders).where(eq(schema.salesOrders.id, "O-1"));
+    expect(order[0].shipmentStatus).toBe("SHIPPED");
+  });
+
   // 出庫は在庫(ロケーション)の確認で先に止まる(サービス品目に在庫は無い)。出荷指示は shipment-instructions の reconciliation.test.ts で確認
   it("サービス品目の受注明細は出庫できない", async () => {
     await seedOrderWithService();

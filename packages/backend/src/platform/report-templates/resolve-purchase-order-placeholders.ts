@@ -34,6 +34,8 @@ interface OrderRowLike {
   taxAmount: number;
   deliveryDate: string | null;
   deliveryPlace: string | null;
+  // REQ-009: 納品場所の所在地(Excel テンプレートの {{delivery_place_address}})
+  deliveryPlaceAddress?: string | null;
   paymentTerms: string | null;
   companyName: string | null;
   memo: string | null;
@@ -96,6 +98,7 @@ export function resolvePurchaseOrderPlaceholders(params: {
     title: order.title || "",
     delivery_date: order.deliveryDate || "",
     delivery_place: order.deliveryPlace || "",
+    delivery_place_address: order.deliveryPlaceAddress || "",
     payment_terms: order.paymentTerms || "",
     memo: order.memo || "",
     subtotal_before_discount: formatYen(subtotalBeforeDiscount),

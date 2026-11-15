@@ -312,6 +312,18 @@ describe("担当者・登録番号の行(BUG-092)", () => {
     expect(texts.some((t) => t.startsWith("担当:"))).toBe(false);
   });
 
+  // REQ-009: 発注書の納品場所の所在地は、所在地がある時だけ納品場所の次の行に描く
+  it("発注書は、所在地がある時だけ「所在地」の行を描く", async () => {
+    const withAddress = await drawnTexts(
+      base({ templateType: "ORDER", deliveryPlace: "本社倉庫", deliveryPlaceAddress: "東京都千代田区1-1" }),
+    );
+    expect(withAddress).toContain("本社倉庫");
+    expect(withAddress).toContain("所在地");
+    expect(withAddress).toContain("東京都千代田区1-1");
+    const without = await drawnTexts(base({ templateType: "ORDER", deliveryPlace: "本社倉庫" }));
+    expect(without).not.toContain("所在地");
+  });
+
   it("請求書には登録番号を描き、納品書には描かない", async () => {
     expect(await drawnTexts(base({}))).toContain("登録番号: T1234567890123");
     const delivery = await drawnTexts(base({ templateType: "DELIVERY" }));

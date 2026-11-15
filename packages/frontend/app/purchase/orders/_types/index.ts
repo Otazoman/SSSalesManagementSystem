@@ -69,6 +69,8 @@ export interface PurchaseOrderRecord {
   companyFax?: string | null;
   deliveryDate?: string | null;
   deliveryPlace?: string | null;
+  // REQ-009: 納品場所の所在地(deliveryPlace は納品場所名)
+  deliveryPlaceAddress?: string | null;
   // 新規要望(2026-09-23): 納品場所の「拠点用」「倉庫用」選択(いずれか一方、手入力deliveryPlaceと併用可)
   deliveryLocationId?: string | null;
   deliveryWarehouseId?: string | null;
@@ -181,4 +183,6 @@ export interface PurchaseOrderPrefillData {
   isDirectShipment?: boolean;
   directSalesOrderId?: string | null;
   deliveryPlace?: string | null;
+  // REQ-009: 納品場所の所在地(deliveryPlace は納品場所名)
+  deliveryPlaceAddress?: string | null;
 }

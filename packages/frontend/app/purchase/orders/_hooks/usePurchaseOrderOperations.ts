@@ -132,6 +132,8 @@ export function usePurchaseOrderOperations({
   const [companyFax, setCompanyFax] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryPlace, setDeliveryPlace] = useState("");
+  // REQ-009: 納品場所の所在地
+  const [deliveryPlaceAddress, setDeliveryPlaceAddress] = useState("");
   const [deliveryLocationId, setDeliveryLocationId] = useState("");
   const [deliveryWarehouseId, setDeliveryWarehouseId] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
@@ -297,6 +299,7 @@ export function usePurchaseOrderOperations({
     setCompanyFax("");
     setDeliveryDate("");
     setDeliveryPlace("");
+    setDeliveryPlaceAddress("");
     setDeliveryLocationId("");
     setDeliveryWarehouseId("");
     setPaymentTerms("");
@@ -362,6 +365,7 @@ export function usePurchaseOrderOperations({
     setCompanyFax(detail.companyFax || "");
     setDeliveryDate(detail.deliveryDate || "");
     setDeliveryPlace(detail.deliveryPlace || "");
+    setDeliveryPlaceAddress(detail.deliveryPlaceAddress || "");
     setDeliveryLocationId(detail.deliveryLocationId || "");
     setDeliveryWarehouseId(detail.deliveryWarehouseId || "");
     setPaymentTerms(detail.paymentTerms || "");
@@ -419,6 +423,7 @@ export function usePurchaseOrderOperations({
       setCompanyTel(detail.companyTel || "");
       setCompanyFax(detail.companyFax || "");
       setDeliveryPlace(detail.deliveryPlace || "");
+      setDeliveryPlaceAddress(detail.deliveryPlaceAddress || "");
       setDeliveryLocationId(detail.deliveryLocationId || "");
       setDeliveryWarehouseId(detail.deliveryWarehouseId || "");
       setPaymentTerms(detail.paymentTerms || "");
@@ -446,6 +451,7 @@ export function usePurchaseOrderOperations({
       setIsDirectShipment(data.isDirectShipment === true);
       setDirectSalesOrderId(data.isDirectShipment ? data.directSalesOrderId || null : null);
       if (data.deliveryPlace) setDeliveryPlace(data.deliveryPlace);
+      if (data.deliveryPlaceAddress) setDeliveryPlaceAddress(data.deliveryPlaceAddress);
       setViewMode("FORM");
     },
     [handleClearForm],
@@ -699,6 +705,7 @@ export function usePurchaseOrderOperations({
     companyFax: companyFax || null,
     deliveryDate: deliveryDate || null,
     deliveryPlace: deliveryPlace || null,
+    deliveryPlaceAddress: deliveryPlaceAddress || null,
     deliveryLocationId: deliveryLocationId || null,
     deliveryWarehouseId: deliveryWarehouseId || null,
     paymentTerms: paymentTerms || null,
@@ -785,6 +792,7 @@ export function usePurchaseOrderOperations({
                 companyFax: companyFax || null,
                 deliveryDate: deliveryDate || null,
                 deliveryPlace: deliveryPlace || null,
+                deliveryPlaceAddress: deliveryPlaceAddress || null,
                 deliveryLocationId: deliveryLocationId || null,
                 deliveryWarehouseId: deliveryWarehouseId || null,
                 paymentTerms: paymentTerms || null,
@@ -1152,6 +1160,8 @@ export function usePurchaseOrderOperations({
     setDeliveryDate: handleDeliveryDateChange,
     deliveryPlace,
     setDeliveryPlace,
+    deliveryPlaceAddress,
+    setDeliveryPlaceAddress,
     deliveryLocationId,
     setDeliveryLocationId,
     deliveryWarehouseId,

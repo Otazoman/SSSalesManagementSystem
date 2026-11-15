@@ -70,6 +70,8 @@ export class PurchaseOrderPdfService {
       quoteTitle: hData.title || "発注の件",
       deliveryDate: hData.deliveryDate || "",
       deliveryPlace: hData.deliveryPlace || "貴社指定場所",
+      // REQ-009: 納品場所の所在地は、納品場所の次の行に印字する(report-layouts.json の ORDER)
+      deliveryPlaceAddress: hData.deliveryPlaceAddress || "",
       paymentTerms: hData.paymentTerms || DEFAULT_PAYMENT_TERMS,
       salesPersonName: staffName,
       salesPersonDepartment: staffDepartment,

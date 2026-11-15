@@ -269,7 +269,9 @@ export const PREVIEW_SPECS: Record<string, PreviewSpec> = {
       inputPersonEmployeeNumber: { label: "入力者", ref: "employee" },
       ...COMPANY_FIELDS,
       deliveryDate: { label: "納期" },
-      deliveryPlace: { label: "納品場所" },
+      deliveryPlace: { label: "納品場所名" },
+      // REQ-009
+      deliveryPlaceAddress: { label: "納品場所の所在地" },
       deliveryLocationId: { label: "納品先の拠点", ref: "businessLocation" },
       deliveryWarehouseId: { label: "納品先の倉庫", ref: "warehouse" },
       isDirectShipment: { label: "直送", format: "boolean" },

@@ -128,8 +128,30 @@ describe("POST / (入荷指示作成)", () => {
     expect(items[0].instructedQuantity).toBe(10);
   });
 
-  it("自社倉庫(INTERNAL)を指定すると400を返す", async () => {
+  // REQ-010: 出荷指示と同じく、自社倉庫にも入荷指示を作れる(以前は外部倉庫だけで、自社倉庫は400だった)
+  it("自社倉庫(INTERNAL)にも作成できる", async () => {
     const res = await postInstruction({ ...validBody, warehouseId: "WH1" });
+    expect(res.status).toBe(200);
+    const { headerId } = (await res.json()) as { headerId: string };
+    const header = await db
+      .select()
+      .from(schema.itemReceiptInstructions)
+      .where(eq(schema.itemReceiptInstructions.id, headerId));
+    expect(header[0].warehouseId).toBe("WH1");
+  });
+
+  it("直送用の倉庫(DIRECT)を指定すると400を返す", async () => {
+    const now = new Date();
+    await db.insert(schema.warehouses).values({
+      id: "WH-DIRECT",
+      name: "直送",
+      warehouseType: "DIRECT",
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    const res = await postInstruction({ ...validBody, warehouseId: "WH-DIRECT" });
     expect(res.status).toBe(400);
   });
 

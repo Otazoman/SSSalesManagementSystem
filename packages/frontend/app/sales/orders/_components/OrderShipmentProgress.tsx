@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { OutsideInventoryNote, type OutsideInventoryLine } from "../../../_shared/ui/OutsideInventoryNote";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { ShipmentProgressItem } from "../_types";
 
 interface OrderShipmentProgressProps {
   orderId: string;
+  // REQ-011(1): 品目マスタに無い明細(直接入力)。出荷の対象外として表の下に灰色で出す
+  outsideInventoryLines?: OutsideInventoryLine[];
 }
 
 // Item7残課題6: 承認済み受注の出荷状況(明細ごとの出荷済/残数量・倉庫別引当内訳)を表示し、
@@ -14,7 +17,7 @@ interface OrderShipmentProgressProps {
 // 実際の作成フォームは/inventory/shipping側の既存フォームをクエリパラメータ経由でprefillする
 // (このコンポーネント自体は作成処理を持たない。画面構成再編フェーズ7により旧
 // /inventory/instructions・/inventory/stockは廃止され、出荷指示・出庫とも/inventory/shippingに統合)
-export function OrderShipmentProgress({ orderId }: OrderShipmentProgressProps) {
+export function OrderShipmentProgress({ orderId, outsideInventoryLines = [] }: OrderShipmentProgressProps) {
   const router = useRouter();
   const [items, setItems] = useState<ShipmentProgressItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +96,8 @@ export function OrderShipmentProgress({ orderId }: OrderShipmentProgressProps) {
           ))}
         </tbody>
       </table>
+
+      <OutsideInventoryNote lines={outsideInventoryLines} />
 
       {hasRemaining && (
         <div className="flex flex-col sm:flex-row gap-2">

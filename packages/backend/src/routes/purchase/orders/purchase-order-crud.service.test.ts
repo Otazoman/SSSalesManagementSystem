@@ -311,6 +311,22 @@ describe("POST /register", () => {
     expect(order?.deliveryWarehouseId).toBeNull();
   });
 
+  it("REQ-009: 納品場所名と納品場所の所在地を分けて保存できる。所在地は省略できる", async () => {
+    const res = await callCreateOrder("buyer-1", {
+      title: "所在地つき発注",
+      orderDate: now.toISOString(),
+      deliveryPlace: "本社倉庫",
+      deliveryPlaceAddress: "東京都千代田区1-1",
+      items: [],
+    });
+    expect(res.status).toBe(200);
+    const order = await findOrder(((await res.json()) as { id: string }).id);
+    expect(order).toMatchObject({ deliveryPlace: "本社倉庫", deliveryPlaceAddress: "東京都千代田区1-1" });
+
+    const noAddress = await callCreateOrder("buyer-1", { title: "所在地なし", orderDate: now.toISOString(), deliveryPlace: "現場", items: [] });
+    expect((await findOrder(((await noAddress.json()) as { id: string }).id))?.deliveryPlaceAddress).toBeNull();
+  });
+
   it("承認機能ON時、requestId未指定では作成できない(400)", async () => {
     await enablePurchaseOrderApprovalWorkflow();
     const res = await callCreateOrder("buyer-1", {

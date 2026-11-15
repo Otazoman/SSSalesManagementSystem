@@ -715,6 +715,13 @@
       "when": 1794699611556,
       "tag": "0101_gigantic_stepford_cuckoos",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "6",
+      "when": 1794704485873,
+      "tag": "0102_normal_dakota_north",
+      "breakpoints": true
     }
   ]
 }

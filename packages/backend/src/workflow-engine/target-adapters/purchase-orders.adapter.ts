@@ -115,6 +115,7 @@ async function applyApproved({ db, reqParent, userId, now, c }: ApplyApprovedPar
     companyFax: header.companyFax ?? null,
     deliveryDate: header.deliveryDate ?? null,
     deliveryPlace: header.deliveryPlace ?? null,
+    deliveryPlaceAddress: header.deliveryPlaceAddress ?? null,
     deliveryLocationId: header.deliveryLocationId ?? null,
     deliveryWarehouseId: header.deliveryWarehouseId ?? null,
     // REQ-005: 直送の指定。申請内容に無ければ(以前の申請)変えない

@@ -6,6 +6,7 @@ import { ShipmentInstructionsService } from "./shipment-instructions.service";
 import { ShipmentInstructionPdfService } from "./shipment-instruction-pdf.service";
 import { ShipmentInstructionDownloadService } from "./shipment-instruction-download.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { sendInstructionEmail } from "../instruction-mail.service";
 import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
@@ -350,6 +351,38 @@ shipmentInstructionsRouter.post(
         fileBase64,
         csv,
       });
+    } catch (err) {
+      return respondError(c, err);
+    }
+  },
+);
+
+// REQ-012: 出荷指示書の案内メールを送る(以前は PDF の発行と同時に自動で送っていた。納品書・検収書と同じく明示の操作にした)
+const SendInstructionEmailSchema = v.looseObject({
+  recipientEmail: v.pipe(
+    v.string(),
+    v.nonEmpty("送信先メールアドレスは必須です"),
+    v.email("有効なメールアドレスの形式で入力してください"),
+  ),
+});
+
+shipmentInstructionsRouter.post(
+  "/:id/send-email",
+  describeApiRoute({
+    summary: "出荷指示書の案内メール送信",
+    tags: ["shipment-instructions"],
+    json: SendInstructionEmailSchema,
+    responses: {
+      200: { description: "送信を予約した" },
+      400: { description: "メールアドレスの不備、または PDF が未発行" },
+      404: { description: "対象の指示書が見つからない" },
+    },
+  }),
+  async (c) => {
+    const parsed = v.safeParse(SendInstructionEmailSchema, await c.req.json());
+    if (!parsed.success) return respondValidationError(c, parsed.issues);
+    try {
+      return c.json(await sendInstructionEmail(c, "shipment", c.req.param("id"), parsed.output.recipientEmail));
     } catch (err) {
       return respondError(c, err);
     }

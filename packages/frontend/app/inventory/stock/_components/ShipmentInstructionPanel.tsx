@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { InstructionMailButton } from "./InstructionMailButton";
 import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
@@ -653,6 +654,15 @@ export function ShipmentInstructionPanel({
                   >
                     📄 PDFを表示
                   </Button>
+                )}
+                {/* REQ-012: 案内メールは PDF の発行と同時に送らず、この操作で送る */}
+                {i.instructionDocumentR2Path && (
+                  <InstructionMailButton
+                    kind="shipment"
+                    instructionId={i.id}
+                    warehouseId={i.warehouseId}
+                    onResult={(result) => setMessageState(result)}
+                  />
                 )}
                 <Button
                   size="sm"

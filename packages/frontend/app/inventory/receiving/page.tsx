@@ -85,13 +85,12 @@ export default function InventoryReceivingPage() {
   const urlFromPurchaseOrderId = urlSearchParams.get("fromPurchaseOrderId");
 
   // Item9: 発注の残数量から入荷指示フォームへ自動prefillする(shipping/page.tsxの
-  // fromSalesOrderIdと同じロジック。発注には受注のような倉庫引当が無いため、warehouseIdは
-  // prefillせずユーザーに選択させる)。発注画面の「入荷指示を作成する」からの
+  // fromSalesOrderIdと同じロジック。BUG-091: 倉庫は、発注の納品場所に指定した倉庫(deliveryWarehouseId)があれば初期値にする)。発注画面の「入荷指示を作成する」からの
   // ?fromPurchaseOrderId=遷移と、この画面内「発注から選ぶ」モーダルの両方から呼ばれる
   const applyPurchaseOrderPrefill = async (orderId: string) => {
     try {
       const [order, progress] = await Promise.all([
-        apiFetch<{ partnerId: string | null }>(
+        apiFetch<{ partnerId: string | null; deliveryWarehouseId?: string | null }>(
           `/api/purchase-orders/${encodeURIComponent(orderId)}`,
         ),
         apiFetch<PurchaseOrderReceiptProgressItem[]>(
@@ -106,6 +105,8 @@ export default function InventoryReceivingPage() {
         setReceiptInstructionCreatePrefill({
           partnerId: order.partnerId,
           orderId,
+          // BUG-091: 発注の納品場所に指定した倉庫を、入荷指示の倉庫の初期値にする
+          warehouseId: order.deliveryWarehouseId ?? null,
           lines: remaining.map((item) => ({
             itemId: item.itemId as string,
             itemName: item.itemName || (item.itemId as string),

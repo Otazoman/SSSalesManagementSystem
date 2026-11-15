@@ -73,6 +73,9 @@ interface PurchaseOrderFormProps {
   setDeliveryDate: (v: string) => void;
   deliveryPlace: string;
   setDeliveryPlace: (v: string) => void;
+  // REQ-009: 納品場所の所在地
+  deliveryPlaceAddress: string;
+  setDeliveryPlaceAddress: (v: string) => void;
   deliveryLocationId: string;
   setDeliveryLocationId: (v: string) => void;
   deliveryWarehouseId: string;
@@ -172,6 +175,8 @@ export function PurchaseOrderForm({
   setDeliveryDate,
   deliveryPlace,
   setDeliveryPlace,
+  deliveryPlaceAddress,
+  setDeliveryPlaceAddress,
   deliveryLocationId,
   setDeliveryLocationId,
   deliveryWarehouseId,
@@ -369,13 +374,24 @@ export function PurchaseOrderForm({
             </FormField>
           )}
 
-          <FormField label="納品場所">
+          {/* REQ-009: 納品場所を名称と所在地に分けた(発注書には2行で印字する) */}
+          <FormField label="納品場所名">
             <input
               className={formFieldInputClass}
               value={deliveryPlace}
               onChange={(e) => setDeliveryPlace(e.target.value)}
               disabled={isLocked}
               placeholder="下の拠点/倉庫選択、または直接入力"
+            />
+          </FormField>
+
+          <FormField label="納品場所の所在地">
+            <input
+              className={formFieldInputClass}
+              value={deliveryPlaceAddress}
+              onChange={(e) => setDeliveryPlaceAddress(e.target.value)}
+              disabled={isLocked}
+              placeholder="拠点/倉庫を選ぶと住所が入ります(直接入力もできます)"
             />
           </FormField>
 
@@ -390,9 +406,9 @@ export function PurchaseOrderForm({
                   setDeliveryWarehouseId("");
                   const selected = businessLocations.find((l) => l.id === selectedId);
                   if (selected) {
-                    setDeliveryPlace(
-                      selected.address ? `${selected.name}(${selected.address})` : selected.name,
-                    );
+                    // REQ-009: 名称と住所を、それぞれの欄に入れる(以前は「名称(住所)」を1つの欄に入れていた)
+                    setDeliveryPlace(selected.name);
+                    setDeliveryPlaceAddress(selected.address || "");
                   }
                 }
               }}
@@ -418,9 +434,9 @@ export function PurchaseOrderForm({
                   setDeliveryLocationId("");
                   const selected = warehouses.find((w) => w.id === selectedId);
                   if (selected) {
-                    setDeliveryPlace(
-                      selected.address ? `${selected.name}(${selected.address})` : selected.name,
-                    );
+                    // REQ-009: 名称と住所を、それぞれの欄に入れる(以前は「名称(住所)」を1つの欄に入れていた)
+                    setDeliveryPlace(selected.name);
+                    setDeliveryPlaceAddress(selected.address || "");
                   }
                 }
               }}
@@ -581,6 +597,9 @@ export function PurchaseOrderForm({
             directLinkedOrderItemIds={items
               .filter((item) => item.id && item.salesOrderItemId)
               .map((item) => item.id as string)}
+            outsideInventoryLines={items
+              .filter((item) => item.inputType === "DIRECT")
+              .map((item, idx) => ({ key: item.id ?? `direct-${idx}`, name: item.itemName || item.itemId, quantity: item.quantity }))}
           />
         )}
 
