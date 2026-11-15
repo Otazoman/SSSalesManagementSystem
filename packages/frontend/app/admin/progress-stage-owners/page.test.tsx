@@ -56,6 +56,8 @@ describe("ProgressStageOwnersPage: CSVダウンロード・取込", () => {
     const Page = await importPage();
     const { unmount } = render(<Page />);
     await waitFor(() => expect(screen.getByText("CSVダウンロード")).toBeInTheDocument());
+    // REQ-014: 何を設定する画面かの説明
+    expect(screen.getByText(/次の工程や未起票の工程の「担当」として表示する人/)).toBeInTheDocument();
     expect(screen.getByText("CSVインポート")).toBeInTheDocument();
     unmount();
 

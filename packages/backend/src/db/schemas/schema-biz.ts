@@ -41,6 +41,9 @@ export const quotes = sqliteTable("quotes", {
   quoteDate: integer("quote_date", { mode: "timestamp" }).notNull(),
   validUntil: integer("valid_until", { mode: "timestamp" }),
   status: text("status").notNull().default("DRAFT"),
+  // REQ-015(2026-11-15 ユーザー承認済み): 失注。status が LOST(失注)の時の失注日(YYYY-MM-DD)と失注理由。失注の取消で空に戻す
+  lostDate: text("lost_date"),
+  lostReason: text("lost_reason"),
   currentApprovalLayer: integer("current_approval_layer").notNull().default(1),
   approvalFlowId: text("approval_flow_id").references(() => approvalFlows.id),
   totalAmount: integer("total_amount").notNull().default(0),

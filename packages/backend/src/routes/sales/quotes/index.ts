@@ -4,6 +4,9 @@ import { Env } from "../../../types/env";
 import { QuoteRepository } from "./quote.repository";
 import { QuoteService } from "./quote.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { markQuoteLost, cancelQuoteLost } from "./quote-lost.service";
+import { getSession } from "../../../platform/auth/get-session";
+import { hasScreenPermission } from "../../../platform/auth/screen-permission";
 import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
@@ -505,5 +508,69 @@ quotesRouter.post(
     return respondError(c, err);
   }
 });
+
+// ==========================================
+// REQ-015: 見積の失注・失注の取消(見積の更新権限が要る。承認は付けない)
+// ==========================================
+const MarkQuoteLostSchema = v.object({
+  lostDate: v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, "失注日は YYYY-MM-DD で入力してください")),
+  lostReason: v.optional(v.nullable(v.string())),
+});
+
+async function requireQuoteUpdatePermission(c: Parameters<typeof getSession>[0]) {
+  const session = await getSession(c);
+  if (!session) return "ログインが必要です";
+  if (!(await hasScreenPermission(c.env, session, "sales_quotes", "update"))) return "見積を変更する権限がありません";
+  return null;
+}
+
+quotesRouter.post(
+  "/:id/mark-lost",
+  describeApiRoute({
+    summary: "見積を失注にする",
+    tags: ["quotes"],
+    json: MarkQuoteLostSchema,
+    responses: {
+      200: { description: "失注にした" },
+      400: { description: "承認済みでない・受注に使われている・入力の不備" },
+      403: { description: "見積の更新権限が無い" },
+      404: { description: "対象の見積が見つからない" },
+    },
+  }),
+  async (c) => {
+    try {
+      const denied = await requireQuoteUpdatePermission(c as never);
+      if (denied) return c.json({ success: false, message: denied }, 403);
+      const parsed = v.safeParse(MarkQuoteLostSchema, await c.req.json());
+      if (!parsed.success) return respondValidationError(c, parsed.issues);
+      return c.json(await markQuoteLost(c as never, c.req.param("id"), parsed.output));
+    } catch (err) {
+      return respondError(c, err);
+    }
+  },
+);
+
+quotesRouter.post(
+  "/:id/cancel-lost",
+  describeApiRoute({
+    summary: "見積の失注を取り消す(承認済みに戻す)",
+    tags: ["quotes"],
+    responses: {
+      200: { description: "取り消した" },
+      400: { description: "失注の見積ではない" },
+      403: { description: "見積の更新権限が無い" },
+      404: { description: "対象の見積が見つからない" },
+    },
+  }),
+  async (c) => {
+    try {
+      const denied = await requireQuoteUpdatePermission(c as never);
+      if (denied) return c.json({ success: false, message: denied }, 403);
+      return c.json(await cancelQuoteLost(c as never, c.req.param("id")));
+    } catch (err) {
+      return respondError(c, err);
+    }
+  },
+);
 
 export { quotesRouter };

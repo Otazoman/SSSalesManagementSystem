@@ -45,9 +45,10 @@ export function QuoteStatusAndActions({
 }: QuoteStatusAndActionsProps) {
   // 承認機能が無効な場合はpartnersと同様ロックしない(会社設定で無効化した時点で
   // 審査待ち状態自体の意味が無くなるため、DRAFT/仮登録相当として直接編集できる)
+  // REQ-015: 失注の見積は保存・申請・改定のボタンを出さない
   const isLocked =
-    isQuoteWfEnabled &&
-    (status === "PENDING_APPROVAL" || status === "PENDING_DELETION");
+    status === "LOST" ||
+    (isQuoteWfEnabled && (status === "PENDING_APPROVAL" || status === "PENDING_DELETION"));
   const isApprovedEdit = status === "APPROVED" && isQuoteWfEnabled;
   // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する
   const badge = getDocumentLifecycleStatus(status, { approvalEnabled: isQuoteWfEnabled });

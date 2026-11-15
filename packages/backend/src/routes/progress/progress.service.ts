@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../../types/env";
 import { ProgressRepository, ProgressRoot } from "./progress.repository";
-import { computeNextStages } from "./progress-next-step";
+import { computeNextStages, computeUnissuedStages } from "./progress-next-step";
 import { logAuditEvent } from "../../platform/audit/log-audit-event";
 import { BadRequestError } from "../../platform/http/http-error";
 import { buildCsvContent, csvField, withBom } from "../../platform/csv/csv-writer";
@@ -210,7 +210,14 @@ export class ProgressService {
         csvField(row.caseState === "COMPLETED" ? "完了" : "進行中"),
         ...PROGRESS_STAGE_KEYS.flatMap((k) => {
           const status = row.stageStatuses[k];
-          const label = STATE_LABELS[status.state] + (status.manual && status.state !== "NONE" ? "(手動)" : "");
+          // REQ-013: 伝票が無い工程は、未起票なら「未起票」、案件の流れの対象外なら「―」
+          const unissued = row.unissuedSteps.some((u) => u.stageKey === k);
+          const label =
+            status.state === "NONE"
+              ? unissued
+                ? "未起票"
+                : "―"
+              : STATE_LABELS[status.state] + (status.manual ? "(手動)" : "");
           return [csvField(row.stages[k].map((d) => d.id).join(" ")), csvField(label)];
         }),
         csvField(row.nextSteps.map((n) => STAGE_LABELS[n.stageKey]).join(" / ")),
@@ -416,7 +423,8 @@ export class ProgressService {
             id: quote.id,
             status: quote.status,
             assigneeEmployeeNumber: quote.salesPersonEmployeeNumber ?? quote.inputPersonEmployeeNumber,
-            completed: false, // 受注化されていない(受注化済みの見積は受注起点の行に載る)
+            // 受注化されていない(受注化済みの見積は受注起点の行に載る)。REQ-015: 失注(LOST)の見積は、案件を完了として扱う
+            completed: quote.status === "LOST",
           });
         }
       } else if (root.kind === "sales_order") {
@@ -596,10 +604,16 @@ export class ProgressService {
         ]),
       ) as Record<ProgressStageKey, ProgressStageDoc[]>;
 
-      const nextSteps = computeNextStages(root.kind, (key) => stages[key].length > 0).map((next) => {
+      const withAssignee = (next: { chain: "sales" | "purchase"; stageKey: ProgressStageKey }) => {
         const assignee = resolveAssignee(root.kind, root.id, next.stageKey);
         return { ...next, assigneeName: assignee?.name ?? null, source: assignee?.source ?? null };
-      });
+      };
+      const present = (key: ProgressStageKey) => stages[key].length > 0;
+      const nextSteps = computeNextStages(root.kind, present).map(withAssignee);
+      // REQ-013: 未起票の工程(失注の見積の案件は出さない)
+      const unissuedSteps = computeUnissuedStages(root.kind, present, {
+        quoteLost: root.kind === "quote" && stages.quote.some((d) => d.status === "LOST"),
+      }).map(withAssignee);
 
       const assignments: ProgressRow["assignments"] = {};
       for (const a of caseAssignments) {
@@ -618,6 +632,7 @@ export class ProgressService {
         stageStatuses,
         caseState,
         nextSteps,
+        unissuedSteps,
         assignments,
       };
     });

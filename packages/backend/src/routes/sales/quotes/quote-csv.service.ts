@@ -40,6 +40,9 @@ export class QuoteCsvService {
       "terms",
       "updatedBy",
       "inputPersonEmployeeNumber",
+      // REQ-015: 失注日・失注理由(出力だけ。取込では読まない)
+      "lostDate",
+      "lostReason",
       // 明細ID。受注のCSV(sourceQuoteItemId)から見積明細を指すために使う。取り込み直しても同じIDになる
       "lineId",
       "itemId",
@@ -86,6 +89,8 @@ export class QuoteCsvService {
         csvField(q.terms),
         csvField(employeeNoVal),
         csvField(inputPersonVal),
+        csvField(q.lostDate),
+        csvField(q.lostReason),
         csvField(item?.id),
         csvField(`${itemIdVal}`),
         csvField(item?.itemName),

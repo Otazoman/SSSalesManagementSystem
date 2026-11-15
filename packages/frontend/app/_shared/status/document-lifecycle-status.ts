@@ -8,6 +8,8 @@ export const DOCUMENT_LIFECYCLE_STATUS: Record<string, StatusBadgeSpec> = {
   PENDING_APPROVAL: { label: "🟡 承認申請中", tone: "amber" },
   APPROVED: { label: "🟢 承認済み", tone: "emerald" },
   PENDING_DELETION: { label: "🔴 削除申請中", tone: "red" },
+  // REQ-015: 見積の失注
+  LOST: { label: "⚫ 失注", tone: "slate" },
 };
 
 // BUG-080: 承認機能が無効の伝票では、APPROVED を「確定」と表示する(入力画面の選択肢「下書き/確定」と合わせる)。

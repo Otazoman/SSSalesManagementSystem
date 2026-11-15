@@ -204,6 +204,14 @@ export function useQuoteListActions({
     }
   };
 
+  // REQ-015: 失注にした・取り消した後は、メッセージを出して一覧を読み直し、一覧へ戻る
+  const handleLostChangedAction = (msg: string) => {
+    setError("");
+    setMessage(msg);
+    void syncQuotes({ ...filters, status: filterStatus });
+    setViewMode("LIST");
+  };
+
   const handleDeleteAction = async (id: string) => {
     if (!canDelete) return;
     if (
@@ -279,6 +287,7 @@ export function useQuoteListActions({
     handleCSVImportChange,
     handleGeneratePDF,
     handleSubmitForApprovalAction,
+    handleLostChangedAction,
     handleDeleteAction,
     handleBulkMailSendAction,
     getSiblingVersions,

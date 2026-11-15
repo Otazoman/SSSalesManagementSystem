@@ -115,6 +115,9 @@ export const PREVIEW_SPECS: Record<string, PreviewSpec> = {
       totalAmount: { label: "合計金額(税込)", format: "currency" },
       taxAmount: { label: "消費税額", format: "currency" },
       memo: { label: "備考", format: "multiline" },
+      // REQ-015
+      lostDate: { label: "失注日", format: "date" },
+      lostReason: { label: "失注理由", format: "multiline" },
     },
     hidden: { ...AUDIT_HIDDEN, ...APPROVAL_HIDDEN, ...SAVE_ONLY_HIDDEN },
     items: {

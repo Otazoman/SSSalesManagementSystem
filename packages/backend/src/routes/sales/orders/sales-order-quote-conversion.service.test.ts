@@ -130,6 +130,25 @@ beforeEach(async () => {
 });
 
 describe("Item7: 見積からの受注作成(スナップショット方式)", () => {
+  it("REQ-015: 失注の見積からは受注を作れない(400)", async () => {
+    await db.insert(schema.quotes).values({
+      id: "Q-LOST",
+      partnerId: "partner-1",
+      quoteDate: now,
+      status: "LOST",
+      lostDate: "2026-11-15",
+      totalAmount: 0,
+      taxAmount: 0,
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+    const res = await callCreateOrder("applicant-1", { id: "O-FROM-LOST", partnerId: "partner-1", sourceQuoteId: "Q-LOST", orderDate: "2026-01-01" });
+    expect(res.status).toBe(400);
+    expect(await findOrder("O-FROM-LOST")).toBeFalsy();
+  });
+
   it("sourceQuoteIdを指定して作成すると、受注ヘッダーに記録される(数量消込は行わない)", async () => {
     await db.insert(schema.quotes).values({
       id: "Q-1",

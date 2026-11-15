@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../db/schema";
 import { progressRouter } from "./index";
-import { computeNextStages } from "./progress-next-step";
+import { computeNextStages, computeUnissuedStages } from "./progress-next-step";
 
 const db = drizzle(env.DB, { schema });
 const now = new Date("2026-09-01T00:00:00Z");
@@ -160,6 +160,23 @@ describe("GET / (進捗一覧)", () => {
     expect(row.stages.purchase_request.map((d: any) => d.id)).toEqual(["PR-1"]);
     expect(row.stages.purchase_order[0]).toMatchObject({ id: "PO-1", assigneeName: "営業太郎" });
     expect(row.stages.sales_invoice).toEqual([]);
+  });
+
+  it("REQ-015: 失注の見積の案件は完了として扱い、見積の欄に失注を出す", async () => {
+    await db.insert(schema.quotes).values({
+      id: "Q-LOST",
+      partnerId: "P-1",
+      quoteDate: now,
+      status: "LOST",
+      lostDate: "2026-11-15",
+      totalAmount: 0,
+      taxAmount: 0,
+      ...audit,
+    } as never);
+    expect(((await (await callProgress("?state=in_progress")).json()) as any).items).toHaveLength(0);
+    const completed = (await (await callProgress("?state=completed")).json()) as any;
+    expect(completed.items.map((r: any) => r.rootId)).toEqual(["Q-LOST"]);
+    expect(completed.items[0].stages.quote[0]).toMatchObject({ id: "Q-LOST", status: "LOST" });
   });
 
   it("受注化されていない見積・受注に紐づかない購買申請・購買申請なしの発注は単独行になる", async () => {
@@ -780,5 +797,42 @@ describe("追加要望M-2: 工程担当に部署+ロール", () => {
       assigneeName: "部署/ロール: 営業部 / 出荷担当",
       source: "stage",
     });
+  });
+});
+
+// REQ-013: 未起票の工程(起点より後で伝票が無い工程。入荷指示・出荷指示は任意のため出さない)
+describe("REQ-013: 未起票の工程", () => {
+  const has = (...keys: string[]) => (key: string) => keys.includes(key);
+  const keysOf = (r: Array<{ stageKey: string }>) => r.map((x) => x.stageKey);
+
+  it("受注だけ: 出庫・売上・請求が未起票(出荷指示は任意のため出さない)。購買側は出さない", () => {
+    expect(keysOf(computeUnissuedStages("sales_order", has("sales_order") as never))).toEqual(["item_shipment", "sales_invoice", "billing"]);
+  });
+
+  it("受注 + 発注: 販売側に加え、購買側の発注より後(入庫・仕入・支払)が未起票", () => {
+    const r = computeUnissuedStages("sales_order", has("sales_order", "purchase_order") as never);
+    expect(r.filter((x) => x.chain === "purchase").map((x) => x.stageKey)).toEqual(["item_receipt", "purchase_recognition", "payment"]);
+  });
+
+  it("発注だけ: 入庫・仕入・支払が未起票(販売側は出さない)", () => {
+    expect(keysOf(computeUnissuedStages("purchase_order", has("purchase_order") as never))).toEqual([
+      "item_receipt",
+      "purchase_recognition",
+      "payment",
+    ]);
+  });
+
+  it("見積だけ: 受注だけが未起票。失注の見積は未起票を出さない(REQ-015)", () => {
+    expect(keysOf(computeUnissuedStages("quote", has("quote") as never))).toEqual(["sales_order"]);
+    expect(computeUnissuedStages("quote", has("quote") as never, { quoteLost: true })).toEqual([]);
+  });
+
+  it("一覧の応答に、未起票の工程と担当予定(工程の既定担当)を返す", async () => {
+    await seedSalesOrderWithPurchase();
+    await db.insert(schema.progressStageOwners).values({ stageKey: "item_shipment", assigneeType: "USER", assigneeRef: "EMP001", ...audit } as never);
+    const row = ((await (await callProgress()).json()) as any).items[0];
+    const shipment = row.unissuedSteps.find((u: any) => u.stageKey === "item_shipment");
+    expect(shipment).toMatchObject({ chain: "sales", assigneeName: "営業太郎", source: "stage" });
+    expect(row.unissuedSteps.some((u: any) => u.stageKey === "shipment_instruction")).toBe(false);
   });
 });

@@ -378,7 +378,9 @@ erDiagram
 | `partner_id` | 文字列 | ○ |  | [partners](master.md#partners).id | 取引先 |
 | `quote_date` | 日時 | ○ |  |  | 見積日 |
 | `valid_until` | 日時 |  |  |  | 有効期限 |
-| `status` | 文字列 | ○ | `DRAFT` |  | 状態 |
+| `status` | 文字列 | ○ | `DRAFT` |  | 状態(DRAFT・PENDING_APPROVAL・APPROVED・PENDING_DELETION・LOST(失注、REQ-015)) |
+| `lost_date` | 文字列 |  |  |  | REQ-015: 失注日(YYYY-MM-DD)。失注の取消で空に戻す。2026-11-15 追加(migration 0103) |
+| `lost_reason` | 文字列 |  |  |  | REQ-015: 失注理由 |
 | `current_approval_layer` | 整数 | ○ | `1` |  | 承認中の段(何段目の承認待ちか) |
 | `approval_flow_id` | 文字列 |  |  | [approval_flows](workflow.md#approval_flows).id | 使用中の承認フロー |
 | `total_amount` | 整数 | ○ | `0` |  | 合計金額 |

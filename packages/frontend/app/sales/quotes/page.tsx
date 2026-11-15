@@ -29,6 +29,8 @@ const STATUS_OPTIONS = [
   { value: "PENDING_APPROVAL", label: "🟡 承認申請中" },
   { value: "APPROVED", label: "🟢 承認済み・確定" },
   { value: "PENDING_DELETION", label: "🔴 削除申請中" },
+  // REQ-015
+  { value: "LOST", label: "⚫ 失注" },
 ];
 
 export default function QuotesPage() {
@@ -125,6 +127,7 @@ export default function QuotesPage() {
     handleCSVImportChange,
     handleGeneratePDF,
     handleSubmitForApprovalAction,
+    handleLostChangedAction,
     handleDeleteAction,
     handleBulkMailSendAction,
     getSiblingVersions,
@@ -348,6 +351,7 @@ export default function QuotesPage() {
             isSubmitting={isSubmitting}
             isQuoteWfEnabled={isQuoteWfEnabled}
             onSubmitForApproval={handleSubmitForApprovalAction}
+            onLostChanged={handleLostChangedAction}
             onSubmitApprovedEdit={handleSubmitApprovedEditAction}
             onGeneratePDF={handleGeneratePDF}
             fetchSpecialPrice={fetchSpecialPrice}
