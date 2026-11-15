@@ -27,6 +27,7 @@ import { unitsAdapter } from "./units.adapter";
 import { projectsAdapter } from "./projects.adapter";
 import { itemReorderSettingsAdapter } from "./item-reorder-settings.adapter";
 import { billingAdapter } from "./billing.adapter";
+import { temporaryHoldingsAdapter } from "./temporary-holdings.adapter";
 import { paymentReceiptsAdapter, cashReceiptsAdapter, paymentDisbursementsAdapter } from "./reconciliation.adapter";
 import { locationsAdapter } from "./locations.adapter";
 import { productPricesAdapter } from "./product-prices.adapter";
@@ -142,6 +143,8 @@ const registry: Record<string, TargetAdapter> = {
   sales_payment_receipts: paymentReceiptsAdapter,
   sales_cash_receipts: cashReceiptsAdapter,
   purchase_payment_disbursements: paymentDisbursementsAdapter,
+  // REQ-011(2)
+  inventory_temporary_holdings: temporaryHoldingsAdapter,
   master_locations: locationsAdapter,
   master_prices: productPricesAdapter,
   master_products: productsAdapter,

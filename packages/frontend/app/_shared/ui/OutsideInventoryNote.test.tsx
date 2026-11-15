@@ -14,3 +14,16 @@ describe("OutsideInventoryNote", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("OutsideInventoryNote: REQ-011(2) 一時保管へのリンク", () => {
+  it("リンクがある明細は、一時保管の画面を別のタブで開くリンクを出す", () => {
+    render(
+      <OutsideInventoryNote
+        lines={[{ key: "L1", name: "特注の部品", quantity: 2, href: "/inventory/audit?tab=holdings", actionLabel: "一時保管で受入" }]}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "一時保管で受入" });
+    expect(link).toHaveAttribute("href", "/inventory/audit?tab=holdings");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+});

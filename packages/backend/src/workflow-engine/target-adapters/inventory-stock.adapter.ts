@@ -10,6 +10,7 @@
  * + stocks/stock_transactionsへの反映」として扱う。
  */
 import { ReceiptsRepository } from "../../routes/inventory/receipts/receipts.repository";
+import { cancelMoveToStockOfReceipt, confirmMoveToStockOfReceipt } from "../../routes/inventory/temporary-holdings/temporary-holdings.ledger";
 import { ShipmentsRepository } from "../../routes/inventory/shipments/shipments.repository";
 import { ReclassificationsRepository } from "../../routes/inventory/reclassifications/reclassifications.repository";
 import { DisposalsRepository } from "../../routes/inventory/disposals/disposals.repository";
@@ -92,6 +93,8 @@ async function applyApproved({
     }
     // REQ-005: 直送完了の入庫なら、対になる出庫(直送用の倉庫から得意先へ)も確定する
     await confirmDirectShipmentOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now, c as any);
+    // REQ-011(3): 一時保管から在庫へ移す入庫なら、台帳を「在庫へ移行済」にする
+    await confirmMoveToStockOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now);
     return;
   }
 
@@ -255,6 +258,8 @@ async function applyRemanded({
     await receiptsRepo.updateHeaderStatus(reqParent.targetId, status);
     // REQ-005: 直送完了の入庫なら、対になる出庫も同じ状態にする
     await syncDirectShipmentStatusOfReceipt(db, reqParent.targetId, status);
+    // REQ-011(3): 一時保管から在庫へ移す入庫が取り下げられたら、在庫へ移す動きを差戻しにする(差戻しは再申請できるため残す)
+    if (status === "CANCELED") await cancelMoveToStockOfReceipt(db, reqParent.targetId, new Date());
     return;
   }
 

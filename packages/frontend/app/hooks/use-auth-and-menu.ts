@@ -58,6 +58,10 @@ export function useAuthAndMenu(isAuthPage: boolean) {
           resource: s.resource,
           category: s.category,
         }));
+        // REQ-011(2): 画面の中のタブ(一時保管など)は、権限の判定にだけ使い、メニューには出さない
+        const menuScreens = rawScreens.filter(
+          (_: unknown, i: number) => !screensData[i].hideFromMenu,
+        );
 
         setUser({
           id: profileData.id,
@@ -110,31 +114,31 @@ export function useAuthAndMenu(isAuthPage: boolean) {
         setMenuSections([
           {
             sectionTitle: "申請・承認",
-            items: rawScreens.filter(
+            items: menuScreens.filter(
               (s: any) => s.category === "apply_approve",
             ),
           },
           {
             sectionTitle: "日常業務",
-            items: rawScreens.filter((s: any) => s.category === "daily_work"),
+            items: menuScreens.filter((s: any) => s.category === "daily_work"),
           },
           {
             sectionTitle: "経理・統制",
-            items: rawScreens.filter((s: any) => s.category === "accounting"),
+            items: menuScreens.filter((s: any) => s.category === "accounting"),
           },
           {
             sectionTitle: "ログ",
-            items: rawScreens.filter((s: any) => s.category === "log"),
+            items: menuScreens.filter((s: any) => s.category === "log"),
           },
           {
             sectionTitle: "業務マスタ設定",
-            items: rawScreens.filter(
+            items: menuScreens.filter(
               (s: any) => s.category === "business_master",
             ),
           },
           {
             sectionTitle: "基本マスタ設定",
-            items: rawScreens.filter(
+            items: menuScreens.filter(
               (s: any) => s.category === "system_master",
             ),
           },

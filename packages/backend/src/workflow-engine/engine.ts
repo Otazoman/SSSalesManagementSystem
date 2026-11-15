@@ -35,6 +35,19 @@ interface StartWorkflowParams {
 
 export const WorkflowEngine = {
   /**
+   * REQ-011(2): この申請の種類に、有効な承認フローが1つでもあるか(金額は問わない)。
+   * 「承認フローが無ければ承認なしですぐ確定する」種類(一時保管)が、申請を作る前に確かめる。他の種類の動きは変えない
+   */
+  async hasActiveFlow(db: any, targetType: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: schema.approvalFlows.id })
+      .from(schema.approvalFlows)
+      .where(and(eq(schema.approvalFlows.requestType, targetType), eq(schema.approvalFlows.isActive, true)))
+      .limit(1);
+    return rows.length > 0;
+  },
+
+  /**
    * 💡 ワークフローの開始
    */
   async startWorkflow(

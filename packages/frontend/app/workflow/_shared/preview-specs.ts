@@ -313,6 +313,36 @@ export const PREVIEW_SPECS: Record<string, PreviewSpec> = {
     },
   },
 
+  // REQ-011(2): 一時保管の受入・払出・調整(在庫・棚卸管理の「一時保管」タブ)。1件の動きごとの申請
+  inventory_temporary_holdings: {
+    table: "temporaryHoldingMovements",
+    header: {
+      holdingId: { label: "一時保管番号" },
+      movementType: { label: "動きの種類", options: { RECEIVE: "受入", RELEASE: "払出", ADJUST: "数量の調整", MOVE_TO_STOCK: "在庫へ移行" } },
+      quantity: { label: "数量の増減", format: "number" },
+      movementDate: { label: "日付", format: "date" },
+      memo: { label: "メモ・理由", format: "multiline" },
+      category: { label: "区分", options: { OWN: "自社品", CUSTODY: "預り品" } },
+      itemName: { label: "品名" },
+      spec: { label: "規格・メモ" },
+      unitName: { label: "単位" },
+      warehouseId: { label: "倉庫", ref: "warehouse" },
+      locationId: { label: "ロケーション", ref: "location" },
+      partnerId: { label: "取引先", ref: "partner" },
+      holdingSourceId: { label: "元の伝票(発注)" },
+      sourceType: { label: "払出の相手の伝票の種類", options: { SALES_ORDER: "受注" } },
+      sourceId: { label: "払出の相手の伝票(受注)" },
+      sourceItemId: { label: "払出の相手の明細" },
+      currentQuantity: { label: "今の数量(確定分)", format: "number" },
+    },
+    hidden: {
+      ...AUDIT_HIDDEN,
+      id: "動きの内部番号",
+      approvalStatus: "承認の状態(申請の状態として別に出す)",
+      holdingSourceType: "元の伝票の種類(元の伝票の番号として出す)",
+    },
+  },
+
   // 購買申請(purchase/requisitions)
   purchase_requisitions: {
     table: "purchaseRequests",

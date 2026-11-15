@@ -118,7 +118,18 @@ export function PurchaseOrderReceiptProgress({
         </tbody>
       </table>
 
-      <OutsideInventoryNote lines={outsideInventoryLines} />
+      {/* REQ-011(2): 直接入力の明細は「一時保管で受入」から一時保管の台帳へ(発注の入荷済数量には数えない) */}
+      <OutsideInventoryNote
+        lines={outsideInventoryLines.map((line) =>
+          line.key.startsWith("direct-")
+            ? line
+            : {
+                ...line,
+                href: `/inventory/audit?tab=holdings&receivePo=${encodeURIComponent(orderId)}&receivePoItem=${encodeURIComponent(line.key)}`,
+                actionLabel: "一時保管で受入",
+              },
+        )}
+      />
 
       {directMessage && (
         <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-lg">

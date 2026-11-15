@@ -116,6 +116,8 @@ export const TABLES = {
   stock_reclassifications: { domain: "inventory", label: "品質区分の変更", description: "良品・破損品・検品待ちの区分の変更。1行 = 1回の変更" },
   stock_disposals: { domain: "inventory", label: "廃棄", description: "在庫の廃棄。1行 = 1回の廃棄" },
   stock_returns: { domain: "inventory", label: "返品", description: "仕入先への返品・得意先からの返品。1行 = 1回の返品" },
+  temporary_holdings: { domain: "inventory", label: "一時保管", description: "品目マスタに無い物(自社品・預り品)の台帳。在庫には含めない(REQ-011)" },
+  temporary_holding_movements: { domain: "inventory", label: "一時保管の動き", description: "一時保管の受入・払出・調整の1件ずつ。確定した動きだけを台帳の数量に数える" },
 
   // ---- 会計(仕訳)
   journal_posting_rules: { domain: "accounting", label: "仕訳ルール", description: "会計事象(売上・仕入・入金・支払・前受・前払)ごとの借方・貸方の勘定科目" },

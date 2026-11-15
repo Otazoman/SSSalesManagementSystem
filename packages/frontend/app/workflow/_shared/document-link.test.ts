@@ -39,6 +39,12 @@ describe("buildApprovalDocumentHref", () => {
     expect(buildApprovalDocumentHref("purchase_payment_disbursements", "/purchase/payment", "uuid-2")).toBe("/purchase/payment");
   });
 
+  it("一時保管は在庫・棚卸管理の一時保管タブで開く(REQ-011(2))", () => {
+    expect(buildApprovalDocumentHref("inventory_temporary_holdings", "/inventory/audit", "M-1")).toBe(
+      "/inventory/audit?openId=M-1&openKind=holding",
+    );
+  });
+
   it("画面のパスが解決できない時はリンクを出さない", () => {
     expect(buildApprovalDocumentHref("sales_quotes", null, "Q-1")).toBeNull();
   });

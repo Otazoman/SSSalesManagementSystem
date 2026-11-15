@@ -26,6 +26,8 @@
 | [stock_returns](#stock_returns) | 返品 | `DB` | 仕入先への返品・得意先からの返品。1行 = 1回の返品 |
 | [stock_transactions](#stock_transactions) | 在庫の増減履歴 | `DB` | 入庫・出庫・棚卸・品質区分の変更・廃棄・返品による在庫の増減の記録 |
 | [stocks](#stocks) | 在庫 | `DB` | 商品 × 倉庫 × ロケーション × ロット × 品質区分ごとの在庫数 |
+| [temporary_holding_movements](#temporary_holding_movements) | 一時保管の動き | `DB` | 一時保管の受入・払出・調整の1件ずつ。確定した動きだけを台帳の数量に数える |
+| [temporary_holdings](#temporary_holdings) | 一時保管 | `DB` | 品目マスタに無い物(自社品・預り品)の台帳。在庫には含めない(REQ-011) |
 | [warehouse_stock_reservations](#warehouse_stock_reservations) | 在庫の引当(倉庫単位) | `DB` | 受注による商品 × 倉庫単位の在庫の引当数 |
 
 ## ER 図
@@ -141,6 +143,15 @@ erDiagram
     text location_id FK
     text account_code FK
   }
+  temporary_holding_movements {
+    text id PK
+    text holding_id FK
+  }
+  temporary_holdings {
+    text id PK
+    text warehouse_id FK
+    text partner_id FK
+  }
   warehouse_stock_reservations {
     text item_id PK
     text warehouse_id PK
@@ -228,6 +239,9 @@ erDiagram
   warehouses ||--o{ stocks : "warehouse_id"
   locations ||--o{ stocks : "location_id"
   accounts ||--o{ stocks : "account_code"
+  temporary_holdings ||--o{ temporary_holding_movements : "holding_id"
+  warehouses ||--o{ temporary_holdings : "warehouse_id"
+  partners |o--o{ temporary_holdings : "partner_id"
 ```
 
 ## テーブルの詳細
@@ -644,6 +658,61 @@ erDiagram
 | `updated_at` | 日時 | ○ |  |  | 更新日時 |
 
 - 一意(重複不可): `qr_code_key`、`item_id` + `warehouse_id` + `location_id` + `lot_number` + `account_code` + `quality_status`
+
+<a id="temporary_holding_movements"></a>
+
+### temporary_holding_movements(一時保管の動き)
+
+一時保管の受入・払出・調整の1件ずつ。確定した動きだけを台帳の数量に数える
+
+- DB: `DB`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `holding_id` | 文字列 | ○ |  | [temporary_holdings](#temporary_holdings).id |  |
+| `movement_type` | 文字列 | ○ |  |  | RECEIVE=受入、RELEASE=払出、ADJUST=数量の調整 |
+| `quantity` | 数値 | ○ |  |  | 数量 |
+| `movement_date` | 日時 | ○ |  |  |  |
+| `memo` | 文字列 |  |  |  | 備考 |
+| `source_type` | 文字列 |  |  |  | 払出の相手の伝票: SALES_ORDER=受注(受注の直接入力の明細に紐づけて払い出した場合)。なしは null |
+| `source_id` | 文字列 |  |  |  |  |
+| `source_item_id` | 文字列 |  |  |  |  |
+| `approval_status` | 文字列 | ○ | `CONFIRMED` |  | PENDING=申請中、CONFIRMED=確定、REMANDED=差戻し。確定だけを台帳の数量に数える |
+| `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
+| `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |
+| `updated_at` | 日時 | ○ |  |  | 更新日時 |
+
+<a id="temporary_holdings"></a>
+
+### temporary_holdings(一時保管)
+
+品目マスタに無い物(自社品・預り品)の台帳。在庫には含めない(REQ-011)
+
+- DB: `DB`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `category` | 文字列 | ○ |  |  | 分類 |
+| `item_name` | 文字列 | ○ |  |  | 品名(マスタに無い品目も入力できる) |
+| `spec` | 文字列 |  |  |  | 規格・メモ |
+| `quantity` | 数値 | ○ | `0` |  | 数量 |
+| `unit_name` | 文字列 |  |  |  |  |
+| `warehouse_id` | 文字列 | ○ |  | [warehouses](master.md#warehouses).id | 倉庫 |
+| `location_id` | 文字列 |  |  |  | ロケーション |
+| `source_type` | 文字列 |  |  |  | 元の伝票: PURCHASE_ORDER=発注(発注の直接入力の明細から受け入れた場合)。なしは null |
+| `source_id` | 文字列 |  |  |  |  |
+| `source_item_id` | 文字列 |  |  |  |  |
+| `partner_id` | 文字列 |  |  | [partners](master.md#partners).id | 取引先 |
+| `received_date` | 日時 | ○ |  |  | 入庫日 |
+| `planned_release_date` | 日時 |  |  |  |  |
+| `status` | 文字列 | ○ | `HOLDING` |  | 状態 |
+| `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
+| `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |
+| `updated_at` | 日時 | ○ |  |  | 更新日時 |
 
 <a id="warehouse_stock_reservations"></a>
 

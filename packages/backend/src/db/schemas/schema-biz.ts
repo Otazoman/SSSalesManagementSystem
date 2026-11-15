@@ -1192,6 +1192,55 @@ export const stockReturns = sqliteTable("stock_returns", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+// REQ-011(2): 一時保管の台帳。品目マスタに無い物(発注・受注の直接入力の明細など)を、在庫(stocks)とは別に管理する。
+// 在庫数・引当・棚卸・在庫評価・仕訳には含めない。数量は「確定」の動き(temporary_holding_movements)の合計
+export const temporaryHoldings = sqliteTable("temporary_holdings", {
+  id: text("id").primaryKey(),
+  // OWN=自社品、CUSTODY=預り品(取引先から預かった物。取引先が必須)
+  category: text("category").notNull(),
+  itemName: text("item_name").notNull(),
+  // 規格・メモ
+  spec: text("spec"),
+  // 確定した動きの合計(受入 + 調整 − 払出)。確定のたびに計算し直して保存する
+  quantity: real("quantity").notNull().default(0),
+  unitName: text("unit_name"),
+  warehouseId: text("warehouse_id")
+    .notNull()
+    .references(() => warehouses.id),
+  locationId: text("location_id"),
+  // 元の伝票: PURCHASE_ORDER=発注(発注の直接入力の明細から受け入れた場合)。なしは null
+  sourceType: text("source_type"),
+  sourceId: text("source_id"),
+  sourceItemId: text("source_item_id"),
+  partnerId: text("partner_id").references(() => partners.id),
+  receivedDate: integer("received_date", { mode: "timestamp" }).notNull(),
+  plannedReleaseDate: integer("planned_release_date", { mode: "timestamp" }),
+  // HOLDING=保管中、RELEASED=払出済(数量が0になった)、MOVED_TO_STOCK=在庫へ移行済(REQ-011(3))
+  status: text("status").notNull().default("HOLDING"),
+  ...withAuditColumns(),
+});
+
+// REQ-011(2): 一時保管の動き(受入・払出・調整の1件ずつ)。承認フローがあれば申請中から始まり、承認で確定する
+export const temporaryHoldingMovements = sqliteTable("temporary_holding_movements", {
+  id: text("id").primaryKey(),
+  holdingId: text("holding_id")
+    .notNull()
+    .references(() => temporaryHoldings.id, { onDelete: "cascade" }),
+  // RECEIVE=受入、RELEASE=払出、ADJUST=数量の調整
+  movementType: text("movement_type").notNull(),
+  // 台帳の数量の増減(受入は+、払出は−、調整は+か−)
+  quantity: real("quantity").notNull(),
+  movementDate: integer("movement_date", { mode: "timestamp" }).notNull(),
+  memo: text("memo"),
+  // 払出の相手の伝票: SALES_ORDER=受注(受注の直接入力の明細に紐づけて払い出した場合)。なしは null
+  sourceType: text("source_type"),
+  sourceId: text("source_id"),
+  sourceItemId: text("source_item_id"),
+  // PENDING=申請中、CONFIRMED=確定、REMANDED=差戻し。確定だけを台帳の数量に数える
+  approvalStatus: text("approval_status").notNull().default("CONFIRMED"),
+  ...withAuditColumns(),
+});
+
 // ==========================================
 // 5. 会計・外部連携系
 // ==========================================

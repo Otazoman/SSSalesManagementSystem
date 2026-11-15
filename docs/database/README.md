@@ -9,7 +9,7 @@
 
 | バインディング | 本番の DB 名 | 内容 | テーブル数 | 最新の migration |
 |---|---|---|---:|---|
-| `DB` | `my-erp-db` | 業務データ | 96 | `0104_wise_silver_centurion` |
+| `DB` | `my-erp-db` | 業務データ | 98 | `0105_messy_wendell_rand` |
 | `DB_LOG` | `my-erp-log-db` | 監査ログ・メール送信ログ | 2 | `0002_wealthy_smasher` |
 | `DB_OTP` | `my-erp-otp-db` | OTP | 2 | `0001_red_santa_claus` |
 | `DB_JOURNAL` | `my-erp-journal-db` | 仕訳データ | 2 | `0002_lame_piledriver` |
@@ -29,7 +29,7 @@
 | [業務マスタ](master.md) | 取引先・商品・単位・勘定科目・倉庫・ロケーションなどのマスタ | 23 |
 | [販売](sales.md) | 見積・受注・売上・請求・入金 | 18 |
 | [購買](purchase.md) | 購買申請・発注・仕入・支払 | 14 |
-| [在庫](inventory.md) | 在庫・入出庫・入出荷指示・棚卸・品質区分の変更・廃棄・返品・引当 | 19 |
+| [在庫](inventory.md) | 在庫・入出庫・入出荷指示・棚卸・品質区分の変更・廃棄・返品・引当 | 21 |
 | [会計(仕訳)](accounting.md) | 仕訳ルール・仕訳の起票イベントと、仕訳データ(DB_JOURNAL) | 6 |
 | [進捗管理](progress.md) | 進捗確認の工程の担当と、完了/進行中の手動設定 | 4 |
 | [商談](deals.md) | 商談・面談者・タスク・見込み客の担当者(DB_DEALS) | 6 |
@@ -137,6 +137,8 @@
 | [stock_transactions](inventory.md#stock_transactions) | 在庫の増減履歴 | 在庫 | `DB` |
 | [stocks](inventory.md#stocks) | 在庫 | 在庫 | `DB` |
 | [tax_categories](master.md#tax_categories) | 消費税区分 | 業務マスタ | `DB` |
+| [temporary_holding_movements](inventory.md#temporary_holding_movements) | 一時保管の動き | 在庫 | `DB` |
+| [temporary_holdings](inventory.md#temporary_holdings) | 一時保管 | 在庫 | `DB` |
 | [unit_conversions](master.md#unit_conversions) | 単位の換算 | 業務マスタ | `DB` |
 | [units](master.md#units) | 単位 | 業務マスタ | `DB` |
 | [user_login_states](system.md#user_login_states) | ログインの状態 | システム管理 | `DB` |

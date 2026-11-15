@@ -9,7 +9,12 @@
 const ROW_ONLY_TARGET_TYPES = ["sales_payment_receipts", "sales_cash_receipts", "purchase_payment_disbursements"];
 
 function openKindOf(targetType: string, path: string): string | null {
-  if (path === "/inventory/audit") return targetType === "inventory_audit" ? "audit" : "";
+  if (path === "/inventory/audit") {
+    if (targetType === "inventory_audit") return "audit";
+    // REQ-011(2): 一時保管は「一時保管」タブを開く(番号は動きの番号のため、タブだけ)
+    if (targetType === "inventory_temporary_holdings") return "holding";
+    return "";
+  }
   // REQ-017: 請求の画面は、進捗確認と同じ openId で詳細のモーダルを開く
   if (path === "/sales/billing") return "";
   const isReceiving = path === "/inventory/receiving";

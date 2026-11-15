@@ -10,6 +10,8 @@ export interface ScreenDefinition {
     | "business_master";
   icon?: string;
   path?: string;
+  // REQ-011(2): 画面の中のタブなど、メニューに出さない画面(権限・承認フローの対象にだけ使う)
+  hideFromMenu?: boolean;
 }
 
 export const SCREEN_MASTER: ScreenDefinition[] = [
@@ -119,6 +121,15 @@ export const SCREEN_MASTER: ScreenDefinition[] = [
     category: "daily_work",
     icon: "📋",
     path: "/inventory/audit",
+  },
+  // REQ-011(2): 一時保管(在庫・棚卸管理の「一時保管」タブ)。権限・承認フローの対象にするための画面で、メニューには出さない
+  {
+    resource: "inventory_temporary_holdings",
+    name: "一時保管",
+    category: "daily_work",
+    icon: "📦",
+    path: "/inventory/audit",
+    hideFromMenu: true,
   },
 
   // 3. 経理・統制

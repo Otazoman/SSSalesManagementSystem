@@ -1,0 +1,41 @@
+CREATE TABLE `temporary_holding_movements` (
+	`id` text PRIMARY KEY NOT NULL,
+	`holding_id` text NOT NULL,
+	`movement_type` text NOT NULL,
+	`quantity` real NOT NULL,
+	`movement_date` integer NOT NULL,
+	`memo` text,
+	`source_type` text,
+	`source_id` text,
+	`source_item_id` text,
+	`approval_status` text DEFAULT 'CONFIRMED' NOT NULL,
+	`created_by` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_by` text NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`holding_id`) REFERENCES `temporary_holdings`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `temporary_holdings` (
+	`id` text PRIMARY KEY NOT NULL,
+	`category` text NOT NULL,
+	`item_name` text NOT NULL,
+	`spec` text,
+	`quantity` real DEFAULT 0 NOT NULL,
+	`unit_name` text,
+	`warehouse_id` text NOT NULL,
+	`location_id` text,
+	`source_type` text,
+	`source_id` text,
+	`source_item_id` text,
+	`partner_id` text,
+	`received_date` integer NOT NULL,
+	`planned_release_date` integer,
+	`status` text DEFAULT 'HOLDING' NOT NULL,
+	`created_by` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_by` text NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`partner_id`) REFERENCES `partners`(`id`) ON UPDATE no action ON DELETE no action
+);

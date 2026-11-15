@@ -150,7 +150,8 @@ describe("取込後のデータが、サンプルの想定どおりになって�
   });
 
   it("承認フロー・進捗の担当設定が登録されている。部門+ロールは部署コード(0041)で指定でき、内部IDに変換されて保存される", async () => {
-    expect(await count(schema.approvalFlows)).toBe(16);
+    // 2026-11-15: 承認の申請ができる全ての種類のフローを入れた(16 → 28)
+    expect(await count(schema.approvalFlows)).toBe(28);
     const owners = await db.select().from(schema.progressStageOwners);
     expect(owners.length).toBe(12);
     const deptRole = owners.find((o) => o.stageKey === "shipment_instruction")!;

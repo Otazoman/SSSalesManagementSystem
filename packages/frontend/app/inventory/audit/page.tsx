@@ -18,6 +18,8 @@ import {
   parseOpenedAuditDocumentKind,
 } from "./_components/OpenedAuditDocumentCard";
 import { useDeepLinkId } from "../../_shared/hooks/use-deep-link-id";
+import { usePermissionContext } from "../../context/permissioncontext";
+import { TemporaryHoldingsPanel } from "./_components/TemporaryHoldingsPanel";
 // 在庫照会・返品履歴・廃棄履歴タブは、入荷/出荷ページ(/inventory/receiving・/inventory/shipping)
 // と同じ共有コンポーネントをそのまま再利用する(instructions/page.tsxと同じ使い方)
 import { StockInquiryTab } from "../stock/_components/StockInquiryTab";
@@ -32,7 +34,7 @@ import {
   ReturnRecord,
 } from "../stock/_types";
 
-type Tab = "stocks" | "returns" | "disposals" | "count" | "history";
+type Tab = "stocks" | "returns" | "disposals" | "count" | "history" | "holdings";
 
 export default function InventoryAuditPage() {
   const {
@@ -44,7 +46,24 @@ export default function InventoryAuditPage() {
     departments,
     loading: permsLoading,
   } = usePagePermissions();
-  const [tab, setTab] = useState<Tab>("count");
+  const urlSearchParams = useSearchParams();
+  // REQ-011(2): 発注・受注の直接入力の明細から開いた時(?tab=holdings&receivePo=…&receivePoItem=… / releaseSo=…&releaseSoItem=…)
+  const [tab, setTab] = useState<Tab>(() => (urlSearchParams.get("tab") === "holdings" ? "holdings" : "count"));
+  const [holdingReceiveSource] = useState(() => {
+    const purchaseOrderId = urlSearchParams.get("receivePo");
+    const purchaseOrderItemId = urlSearchParams.get("receivePoItem");
+    return purchaseOrderId && purchaseOrderItemId ? { purchaseOrderId, purchaseOrderItemId } : null;
+  });
+  const [holdingReleaseTarget] = useState(() => {
+    const salesOrderId = urlSearchParams.get("releaseSo");
+    const salesOrderItemId = urlSearchParams.get("releaseSoItem");
+    return salesOrderId && salesOrderItemId ? { salesOrderId, salesOrderItemId } : null;
+  });
+  // REQ-011(2): 「一時保管」タブの権限は、画面マスタの「一時保管」(inventory_temporary_holdings)で判定する(メニューには出さない画面)
+  const { user } = usePermissionContext();
+  const holdingPermission = (action: string) =>
+    user?.roleId === "admin" || !!user?.permissions.includes(`inventory_temporary_holdings:${action}`);
+  const canReadHoldings = holdingPermission("read") || holdingPermission("menu");
   const [message, setMessage] = useState("");
   const [editTarget, setEditTarget] = useState<AuditEditTarget | null>(null);
   const [reclassifyEditTarget, setReclassifyEditTarget] =
@@ -61,7 +80,6 @@ export default function InventoryAuditPage() {
   // このページの「在庫照会」タブ(StockInquiryTab)に集約されているため、editIdだけでは
   // どの種別か判別できず、棚卸→品質区分変更→廃棄→返品の順に詳細取得を試みて特定する
   // (画面構成再編(a)、stock/page.tsxの旧urlEditIdパターンを踏襲)
-  const urlSearchParams = useSearchParams();
   const urlEditId = urlSearchParams.get("editId");
 
   useEffect(() => {
@@ -155,6 +173,11 @@ export default function InventoryAuditPage() {
   useDeepLinkId(
     "openId",
     (id, params) => {
+      // REQ-011(2): 一時保管の承認のプレビューからは「一時保管」タブを開く
+      if (params.get("openKind") === "holding") {
+        setTab("holdings");
+        return;
+      }
       setOpenedDocument({ kind: parseOpenedAuditDocumentKind(params.get("openKind")), id });
     },
     !permsLoading && canRead,
@@ -199,8 +222,11 @@ export default function InventoryAuditPage() {
             { key: "disposals", label: "🗑️ 廃棄履歴" },
             { key: "count", label: "📋 棚卸" },
             { key: "history", label: "📜 棚卸履歴" },
+            { key: "holdings", label: "📦 一時保管" },
           ] as const
-        ).map((t) => (
+        )
+          .filter((t) => t.key !== "holdings" || canReadHoldings)
+          .map((t) => (
           <button
             key={t.key}
             type="button"
@@ -226,7 +252,8 @@ export default function InventoryAuditPage() {
         tab !== "stocks" &&
         tab !== "returns" &&
         tab !== "disposals" &&
-        tab !== "history" && (
+        tab !== "history" &&
+        tab !== "holdings" && (
           <AccessDeniedInline
             title="🔒 登録する権限がありません"
             description="在庫照会・返品履歴・廃棄履歴・棚卸履歴の閲覧のみ利用できます。"
@@ -259,6 +286,14 @@ export default function InventoryAuditPage() {
             setDisposalEditTarget(null);
             setReturnEditTarget(null);
           }}
+        />
+      )}
+      {tab === "holdings" && canReadHoldings && (
+        <TemporaryHoldingsPanel
+          canCreate={holdingPermission("create")}
+          canDelete={holdingPermission("delete")}
+          initialReceiveSource={holdingReceiveSource}
+          releaseTarget={holdingReleaseTarget}
         />
       )}
       {tab === "returns" && <ReturnHistoryPanel />}

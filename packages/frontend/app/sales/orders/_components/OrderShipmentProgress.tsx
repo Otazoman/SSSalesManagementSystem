@@ -97,7 +97,18 @@ export function OrderShipmentProgress({ orderId, outsideInventoryLines = [] }: O
         </tbody>
       </table>
 
-      <OutsideInventoryNote lines={outsideInventoryLines} />
+      {/* REQ-011(2): 直接入力の明細は「一時保管から払出」で、一時保管の台帳から払い出す */}
+      <OutsideInventoryNote
+        lines={outsideInventoryLines.map((line) =>
+          line.key.startsWith("direct-")
+            ? line
+            : {
+                ...line,
+                href: `/inventory/audit?tab=holdings&releaseSo=${encodeURIComponent(orderId)}&releaseSoItem=${encodeURIComponent(line.key)}`,
+                actionLabel: "一時保管から払出",
+              },
+        )}
+      />
 
       {hasRemaining && (
         <div className="flex flex-col sm:flex-row gap-2">

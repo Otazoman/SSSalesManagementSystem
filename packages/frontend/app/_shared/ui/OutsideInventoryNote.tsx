@@ -3,6 +3,9 @@ export interface OutsideInventoryLine {
   key: string;
   name: string;
   quantity: number;
+  /** REQ-011(2): 一時保管で受け入れる・払い出す画面へのリンク(別のタブで開く) */
+  href?: string;
+  actionLabel?: string;
 }
 
 export function OutsideInventoryNote({ lines }: { lines: OutsideInventoryLine[] }) {
@@ -12,9 +15,21 @@ export function OutsideInventoryNote({ lines }: { lines: OutsideInventoryLine[] 
       <p className="font-bold text-slate-700">品目マスタに無いため対象外(一時保管で管理できます)</p>
       <ul className="mt-1 space-y-0.5">
         {lines.map((line) => (
-          <li key={line.key} className="flex justify-between">
+          <li key={line.key} className="flex items-center justify-between gap-2">
             <span>{line.name}</span>
-            <span className="font-mono">{line.quantity}</span>
+            <span className="flex items-center gap-2">
+              <span className="font-mono">{line.quantity}</span>
+              {line.href && (
+                <a
+                  href={line.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold text-indigo-700 underline hover:text-indigo-900"
+                >
+                  {line.actionLabel ?? "一時保管で管理"}
+                </a>
+              )}
+            </span>
           </li>
         ))}
       </ul>

@@ -28,6 +28,8 @@ export { stockDisposalsRouter as stockDisposals } from "./inventory/disposals";
 export { stockReceiptsRouter as stockReceipts } from "./inventory/receipts";
 export { stockReclassificationsRouter as stockReclassifications } from "./inventory/reclassifications";
 export { stockReturnsRouter as stockReturns } from "./inventory/returns";
+// REQ-011(2): 一時保管の台帳(/api/temporary-holdings)
+export { temporaryHoldingsRouter as temporaryHoldings } from "./inventory/temporary-holdings";
 export { stockShipmentsRouter as stockShipments } from "./inventory/shipments";
 export { stocksRouter as stocks } from "./inventory/stocks";
 export { locationsRouter as locations } from "./master/locations";
