@@ -50,7 +50,7 @@
 | REQ-014 | 確認待ち(Staging 未反映) | 進捗確認: 工程ごとの担当設定 | 何を設定する画面かが分からない。画面の説明とマニュアルを直す |
 | REQ-015 | 確認待ち(Staging 未反映・DB の変更あり) | 見積管理 | 失注の状態と、失注日・失注理由を足す。進捗確認では完了扱い(DB変更あり) |
 | REQ-016 | 確認待ち(2026-11-14 Staging 反映済み) | 承認タスク・申請履歴 | プレビューから、元の伝票を別ウィンドウで開けるようにする |
-| REQ-017 | 対応予定 | 請求管理 | 請求に承認機能を付け、承認済みの請求書だけ発行・メール送信できるようにする(売上と同じ形) |
+| REQ-017 | 確認待ち(Staging 未反映) | 請求管理 | 請求に承認機能を付け、承認済みの請求書だけ発行・メール送信できるようにする(売上と同じ形) |
 | REQ-018 | 対応予定 | 請求管理・支払管理(消込) | 入金と支払の消込に承認を付け、承認後に消込・残高・仕訳へ反映する(DB変更あり。REQ-017 の後) |
 | REQ-019 | 確認待ち(Staging 未反映) | 購買申請 | 仕入先はマスタからの選択だけにする(自由入力をやめる) |
 | REQ-020 | 確認待ち(Staging 未反映) | 発注管理(回答納期) | 受注とつながらない明細は、希望納期を回答納期に展開する(修正可) |
@@ -1079,6 +1079,19 @@ PDF の描画を API からブラウザへ移す。サーバーは「帳票の�
   - 承認フローのサンプル: sales_billing のフロー(請求の作成者 → 課長 → 経理)を 2026-11-09 に渡した取込用 CSV に足す(sampledata/ は変えない)。
 - 確認方法: billing.adapter.test.ts(売上のテストと同じ観点)。スイッチが OFF の時に既存の billing-crud.test.ts・billing-pdf.test.ts・otp-download.test.ts がそのまま通ること。
   ON の時に承認前の PDF 発行・メール送信・ダウンロードが拒否されること。
+- 対応(2026-11-15): DB の列は足さない(ユーザー確認済み。売上の承認も伝票の current_approval_layer・approval_flow_id は使わず、承認の状態は申請の表に持つため)。
+  - backend: `routes/sales/billing/billing-approval.service.ts`(申請・承認前の操作の確認)、`workflow-engine/target-adapters/billing.adapter.ts`(registry に sales_billing)、
+    `POST /:id/submit-for-approval`、会社設定 `is_billing_approval_enabled`(settings.ts の isBillingWfEnabled。auth/profile に自動で出る)。
+    状態は DRAFT → PENDING_APPROVAL → APPROVED → (PDF 発行で)ISSUED。差戻し・取下げで DRAFT。
+  - 承認前の拒否: PDF のデータ(`GET /:id/pdf-source`)を承認済み・発行済み以外で 400 にする。メール送信・取引先のダウンロードは PDF の発行が前提のため、これで止まる。
+    承認申請中の削除、承認申請中・承認済み(未発行)への入金の記録(画面・CSV 取込)も断る。
+  - 承認のプレビュー: preview-specs.ts に sales_billing(billingHeaders・billingItems の全ての列)。「伝票を開く」は `/sales/billing?openId=`。
+  - 画面: 会社設定の伝票の承認に「請求」、請求詳細に「承認を申請する」と承認待ちの表示、承認前は PDF 発行・送信のボタンを押せない。状態の表示に「承認申請中」「承認済み(未発行)」(一覧・進捗確認)。
+  - 計画との違い: 一覧の状態の絞り込みは足していない(状態は一覧の列に出る)。申請の部署は選ばない(売上の画面の部署の選択は持たない)。
+    承認後の変更申請は、請求に編集の機能が無いため対象外。承認フローのサンプル CSV は未作成。
+  - 確認: billing-approval.test.ts(OFF は申請できない・フロー無しは下書きに戻る・申請・承認・差戻し・取下げ・ON の承認前は PDF/削除/入金を拒否・OFF は今までどおり)11件、
+    BillingDetailModal.test.tsx・SpecPreview.test.tsx・document-link.test.ts に追加。backend の請求・承認・会社設定のテスト 381件、frontend 324件が通った。
+    tsc(backend・frontend)が通り、変更したファイルの lint のエラーは増えていない。
 
 ### REQ-018 入金・支払の消込に承認を付ける(DB変更あり。REQ-017 の後)
 

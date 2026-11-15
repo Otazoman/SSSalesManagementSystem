@@ -26,6 +26,7 @@ export default function SalesBillingPage() {
     canUpdate,
     canDelete,
     loading: permsLoading,
+    isBillingWfEnabled,
   } = usePagePermissions();
   // 請求一覧 / 入金(単体入金)。入金管理は請求管理の中の機能(専用メニューは持たない)
   const [tab, setTab] = useState<"billing" | "receipts">("billing");
@@ -79,6 +80,7 @@ export default function SalesBillingPage() {
     setCreateForm,
     handleSubmitCreateBilling,
     handleGeneratePDF,
+    handleSubmitForApproval,
     handleRecordPaymentReceipt,
     handleCSVImportChange,
     handlePaymentReceiptsCSVImportChange,
@@ -316,6 +318,8 @@ export default function SalesBillingPage() {
         detail={detail}
         onClose={handleCloseDetail}
         onGeneratePDF={handleGeneratePDF}
+        approvalEnabled={isBillingWfEnabled}
+        onSubmitForApproval={canUpdate ? handleSubmitForApproval : undefined}
         onRecordPaymentReceipt={handleRecordPaymentReceipt}
         showMailModal={showMailModal}
         setShowMailModal={setShowMailModal}

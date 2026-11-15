@@ -3,6 +3,7 @@ import * as v from "valibot";
 import { Env } from "../../../types/env";
 import { BillingRepository } from "./billing.repository";
 import { BillingService } from "./billing.service";
+import { submitBillingForApproval } from "./billing-approval.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
 import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
@@ -212,6 +213,33 @@ billingRouter.delete(
   async (c) => {
     const id = c.req.param("id");
     const result = await getService(c).deleteBilling(c, id);
+    return c.json(result);
+  },
+);
+
+// ==========================================
+// REQ-017: 請求の承認申請(会社設定で請求の承認が ON の時だけ使える)
+// ==========================================
+billingRouter.post(
+  "/:id/submit-for-approval",
+  describeApiRoute({
+    summary: "請求の承認申請",
+    tags: ["sales-billing"],
+    responses: {
+      200: { description: "申請成功" },
+      400: { description: "承認機能が OFF、下書き状態でない、または承認フロー未定義等" },
+      404: { description: "対象の請求が見つからない" },
+    },
+  }),
+  async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await submitBillingForApproval(
+      c,
+      new BillingRepository(c.env.DB),
+      id,
+      body?.applicantDepartmentSurrogateId || null,
+    );
     return c.json(result);
   },
 );

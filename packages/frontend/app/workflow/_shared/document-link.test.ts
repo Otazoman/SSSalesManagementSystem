@@ -30,6 +30,10 @@ describe("buildApprovalDocumentHref", () => {
     expect(buildApprovalDocumentHref("inventory_stock", "/inventory/audit", "X-1")).toBe("/inventory/audit?openId=X-1");
   });
 
+  it("請求は詳細のモーダル(openId)で開く(REQ-017)", () => {
+    expect(buildApprovalDocumentHref("sales_billing", "/sales/billing", "BL-1")).toBe("/sales/billing?openId=BL-1");
+  });
+
   it("画面のパスが解決できない時はリンクを出さない", () => {
     expect(buildApprovalDocumentHref("sales_quotes", null, "Q-1")).toBeNull();
   });

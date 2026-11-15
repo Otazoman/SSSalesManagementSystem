@@ -30,6 +30,10 @@ export class BillingReconciliationService {
     if (header.status === "DRAFT") {
       throw new BadRequestError("未発行(下書き)の請求には入金を記録できません。請求書を発行してから記録してください");
     }
+    // REQ-017: 承認申請中・承認済み(まだ発行していない)の請求にも入金は記録しない(発行してから)
+    if (header.status === "PENDING_APPROVAL" || header.status === "APPROVED") {
+      throw new BadRequestError("請求書を発行する前の請求には入金を記録できません。承認後に請求書を発行してから記録してください");
+    }
 
     const amount = Number(body.amount) || 0;
     const currentReconciled = await this.repo.sumReconciledAmount(billingHeaderId);

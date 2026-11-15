@@ -215,6 +215,43 @@ export const PREVIEW_SPECS: Record<string, PreviewSpec> = {
     },
   },
 
+  // REQ-017: 請求(sales/billing)
+  sales_billing: {
+    table: "billingHeaders",
+    header: {
+      id: { label: "請求番号" },
+      title: { label: "件名" },
+      partnerId: { label: "請求先", ref: "partner" },
+      billingDate: { label: "請求日", format: "date" },
+      mode: { label: "請求の種類", options: { PER_TRANSACTION: "都度請求", PERIODIC: "締め請求" } },
+      periodStart: { label: "対象期間(開始)", format: "date" },
+      periodEnd: { label: "対象期間(終了)", format: "date" },
+      totalAmount: { label: "合計金額(税込)", format: "currency" },
+      taxAmount: { label: "消費税額", format: "currency" },
+      memo: { label: "備考", format: "multiline" },
+    },
+    hidden: {
+      ...AUDIT_HIDDEN,
+      status: "伝票の状態(申請の状態として別に出す)",
+      reconciledAmount: "入金の消込額(入金の記録で決まる。承認の時点では0円)",
+      reconciliationStatus: "消込の状況(入金の記録で決まる)",
+      invoicePdfR2Path: "請求書 PDF の保存場所(承認の後に発行する)",
+    },
+    items: {
+      table: "billingItems",
+      columns: {
+        salesInvoiceId: { label: "売上番号" },
+        itemName: { label: "品名(手入力の行)" },
+        quantity: { label: "数量", format: "number" },
+        unitPrice: { label: "単価", format: "currency" },
+        taxCategoryCode: { label: "税区分", ref: "taxCategory" },
+        amount: { label: "金額", format: "currency" },
+        taxAmount: { label: "消費税額", format: "currency" },
+      },
+      hidden: { ...ITEM_HIDDEN, billingHeaderId: "請求番号(ヘッダーに出す)" },
+    },
+  },
+
   // 購買申請(purchase/requisitions)
   purchase_requisitions: {
     table: "purchaseRequests",

@@ -283,6 +283,7 @@ export function SecuritySettings({
                       { key: "is_purchase_order_approval_enabled", label: "発注" },
                       { key: "is_sales_approval_enabled", label: "売上" },
                       { key: "is_purchase_approval_enabled", label: "仕入" },
+                      { key: "is_billing_approval_enabled", label: "請求" },
                     ] as const
                   ).map(({ key, label }) => (
                     <label

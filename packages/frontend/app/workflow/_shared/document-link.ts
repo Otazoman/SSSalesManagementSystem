@@ -3,10 +3,13 @@
 // 開き方は進捗確認(progress/_lib/document-href.ts)と同じ editId / openId の形にする。
 //  - 伝票・マスタ: editId(編集/詳細フォームが開く)
 //  - 入荷・出荷の画面: openId + openKind(状態を問わず参照用のカードで開く)
+//  - 請求の画面: openId(REQ-017)
 //  - 在庫・棚卸の画面: openId(棚卸は openKind=audit。品質区分変更・廃棄・返品は種類が分からないため、画面が順に探す)
 
 function openKindOf(targetType: string, path: string): string | null {
   if (path === "/inventory/audit") return targetType === "inventory_audit" ? "audit" : "";
+  // REQ-017: 請求の画面は、進捗確認と同じ openId で詳細のモーダルを開く
+  if (path === "/sales/billing") return "";
   const isReceiving = path === "/inventory/receiving";
   const isShipping = path === "/inventory/shipping";
   if (!isReceiving && !isShipping) return null;

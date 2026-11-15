@@ -75,6 +75,7 @@ export function useAuthAndMenu(isAuthPage: boolean) {
           isUnitWfEnabled: profileData.isUnitWfEnabled || false,
           isProjectWfEnabled: profileData.isProjectWfEnabled || false,
           isItemReorderSettingWfEnabled: profileData.isItemReorderSettingWfEnabled || false,
+          isBillingWfEnabled: profileData.isBillingWfEnabled || false,
           isLocationWfEnabled: profileData.isLocationWfEnabled || false,
           isProductPriceWfEnabled:
             profileData.isProductPriceWfEnabled || false,

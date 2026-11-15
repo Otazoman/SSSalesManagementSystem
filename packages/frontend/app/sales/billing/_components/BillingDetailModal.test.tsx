@@ -230,3 +230,57 @@ describe("BillingDetailModal: BUG-094 0円の請求", () => {
     expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
   });
 });
+
+describe("BillingDetailModal: REQ-017 請求の承認", () => {
+  function renderApproval(detail: BillingDetail, approvalEnabled: boolean, onSubmitForApproval = vi.fn()) {
+    const onGeneratePDF = vi.fn();
+    render(
+      <BillingDetailModal
+        detail={detail}
+        onClose={vi.fn()}
+        onGeneratePDF={onGeneratePDF}
+        approvalEnabled={approvalEnabled}
+        onSubmitForApproval={onSubmitForApproval}
+        onRecordPaymentReceipt={vi.fn(async () => true)}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return { onGeneratePDF, onSubmitForApproval };
+  }
+
+  it("承認が ON の下書きは、PDF の発行・送信ができず、承認申請のボタンで申請する", () => {
+    const { onSubmitForApproval } = renderApproval(DETAIL, true);
+    expect(screen.getByRole("button", { name: /請求書PDFを発行する/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /請求書を送信/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /承認を申請する/ }));
+    expect(onSubmitForApproval).toHaveBeenCalledWith("BL-1");
+  });
+
+  it("承認申請中は、申請のボタンを出さず、承認待ちであることを出す", () => {
+    renderApproval({ ...DETAIL, status: "PENDING_APPROVAL" }, true);
+    expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/承認申請中です/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /請求書PDFを発行する/ })).toBeDisabled();
+  });
+
+  it("承認済みなら PDF を発行できる(入金は発行の後)", () => {
+    const { onGeneratePDF } = renderApproval({ ...DETAIL, status: "APPROVED" }, true);
+    fireEvent.click(screen.getByRole("button", { name: /請求書PDFを発行する/ }));
+    expect(onGeneratePDF).toHaveBeenCalledWith("BL-1");
+    expect(screen.getByRole("button", { name: "入金を記録する" })).toBeDisabled();
+  });
+
+  it("承認が OFF の時は、今までどおり下書きから PDF を発行でき、申請のボタンは出さない", () => {
+    renderApproval(DETAIL, false);
+    expect(screen.getByRole("button", { name: /請求書PDFを発行する/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
+  });
+});

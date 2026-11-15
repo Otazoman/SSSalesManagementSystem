@@ -52,6 +52,23 @@ describe("PreviewRenderer: 伝票(BUG-089)", () => {
     });
   }
 
+  it("sales_billing(REQ-017): 請求のヘッダーの全ての項目と、売上の行・手入力の行を出す", () => {
+    const { header } = documentSample("sales_billing");
+    const items = [
+      { id: "BI-1", salesInvoiceId: "SI-1", amount: 1000, taxAmount: 100 },
+      { id: "BI-2", itemName: "手入力の品名", quantity: 2, unitPrice: 500, amount: 1000, taxAmount: 100 },
+    ];
+    render(<PreviewRenderer targetType="sales_billing" mode="task" newData={{ header, items }} displayNames={NAMES} />);
+    expect(screen.queryByText(/未対応/)).toBeNull();
+    for (const field of Object.values(PREVIEW_SPECS.sales_billing.header)) {
+      expect(screen.getAllByText(`${field.label}:`).length).toBeGreaterThan(0);
+    }
+    expect(screen.getAllByText("テスト商事(P-1)").length).toBeGreaterThan(0);
+    expect(screen.getByText("明細(2件):")).toBeInTheDocument();
+    expect(screen.getByText(/SI-1/)).toBeInTheDocument();
+    expect(screen.getByText(/手入力の品名/)).toBeInTheDocument();
+  });
+
   it("申請の時に退避した保存データ(平らな形で items を持つ)も、同じように出す", () => {
     const saved = { id: "QT-1", title: "件名A", partnerId: "P-1", customerId: "P-1", items: [{ itemId: "ITEM-1", quantity: 1 }] };
     render(<PreviewRenderer targetType="sales_quotes" mode="task" newData={saved} displayNames={NAMES} />);

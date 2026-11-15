@@ -374,6 +374,29 @@ export function useBillingActions({
     }
   };
 
+  // REQ-017: 請求の承認申請(会社設定で請求の承認が ON の時だけ使う)。承認されると PDF を発行できる
+  const handleSubmitForApproval = async (id: string) => {
+    if (!(await confirm(`請求 [ ${id} ] の承認を申請しますか？`))) return;
+    setError("");
+    setMessage("");
+    try {
+      const data = await apiFetch<{ message?: string }>(`/api/sales-billing/${id}/submit-for-approval`, {
+        method: "POST",
+        json: { applicantDepartmentSurrogateId: null },
+        defaultErrorMessage: "承認申請に失敗しました",
+      });
+      setMessage(data.message || "請求の承認を申請しました");
+      void handleOpenDetail(id);
+      void syncBillings({
+        ...filters,
+        mode: filterMode === "all" ? "" : filterMode,
+        reconciliationStatus: filterReconciliationStatus === "all" ? "" : filterReconciliationStatus,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "承認申請に失敗しました");
+    }
+  };
+
   const handleRecordPaymentReceipt = async (
     billingHeaderId: string,
     payload: { receivedDate: string; amount: number; method: string; memo?: string },
@@ -478,6 +501,7 @@ export function useBillingActions({
     setCreateForm,
     handleSubmitCreateBilling,
     handleGeneratePDF,
+    handleSubmitForApproval,
     handleRecordPaymentReceipt,
     handleCSVImportChange,
     showMailModal,

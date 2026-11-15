@@ -33,6 +33,7 @@ export function useCompanySettings() {
     is_purchase_order_approval_enabled: false,
     is_sales_approval_enabled: false,
     is_purchase_approval_enabled: false,
+    is_billing_approval_enabled: false,
     is_sales_invoice_requires_shipment: false,
     is_purchase_recognition_requires_receipt: false,
     is_receiving_approval_enabled: false,

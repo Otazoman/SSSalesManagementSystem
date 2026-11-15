@@ -39,6 +39,8 @@ export const UpdateCompanySettingsSchema = v.object({
   // BUG-097・BUG-098
   is_project_approval_enabled: v.optional(booleanTransform, false),
   is_item_reorder_setting_approval_enabled: v.optional(booleanTransform, false),
+  // REQ-017
+  is_billing_approval_enabled: v.optional(booleanTransform, false),
   // Item4-e: 伝票単位の承認トグル(旧is_document_approval_enabledという単一グローバルフラグを廃止し、
   // 伝票種別ごとに置き換え)。現時点で実際に機能を持つのはis_quote_approval_enabledのみ。
   // 他7項目は将来のItem7-10実装時に使う想定で、値の保存先だけ先に用意しておく。

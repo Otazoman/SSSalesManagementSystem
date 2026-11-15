@@ -25,6 +25,7 @@ interface UserState {
   // BUG-097・BUG-098
   isProjectWfEnabled?: boolean;
   isItemReorderSettingWfEnabled?: boolean;
+  isBillingWfEnabled?: boolean;
   isLocationWfEnabled: boolean;
   isProductPriceWfEnabled: boolean;
   isProductWfEnabled: boolean;

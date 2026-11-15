@@ -26,6 +26,7 @@ import { partnerContactsAdapter } from "./partner-contacts.adapter";
 import { unitsAdapter } from "./units.adapter";
 import { projectsAdapter } from "./projects.adapter";
 import { itemReorderSettingsAdapter } from "./item-reorder-settings.adapter";
+import { billingAdapter } from "./billing.adapter";
 import { locationsAdapter } from "./locations.adapter";
 import { productPricesAdapter } from "./product-prices.adapter";
 import { productsAdapter } from "./products.adapter";
@@ -134,6 +135,8 @@ const registry: Record<string, TargetAdapter> = {
   master_projects: projectsAdapter,
   // BUG-098
   master_item_reorder_settings: itemReorderSettingsAdapter,
+  // REQ-017
+  sales_billing: billingAdapter,
   master_locations: locationsAdapter,
   master_prices: productPricesAdapter,
   master_products: productsAdapter,

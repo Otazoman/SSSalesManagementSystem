@@ -14,6 +14,7 @@ import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { toTaxRoundingMode } from "../../../platform/tax/compute-tax-amounts";
+import { assertBillingApprovedIfRequired } from "./billing-approval.service";
 
 // Item8 Phase4: 対象のsales_invoice(群)の明細を1つのテーブルへ合算し、
 // computeQuoteAmountBreakdown()で税率区分別内訳を再計算した適格請求書PDFを生成する
@@ -49,6 +50,8 @@ export class BillingPdfService {
   async buildPdfSource(c: Context, billingHeaderId: string, withLayout = true) {
     const header = await this.repo.findHeaderById(billingHeaderId);
     if (!header) return null;
+    // REQ-017: 承認が ON の時は、承認済みの請求だけ PDF を発行できる(再発行も同じ)
+    await assertBillingApprovedIfRequired(c, header, "PDF を発行");
 
     const items = await this.repo.findItemsByHeaderId(billingHeaderId);
     if (items.length === 0) {

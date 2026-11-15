@@ -275,7 +275,7 @@ export class BillingCsvService {
       limits.set(id, {
         totalAmount: header.totalAmount,
         reconciledAmount: existing.reduce((sum, r) => sum + r.amount, 0),
-        blockedReason: header.status === "DRAFT" ? "未発行(下書き)のため入金を記録できません。請求書を発行してから取り込んでください" : undefined,
+        blockedReason: ["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(header.status) ? "未発行(下書き・承認前)のため入金を記録できません。請求書を発行してから取り込んでください" : undefined,
       });
       for (const r of existing) {
         existingKeys.add(

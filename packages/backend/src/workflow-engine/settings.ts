@@ -19,6 +19,8 @@ const WORKFLOW_FLAG_CONFIG_KEYS = {
   // BUG-097・BUG-098: プロジェクトマスタ・発注点/安全在庫マスタの承認(既定 OFF)
   isProjectWfEnabled: "is_project_approval_enabled",
   isItemReorderSettingWfEnabled: "is_item_reorder_setting_approval_enabled",
+  // REQ-017: 請求の承認(既定 OFF)
+  isBillingWfEnabled: "is_billing_approval_enabled",
   isReceivingWfEnabled: "is_receiving_approval_enabled",
   isShippingWfEnabled: "is_shipping_approval_enabled",
   isInventoryWfEnabled: "is_inventory_approval_enabled",
@@ -371,6 +373,11 @@ export async function isPurchaseRequisitionWorkflowGloballyEnabled(
  * is_sales_approval_enabledはcompany-settings.schema.tsに既存プレースホルダーとして
  * 定義済みだったが、これまでどこからも参照されていなかった。
  */
+// REQ-017: 請求の承認
+export async function isBillingWorkflowGloballyEnabled(kv: any): Promise<boolean> {
+  return readWorkflowFlagFromKv(kv, "isBillingWfEnabled", "請求承認ワークフロー設定");
+}
+
 export async function isSalesInvoiceWorkflowGloballyEnabled(kv: any): Promise<boolean> {
   return readWorkflowFlagFromKv(kv, "isSalesInvoiceWfEnabled", "売上承認ワークフロー設定");
 }

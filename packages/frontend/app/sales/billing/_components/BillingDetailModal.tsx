@@ -13,6 +13,9 @@ interface BillingDetailModalProps {
   detail: BillingDetail | null;
   onClose: () => void;
   onGeneratePDF: (id: string) => void;
+  // REQ-017: 請求の承認が ON の時は、承認済みになるまで PDF の発行・送信をできなくし、承認申請のボタンを出す
+  approvalEnabled?: boolean;
+  onSubmitForApproval?: (id: string) => void;
   onRecordPaymentReceipt: (
     billingHeaderId: string,
     payload: {
@@ -40,6 +43,8 @@ export function BillingDetailModal({
   detail,
   onClose,
   onGeneratePDF,
+  approvalEnabled = false,
+  onSubmitForApproval,
   onRecordPaymentReceipt,
   showMailModal,
   setShowMailModal,
@@ -70,7 +75,10 @@ export function BillingDetailModal({
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
   // BUG-051: 未発行(下書き)の請求には入金を記録できない(請求書を発行するとISSUEDになる)
-  const isDraft = detail.status === "DRAFT";
+  // REQ-017: 承認申請中・承認済み(まだ発行していない)の請求も、入金を記録できない
+  const isDraft = detail.status === "DRAFT" || detail.status === "PENDING_APPROVAL" || detail.status === "APPROVED";
+  // REQ-017: 承認が ON の時、承認済み(または発行済み)になるまで PDF の発行・送信はできない
+  const awaitingApproval = approvalEnabled && (detail.status === "DRAFT" || detail.status === "PENDING_APPROVAL");
   // BUG-094: 請求額が0円(相殺・赤伝など)で未完了の請求は、金額を入力せずに0円で完了にできる
   const canCompleteWithZero = !isDraft && remaining === 0 && detail.reconciliationStatus !== "RECONCILED";
 
@@ -281,6 +289,21 @@ export function BillingDetailModal({
           </div>
         </div>
 
+        {awaitingApproval && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-bold">
+              {detail.status === "PENDING_APPROVAL"
+                ? "🟡 承認申請中です。承認されると請求書PDFを発行・送信できます"
+                : "承認機能が有効なため、請求書PDFを発行・送信する前に承認の申請が必要です"}
+            </span>
+            {detail.status === "DRAFT" && onSubmitForApproval && (
+              <Button variant="primary" onClick={() => onSubmitForApproval(detail.id)}>
+                📨 承認を申請する
+              </Button>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2">
           {detail.status === "ISSUED" && (
             <a
@@ -295,14 +318,15 @@ export function BillingDetailModal({
           <button
             type="button"
             onClick={() => onGeneratePDF(detail.id)}
-            className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors"
+            disabled={awaitingApproval}
+            className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             🧾{" "}
             {detail.status === "ISSUED"
               ? "請求書PDFを再発行する"
               : "請求書PDFを発行する"}
           </button>
-          <Button onClick={() => setShowMailModal(true)}>
+          <Button onClick={() => setShowMailModal(true)} disabled={awaitingApproval}>
             {/* 追加要望: PDF未発行の場合も送信時にサーバー側で自動生成されるため、
                 ISSUED状態を問わず常に送信ボタンを表示する(初回送信・再送付を区別しない) */}
             📧 {detail.status === "ISSUED" ? "請求書を再送付" : "請求書を送信"}
