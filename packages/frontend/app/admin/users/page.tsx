@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { usePagePermissions } from "../../hooks/use-page-permission";
 import { UserRecord, DepartmentRecord, RoleRecord } from "./_types";
@@ -39,7 +39,6 @@ export default function AdminUsersPage() {
     "active" | "inactive" | "all"
   >("active");
   const [showUserForm, setShowUserForm] = useState(false);
-  const guard = useDiscardGuard(showUserForm);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -269,33 +268,32 @@ export default function AdminUsersPage() {
             件
           </span>
           <button
-            onClick={async () => {
-              if (showUserForm) {
-                if (!(await guard.confirmDiscard())) return;
-                setShowUserForm(false);
-                setEditingUserId(null);
-              } else {
-                setShowUserForm(true);
-              }
-            }}
-            disabled={!hasCreate && !showUserForm}
+            onClick={() => setShowUserForm(true)}
+            disabled={!hasCreate}
             className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-              hasCreate || showUserForm
+              hasCreate
                 ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                 : "bg-slate-300 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {showUserForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </button>
         </div>
       </div>
 
-      {/* 登録・編集フォーム & CSVインポート */}
+{/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showUserForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingUserId ? "ユーザーの編集" : "ユーザーの新規登録・CSVインポート"}
+          onClose={() => {
+            setShowUserForm(false);
+            setEditingUserId(null);
+          }}
+          error={error}
+          message={message}
         >
+          {() => (
+            <>
           <UserForm
             editingUserId={editingUserId}
             users={users}
@@ -315,7 +313,9 @@ export default function AdminUsersPage() {
             isSubmitting={isSubmitting}
             onImportCsv={handleUserCsv}
           />
-        </div>
+            </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

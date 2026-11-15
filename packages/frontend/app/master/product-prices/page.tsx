@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { useSearchParams } from "next/navigation";
@@ -29,7 +29,6 @@ export default function AdminProductPricesPage() {
   } = usePagePermissions();
 
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
   const [filterStatus, setFilterStatus] = useState<string>(
     isProductPriceWfEnabled ? "temporary" : "active",
   );
@@ -157,25 +156,24 @@ export default function AdminProductPricesPage() {
           </span>
           <Button
             size="sm"
-            onClick={async () => {
-              if (showForm) {
-                if ((await guard.confirmDiscard())) form.handleCloseForm();
-              } else {
-                setShowForm(true);
-              }
-            }}
+            onClick={() => setShowForm(true)}
           >
-            {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </Button>
         </div>
       </div>
 
       {/* 5. フォーム ＆ CSVインポートパネル (トグル表示) */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={form.editingId ? "品目単価の編集" : "品目単価の新規登録・CSVインポート"}
+          onClose={form.handleCloseForm}
+          error={form.error}
+          message={form.message}
         >
+          {() => (
+            <>
           <PriceForm
             form={form}
             canCreate={canCreate}
@@ -192,7 +190,9 @@ export default function AdminProductPricesPage() {
             isProductPriceWfEnabled={isProductPriceWfEnabled}
             onImport={form.handleImportCsvFile}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* 6. 一覧テーブル */}

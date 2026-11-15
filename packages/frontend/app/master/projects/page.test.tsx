@@ -73,7 +73,7 @@ describe("MasterProjectsPage", () => {
     expect(screen.getByText("🗂️ プロジェクトマスタ")).toBeInTheDocument();
   });
 
-  it("「新規個別登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規個別登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(fullPermissions());
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
     const Page = await importPage();
@@ -86,9 +86,9 @@ describe("MasterProjectsPage", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "➕ 新規個別登録・CSVインポート" }),
     );
-    expect(screen.getByText("新規個別プロジェクト登録")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("新規個別プロジェクト登録");
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規個別プロジェクト登録")).not.toBeInTheDocument();
   });
 

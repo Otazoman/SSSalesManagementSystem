@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { useDeepLinkId } from "../../_shared/hooks/use-deep-link-id";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
@@ -88,10 +88,6 @@ export default function ItemReorderSettingsPage() {
     !loading && canRead && settings.length > 0,
   );
 
-  const guard = useDiscardGuard(showForm);
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
 
   const handleDelete = async (s: ItemReorderSettingRecord) => {
     if (!canDelete) return;
@@ -219,24 +215,29 @@ export default function ItemReorderSettingsPage() {
           件
         </span>
         <button
-          onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-          disabled={!canCreate && !showForm}
+          onClick={() => setShowForm(true)}
+          disabled={!canCreate}
           className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-            canCreate || showForm
+            canCreate
               ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
         >
-          {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+          ➕ 新規個別登録・CSVインポート
         </button>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート(他マスタと揃えた2列グリッド) */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingData ? "発注点/安全在庫の編集" : "発注点/安全在庫の新規登録・CSVインポート"}
+          onClose={handleCloseForm}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <>
           <ItemReorderSettingForm
             initialData={editingData}
             items={items}
@@ -249,7 +250,7 @@ export default function ItemReorderSettingsPage() {
               void loadSettings();
             }}
             onError={(msg) => setError(msg)}
-            onClear={requestCloseForm}
+            onClear={() => void requestClose()}
             isWfEnabled={isItemReorderSettingWfEnabled}
             departments={departments}
             applicantDepartmentSurrogateId={applicantDepartmentSurrogateId}
@@ -261,7 +262,9 @@ export default function ItemReorderSettingsPage() {
             onImportCsv={handleImportCsv}
             isWfEnabled={isItemReorderSettingWfEnabled}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル(全幅表示) */}

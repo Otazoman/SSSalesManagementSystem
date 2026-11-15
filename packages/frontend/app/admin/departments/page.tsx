@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { usePagePermissions } from "../../hooks/use-page-permission";
 import { usePermissionContext } from "../../context/permissioncontext";
@@ -57,7 +57,6 @@ export default function AdminDepartmentsPage() {
   });
 
   const [showDeptForm, setShowDeptForm] = useState(false);
-  const guard = useDiscardGuard(showDeptForm);
   const [editingSurrogateId, setEditingSurrogateId] = useState<string | null>(
     null,
   );
@@ -310,31 +309,35 @@ export default function AdminDepartmentsPage() {
         </span>
 
         <button
-          onClick={async () => {
-            if (showDeptForm && !(await guard.confirmDiscard())) return;
-            setShowDeptForm(!showDeptForm);
+          onClick={() => {
             setEditingSurrogateId(null);
-            if (!showDeptForm) {
-              setFormState(initialFormState);
-            }
+            setFormState(initialFormState);
+            setShowDeptForm(true);
           }}
-          disabled={!canCreate && !canUpdate && !showDeptForm}
+          disabled={!canCreate && !canUpdate}
           className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-            canCreate || canUpdate || showDeptForm
+            canCreate || canUpdate
               ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
         >
-          {showDeptForm ? "キャンセル" : "➕ 新規部署登録・CSVインポート"}
+          ➕ 新規部署登録・CSVインポート
         </button>
       </div>
 
-      {/* 登録・編集フォーム & CSVインポート */}
+{/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showDeptForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingSurrogateId ? "部署の編集" : "部署の新規登録・CSVインポート"}
+          onClose={() => {
+            setShowDeptForm(false);
+            setEditingSurrogateId(null);
+          }}
+          error={error}
+          message={message}
         >
+          {() => (
+            <>
           <DepartmentForm
             editingSurrogateId={editingSurrogateId}
             canCreate={canCreate}
@@ -351,7 +354,9 @@ export default function AdminDepartmentsPage() {
             isSubmitting={isSubmitting}
             onImportCsv={handleDepartmentCsv}
           />
-        </div>
+            </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* マスタデータ表示テーブル */}

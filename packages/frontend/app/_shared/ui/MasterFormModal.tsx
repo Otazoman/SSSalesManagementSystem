@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Modal } from "./Modal";
 import { MessageBanner } from "./MessageBanner";
 import { useConfirmDiscard } from "./DiscardGuard";
@@ -13,6 +13,12 @@ interface MasterFormModalProps {
   title: ReactNode;
   onClose: () => void;
   error?: string;
+  /**
+   * 画面の成功のメッセージ。指定すると、モーダルを開いている間に新しいメッセージが出た時(保存・CSV 取込の成功)にモーダルを閉じる。
+   * 各画面の保存の処理は、始めにメッセージを空にしてから成功のメッセージを出すため、空 → 文字に変わった時を成功とみなす。
+   * (単位マスタのように、保存の成功を返して自分で閉じる画面は指定しない)
+   */
+  message?: string;
   /** 中身。キャンセルボタンには、引数の requestClose(破棄の確認つきで閉じる)を渡す */
   children: (requestClose: () => Promise<void>) => ReactNode;
 }
@@ -29,13 +35,18 @@ function ModalBody({
   return (
     <>
       <MessageBanner error={error} />
-      {/* 入力欄(左)と CSV 取込(右)の2列。狭い画面では縦に並べる */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{children(requestClose)}</div>
+      {/* 入力欄(左)と CSV 取込(右)を横に並べる(入力欄だけの画面は1列)。狭い画面では縦に並べる */}
+      <div className="grid grid-cols-1 gap-6 lg:auto-cols-fr lg:grid-flow-col">{children(requestClose)}</div>
     </>
   );
 }
 
-export function MasterFormModal({ title, onClose, error, children }: MasterFormModalProps) {
+export function MasterFormModal({ title, onClose, error, message, children }: MasterFormModalProps) {
+  const lastMessage = useRef(message);
+  useEffect(() => {
+    if (message !== undefined && message !== lastMessage.current && message) onClose();
+    lastMessage.current = message;
+  }, [message, onClose]);
   return (
     <Modal title={title} size="5xl" onClose={onClose} warnOnDiscard>
       <ModalBody onClose={onClose} error={error}>

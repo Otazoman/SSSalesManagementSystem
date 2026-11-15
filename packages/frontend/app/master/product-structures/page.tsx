@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { useSearchParams } from "next/navigation";
 import { usePagePermissions } from "../../hooks/use-page-permission";
@@ -93,7 +93,6 @@ export default function AdminProductStructuresPage() {
     departments,
   });
 
-  const guard = useDiscardGuard(showForm);
 
   // 💡 差戻し履歴画面の「修正して再提出」からの遷移(?editId=xxx)を受けて自動的に編集フォームを開く
   const urlSearchParams = useSearchParams();
@@ -208,32 +207,34 @@ export default function AdminProductStructuresPage() {
             </span>
 
             <button
-              onClick={async () => {
-                if (showForm) {
-                  if (!(await guard.confirmDiscard())) return;
-                  handleClearForm();
-                }
-                setShowForm(!showForm);
-              }}
-              disabled={!canCreate && !canUpdate && !showForm}
+              onClick={() => setShowForm(true)}
+              disabled={!canCreate && !canUpdate}
               className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-                canCreate || canUpdate || showForm
+                canCreate || canUpdate
                   ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                   : "bg-slate-300 text-slate-500 cursor-not-allowed"
               }`}
             >
-              {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+              ➕ 新規個別登録・CSVインポート
             </button>
           </div>
         </div>
       </div>
 
       {/* 登録・一括管理フォーム＆ツリー構造ビューア領域 (showForm が true の時のみ一緒に展開) */}
+{/* REQ-024: 登録・編集の入力欄とツリーはモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="space-y-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingId ? "品目構成の編集" : "品目構成の新規登録・CSVインポート"}
+          onClose={() => {
+            handleClearForm();
+            setShowForm(false);
+          }}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <BomForm
               editingId={editingId}
@@ -265,11 +266,7 @@ export default function AdminProductStructuresPage() {
                 setApplicantDepartmentSurrogateId
               }
               onSubmit={handleSubmit}
-              onCancel={async () => {
-                if (!(await guard.confirmDiscard())) return;
-                handleClearForm();
-                setShowForm(false);
-              }}
+              onCancel={() => void requestClose()}
             />
 
             <BomCsvPanel
@@ -292,7 +289,9 @@ export default function AdminProductStructuresPage() {
             bomTree={bomTree}
             totalTreeBomCost={totalTreeBomCost}
           />
-        </div>
+            </div>
+          )}
+        </MasterFormModal>
       )}
       {/* フラットデータ一覧テーブルリスト */}
       <BomTable
