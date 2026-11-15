@@ -275,8 +275,8 @@ erDiagram
 | `company_tel` | 文字列 |  |  |  | 自社の電話番号(帳票の印字用) |
 | `company_fax` | 文字列 |  |  |  | 自社のFAX番号(帳票の印字用) |
 | `delivery_date` | 文字列 |  |  |  | 納期 |
-| `delivery_place` | 文字列 |  |  |  | 納品場所(REQ-009 から「納品場所名」) |
-| `delivery_place_address` | 文字列 |  |  |  | REQ-009: 納品場所の所在地(発注書は納品場所の次の行に印字。Excel テンプレートは `{{delivery_place_address}}`)。2026-11-15 追加(migration 0102) |
+| `delivery_place` | 文字列 |  |  |  | 納品場所 |
+| `delivery_place_address` | 文字列 |  |  |  | 納品場所の所在地。deliveryPlace は「納品場所名」として使う。 |
 | `delivery_location_id` | 文字列 |  |  | [business_locations](master.md#business_locations).id | 発注の納品場所を「拠点用」「倉庫用」の2つの独立した選択欄から選べる ようにする(あわせて上のdeliveryPlace自由入力も引き続き使える)。選択時はdeliveryPlaceへ 名称をコピーする方式(表示上の実体は従来どおりdeliveryPlace1本のまま、FK列は選択状態の 保持・再表示用)。 |
 | `delivery_warehouse_id` | 文字列 |  |  | [warehouses](master.md#warehouses).id | 納品先の倉庫 |
 | `is_direct_shipment` | 真偽値 | ○ | `false` |  | REQ-005: 直送(仕入先から得意先へ直接納品)の発注か、と直送元の受注(1つの受注から作る時だけ直送にできる)。 直送先は deliveryPlace に「直送: 得意先名 受注の納品先」として入れる |
@@ -306,6 +306,7 @@ erDiagram
 | `memo` | 文字列 |  |  |  | 備考 |
 | `reconciled_by_id` | 文字列 | ○ |  |  | 消込をした人 |
 | `reconciled_at` | 日時 | ○ |  |  | 消込日時 |
+| `approval_status` | 文字列 | ○ | `APPROVED` |  | REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。 |
 
 <a id="payment_header_items"></a>
 

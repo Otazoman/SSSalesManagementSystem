@@ -36,6 +36,8 @@ const DEFAULT_SETTINGS: UpdateCompanySettingsInput = {
   is_project_approval_enabled: false,
   is_item_reorder_setting_approval_enabled: false,
   is_billing_approval_enabled: false,
+  is_cash_receipt_approval_enabled: false,
+  is_payment_disbursement_approval_enabled: false,
   is_quote_approval_enabled: false,
   is_sales_order_approval_enabled: false,
   is_purchase_requisition_approval_enabled: false,
@@ -173,6 +175,8 @@ export class CompanySettingsService {
       is_item_reorder_setting_approval_enabled:
         body.is_item_reorder_setting_approval_enabled,
       is_billing_approval_enabled: body.is_billing_approval_enabled,
+      is_cash_receipt_approval_enabled: body.is_cash_receipt_approval_enabled,
+      is_payment_disbursement_approval_enabled: body.is_payment_disbursement_approval_enabled,
       is_quote_approval_enabled: body.is_quote_approval_enabled,
       is_sales_order_approval_enabled: body.is_sales_order_approval_enabled,
       is_purchase_requisition_approval_enabled:

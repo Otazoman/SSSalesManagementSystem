@@ -9,6 +9,10 @@ import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { BadRequestError, NotFoundError } from "../../../platform/http/http-error";
 import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
+import { isCashReceiptWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
+import { RECONCILIATION_TARGET_TYPES, startReconciliationApproval } from "../../../workflow-engine/start-reconciliation-approval";
+import { WorkflowEngine } from "../../../workflow-engine/engine";
+import { createDb } from "../../../platform/db/create-db";
 
 export const RESOURCE_KEY = "sales_cash_receipts";
 
@@ -44,8 +48,11 @@ export class CashReceiptsService {
     const operator = await this.repo.getFallbackOperatorId(c);
     const id = await resolveConfiguredDocumentId(c, "cash_receipt", (candidate) => this.repo.existsId(candidate), null);
     const now = new Date();
+    // REQ-018: 入金の承認が ON の時は「申請中」で登録し、承認の申請を作る(承認されるまで請求への紐づけ・仕訳はできない)
+    const approvalEnabled = await isCashReceiptWorkflowGloballyEnabled(c.env.COMPANY_SETTINGS);
     await this.repo.insert({
       id,
+      approvalStatus: approvalEnabled ? "PENDING" : "APPROVED",
       partnerId: body.partnerId,
       receiptDate,
       amount: body.amount,
@@ -60,10 +67,31 @@ export class CashReceiptsService {
       updatedAt: now,
     });
 
+    if (approvalEnabled) {
+      await startReconciliationApproval(
+        c,
+        {
+          targetType: RECONCILIATION_TARGET_TYPES.cashReceipt,
+          targetId: id,
+          amount: body.amount,
+          comment: `単体入金[${id}] ¥${body.amount.toLocaleString()} の承認申請`,
+        },
+        () => this.repo.delete(id),
+      );
+    }
+
     c.executionCtx.waitUntil(
-      logAuditEvent(c, "CREATE_CASH_RECEIPT", RESOURCE_KEY, id, null, { ...body, id }),
+      logAuditEvent(c, "CREATE_CASH_RECEIPT", RESOURCE_KEY, id, null, {
+        ...body,
+        id,
+        approvalStatus: approvalEnabled ? "PENDING" : "APPROVED",
+      }),
     );
-    return { success: true, id, message: "入金を登録しました" };
+    return {
+      success: true,
+      id,
+      message: approvalEnabled ? "入金を登録し、承認を申請しました(承認されると請求へ紐づけできます)" : "入金を登録しました",
+    };
   }
 
   // 請求へ紐づけて消込する。①未紐づけの場合のみ紐づけ済みにする(二重紐づけ防止)→②既存の入金消込を実行。
@@ -71,6 +99,10 @@ export class CashReceiptsService {
   async link(c: Context<{ Bindings: Env }>, id: string, body: LinkCashReceiptPayload) {
     const receipt = await this.getById(id);
     if (receipt.status === "LINKED") throw new BadRequestError("この入金は既に請求へ紐づけ済みです");
+    // REQ-018: 承認されていない(申請中・差戻し)単体入金は紐づけない
+    if (receipt.approvalStatus !== "APPROVED") {
+      throw new BadRequestError("承認されていない入金は請求へ紐づけできません");
+    }
 
     const billingRepo = new BillingRepository(c.env.DB);
     const billing = await billingRepo.findHeaderById(body.billingHeaderId);
@@ -97,7 +129,13 @@ export class CashReceiptsService {
           reconciliationStatus: result.reconciliationStatus,
         }),
       );
-      return { ...result, message: "入金を請求へ紐づけて消込しました" };
+      return {
+        ...result,
+        message:
+          "approvalPending" in result && result.approvalPending
+            ? "入金を請求へ紐づけ、承認を申請しました(承認されると消込に反映します)"
+            : "入金を請求へ紐づけて消込しました",
+      };
     } catch (err) {
       await this.repo.revertLinked(id, operator);
       throw err;
@@ -110,7 +148,14 @@ export class CashReceiptsService {
     if (receipt.status === "LINKED") {
       throw new BadRequestError("請求へ紐づけ済みの入金は削除できません");
     }
+    // REQ-018: 承認申請中の入金は、申請を取り下げてから削除する
+    if (receipt.approvalStatus === "PENDING") {
+      throw new BadRequestError("承認申請中の入金は削除できません(申請を取り下げてから削除してください)");
+    }
     await this.repo.delete(id);
+    if (receipt.approvalStatus === "REMANDED") {
+      await WorkflowEngine.closeRemandedRequestsOfDeletedTarget(createDb(c.env.DB), RECONCILIATION_TARGET_TYPES.cashReceipt, id);
+    }
     c.executionCtx.waitUntil(logAuditEvent(c, "DELETE_CASH_RECEIPT", RESOURCE_KEY, id, receipt, null));
     return { success: true, message: "入金を削除しました" };
   }

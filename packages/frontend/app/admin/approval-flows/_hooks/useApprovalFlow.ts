@@ -10,6 +10,7 @@ import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import { useCsvDownload } from "../../../_shared/hooks/use-csv-download";
 import { useCsvImport } from "../../../_shared/hooks/use-csv-import";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { APPROVAL_ONLY_REQUEST_TYPES } from "../../../workflow/_shared/approval-only-request-types";
 
 interface UseApprovalFlowProps {
   canRead: boolean;
@@ -108,7 +109,11 @@ export function useApprovalFlow({
         (s: any) =>
           s.category === "daily_work" || s.category === "business_master",
       );
-      setScreens(filtered);
+      // REQ-018: 画面を持たない申請の種類(入金・支払の消込)も選べるようにする
+      setScreens([
+        ...filtered,
+        ...APPROVAL_ONLY_REQUEST_TYPES.filter((t) => !filtered.some((s: { resource: string }) => s.resource === t.resource)),
+      ]);
 
       setDepartmentOptions(Array.isArray(deptsData) ? deptsData : []);
     } catch (err) {

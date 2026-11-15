@@ -265,6 +265,11 @@ export class BillingCrudService {
     }
     // REQ-017: 承認申請中の請求は削除できない(先に申請を取り下げる)
     assertBillingNotPendingApproval(header, "削除");
+    // REQ-018: 承認申請中の入金がある請求は削除できない(承認・差戻しの先が無くなるため)
+    const receipts = await this.repo.findPaymentReceiptsByHeaderId(id);
+    if (receipts.some((r) => r.approvalStatus === "PENDING")) {
+      throw new BadRequestError("承認申請中の入金があるため削除できません。入金の申請を取り下げてから削除してください");
+    }
     if (header.reconciledAmount > 0) {
       throw new BadRequestError(
         "入金消込が記録されているため削除できません。消込を取り消してから削除してください",

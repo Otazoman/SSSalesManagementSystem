@@ -162,3 +162,25 @@ describe("PaymentDetailModal: BUG-094 0円の支払", () => {
     expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
   });
 });
+
+describe("PaymentDetailModal: REQ-018 支払の消込の承認", () => {
+  it("承認待ちの支払は「承認待ち ¥…」で出し、記録できる金額から引く", () => {
+    render(
+      <PaymentDetailModal
+        detail={{
+          ...DETAIL,
+          disbursements: [
+            { id: "D-1", paymentHeaderId: "PAY-1", paidDate: "2026-11-15", amount: 6000, method: "BANK_TRANSFER", reconciledById: "E", reconciledAt: "2026-11-15", approvalStatus: "PENDING" },
+          ],
+        }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+      />,
+    );
+    expect(screen.getByText("承認待ち ¥6,000")).toBeInTheDocument();
+    expect(screen.getByText("🟡 承認待ち")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "6000" } });
+    expect(screen.getByText(/承認待ちを除く/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeDisabled();
+  });
+});

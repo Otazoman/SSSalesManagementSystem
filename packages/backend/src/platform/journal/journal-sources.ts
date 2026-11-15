@@ -267,6 +267,8 @@ export async function listUnpostedJournalSources(
         and(
           isNull(schema.paymentReceipts.cashReceiptId),
           sql`${schema.paymentReceipts.amount} > 0`,
+          // REQ-018: 承認済みの入金だけ(承認申請中・差戻しは仕訳にしない)
+          eq(schema.paymentReceipts.approvalStatus, "APPROVED"),
           query.partnerId ? eq(schema.billingHeaders.partnerId, query.partnerId) : undefined,
           notYetPosted(kind, schema.paymentReceipts.id),
           ...dateRange(schema.paymentReceipts.receivedDate, query),
@@ -302,6 +304,8 @@ export async function listUnpostedJournalSources(
       .where(
         and(
           sql`${schema.paymentDisbursements.amount} > 0`,
+          // REQ-018: 承認済みの支払だけ
+          eq(schema.paymentDisbursements.approvalStatus, "APPROVED"),
           query.partnerId ? eq(schema.paymentHeaders.partnerId, query.partnerId) : undefined,
           notYetPosted(kind, schema.paymentDisbursements.id),
           ...dateRange(schema.paymentDisbursements.paidDate, query),
@@ -335,6 +339,8 @@ export async function listUnpostedJournalSources(
     .where(
       and(
         sql`${schema.cashReceipts.amount} > 0`,
+        // REQ-018: 承認済みの単体入金だけ
+        eq(schema.cashReceipts.approvalStatus, "APPROVED"),
         query.partnerId ? eq(schema.cashReceipts.partnerId, query.partnerId) : undefined,
         notYetPosted(kind, schema.cashReceipts.id),
         ...dateRange(schema.cashReceipts.receiptDate, query),
@@ -485,6 +491,7 @@ async function findSourceForPosting(
         amount: schema.paymentReceipts.amount,
         cashReceiptId: schema.paymentReceipts.cashReceiptId,
         billingHeaderId: schema.paymentReceipts.billingHeaderId,
+        approvalStatus: schema.paymentReceipts.approvalStatus,
         partnerName: schema.partners.name,
       })
       .from(schema.paymentReceipts)
@@ -500,7 +507,7 @@ async function findSourceForPosting(
       description: `入金 ${r.partnerName} 請求[${r.billingHeaderId}]`,
       excludedReason: r.cashReceiptId
         ? `この入金消込は単体入金[${r.cashReceiptId}]の紐づけで作られたもので、現金は単体入金の時点で前受金として仕訳します`
-        : undefined,
+        : notApprovedReason(r.approvalStatus, "入金"),
     };
   }
 
@@ -510,6 +517,7 @@ async function findSourceForPosting(
         date: schema.paymentDisbursements.paidDate,
         amount: schema.paymentDisbursements.amount,
         paymentHeaderId: schema.paymentDisbursements.paymentHeaderId,
+        approvalStatus: schema.paymentDisbursements.approvalStatus,
         partnerName: schema.partners.name,
       })
       .from(schema.paymentDisbursements)
@@ -519,13 +527,19 @@ async function findSourceForPosting(
       .limit(1);
     const r = rows[0];
     if (!r) return null;
-    return { date: r.date, amount: r.amount, description: `支払 ${r.partnerName} 支払[${r.paymentHeaderId}]` };
+    return {
+      date: r.date,
+      amount: r.amount,
+      description: `支払 ${r.partnerName} 支払[${r.paymentHeaderId}]`,
+      excludedReason: notApprovedReason(r.approvalStatus, "支払"),
+    };
   }
 
   const rows = await mainDb
     .select({
       date: schema.cashReceipts.receiptDate,
       amount: schema.cashReceipts.amount,
+      approvalStatus: schema.cashReceipts.approvalStatus,
       partnerName: schema.partners.name,
     })
     .from(schema.cashReceipts)
@@ -534,5 +548,18 @@ async function findSourceForPosting(
     .limit(1);
   const r = rows[0];
   if (!r) return null;
-  return { date: r.date, amount: r.amount, description: `前受 ${r.partnerName} 単体入金[${id}]` };
+  return {
+    date: r.date,
+    amount: r.amount,
+    description: `前受 ${r.partnerName} 単体入金[${id}]`,
+    excludedReason: notApprovedReason(r.approvalStatus, "入金"),
+  };
+}
+
+// REQ-018: 承認されていない入金・支払は仕訳にしない
+function notApprovedReason(approvalStatus: string, label: string): string | undefined {
+  if (approvalStatus === "APPROVED") return undefined;
+  return approvalStatus === "PENDING"
+    ? `この${label}は承認申請中のため仕訳にできません(承認されると仕訳にできます)`
+    : `この${label}は差し戻されたため仕訳にできません`;
 }

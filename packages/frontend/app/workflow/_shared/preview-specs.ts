@@ -252,6 +252,67 @@ export const PREVIEW_SPECS: Record<string, PreviewSpec> = {
     },
   },
 
+  // REQ-018: 請求への入金(sales/billing の入金消込)
+  sales_payment_receipts: {
+    table: "paymentReceipts",
+    header: {
+      billingHeaderId: { label: "請求番号" },
+      billingTitle: { label: "請求の件名" },
+      partnerId: { label: "取引先", ref: "partner" },
+      receivedDate: { label: "入金日", format: "date" },
+      amount: { label: "入金額", format: "currency" },
+      method: { label: "入金方法", options: { BANK_TRANSFER: "銀行振込", CASH: "現金", OTHER: "その他" } },
+      memo: { label: "摘要", format: "multiline" },
+      cashReceiptId: { label: "元の単体入金" },
+      reconciledById: { label: "記録した人", ref: "employee" },
+      reconciledAt: { label: "記録の日時", format: "date" },
+    },
+    hidden: {
+      id: "入金の内部番号",
+      approvalStatus: "承認の状態(申請の状態として別に出す)",
+    },
+  },
+
+  // REQ-018: 単体入金(sales/billing の入金タブ)
+  sales_cash_receipts: {
+    table: "cashReceipts",
+    header: {
+      id: { label: "入金番号" },
+      partnerId: { label: "取引先", ref: "partner" },
+      receiptDate: { label: "入金日", format: "date" },
+      amount: { label: "入金額", format: "currency" },
+      method: { label: "入金方法", options: { BANK_TRANSFER: "銀行振込", CASH: "現金", OTHER: "その他" } },
+      memo: { label: "摘要", format: "multiline" },
+    },
+    hidden: {
+      ...AUDIT_HIDDEN,
+      status: "請求への紐づけの状況(承認の後に紐づける)",
+      billingHeaderId: "紐づけた請求(承認の後に紐づける)",
+      linkedAt: "紐づけた日時(承認の後に紐づける)",
+      approvalStatus: "承認の状態(申請の状態として別に出す)",
+    },
+  },
+
+  // REQ-018: 支払の消込(purchase/payment)
+  purchase_payment_disbursements: {
+    table: "paymentDisbursements",
+    header: {
+      paymentHeaderId: { label: "支払番号" },
+      paymentTitle: { label: "支払の件名" },
+      partnerId: { label: "取引先", ref: "partner" },
+      paidDate: { label: "支払日", format: "date" },
+      amount: { label: "支払額", format: "currency" },
+      method: { label: "支払方法", options: { BANK_TRANSFER: "銀行振込", CASH: "現金", OTHER: "その他" } },
+      memo: { label: "摘要", format: "multiline" },
+      reconciledById: { label: "記録した人", ref: "employee" },
+      reconciledAt: { label: "記録の日時", format: "date" },
+    },
+    hidden: {
+      id: "支払の消込の内部番号",
+      approvalStatus: "承認の状態(申請の状態として別に出す)",
+    },
+  },
+
   // 購買申請(purchase/requisitions)
   purchase_requisitions: {
     table: "purchaseRequests",

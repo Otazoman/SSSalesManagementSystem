@@ -284,3 +284,35 @@ describe("BillingDetailModal: REQ-017 請求の承認", () => {
     expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
   });
 });
+
+describe("BillingDetailModal: REQ-018 入金の承認", () => {
+  it("承認待ちの入金は行に「承認待ち」を出し、合計を消込額とは別に出す。差戻しも行に出す", () => {
+    render(
+      <BillingDetailModal
+        detail={{
+          ...DETAIL,
+          status: "ISSUED",
+          paymentReceipts: [
+            { id: "R-1", billingHeaderId: "BL-1", receivedDate: "2026-11-15", amount: 3000, method: "BANK_TRANSFER", reconciledById: "E", reconciledAt: "2026-11-15", approvalStatus: "PENDING" },
+            { id: "R-2", billingHeaderId: "BL-1", receivedDate: "2026-11-15", amount: 1000, method: "CASH", reconciledById: "E", reconciledAt: "2026-11-15", approvalStatus: "REMANDED" },
+          ],
+        }}
+        onClose={vi.fn()}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={vi.fn(async () => true)}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    expect(screen.getByText("承認待ち ¥3,000")).toBeInTheDocument();
+    expect(screen.getByText("🟡 承認待ち")).toBeInTheDocument();
+    expect(screen.getByText("差戻し(消込に入れない)")).toBeInTheDocument();
+  });
+});

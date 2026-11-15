@@ -9,6 +9,8 @@ export interface CashReceipt {
   status: "UNLINKED" | "LINKED";
   billingHeaderId: string | null;
   linkedAt: string | null;
+  // REQ-018: 承認の状態(承認済みだけを請求へ紐づけられる)
+  approvalStatus?: "PENDING" | "APPROVED" | "REMANDED";
 }
 
 export interface PartnerLookup {

@@ -5,6 +5,7 @@ import { PaymentDetail } from "../_types";
 import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletionControl";
 import { METHOD_LABELS } from "../../../_shared/payment-method-labels";
 import { todayJst } from "../../../_shared/jst-date";
+import { ReconciliationApprovalBadge, pendingApprovalAmount } from "../../../_shared/ui/ReconciliationApprovalBadge";
 
 interface PaymentDetailModalProps {
   detail: PaymentDetail | null;
@@ -38,10 +39,13 @@ export function PaymentDetailModal({
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
+  // REQ-018: 承認待ちの支払(消込額にはまだ入っていない)。記録できるのは、承認待ちの分も引いた残り
+  const pendingAmount = pendingApprovalAmount(detail.disbursements);
+  const recordable = Math.max(remaining - pendingAmount, 0);
   // BUG-051: 未消込額を超える支払は記録できない(仕入側には単体の前渡金の仕組みが無いため)
-  const isOverRemaining = Number(amount) > remaining;
+  const isOverRemaining = Number(amount) > recordable;
   // BUG-094: 支払額が0円(相殺・赤伝など)で未完了の支払は、金額を入力せずに0円で完了にできる
-  const canCompleteWithZero = remaining === 0 && detail.reconciliationStatus !== "RECONCILED";
+  const canCompleteWithZero = remaining === 0 && pendingAmount === 0 && detail.reconciliationStatus !== "RECONCILED";
 
   const handleSubmitDisbursement = async () => {
     const amountNumber = Number(amount);
@@ -115,6 +119,9 @@ export function PaymentDetailModal({
             ¥{detail.reconciledAmount.toLocaleString()} / ¥
             {remaining.toLocaleString()}
           </span>
+          {pendingAmount > 0 && (
+            <span className="block font-mono font-bold text-amber-800">承認待ち ¥{pendingAmount.toLocaleString()}</span>
+          )}
         </div>
       </div>
 
@@ -229,7 +236,7 @@ export function PaymentDetailModal({
         </div>
         {isOverRemaining && (
           <p className="text-[11px] font-bold text-red-700">
-            ⚠️ 未消込額(¥{remaining.toLocaleString()})を超える金額は記録できません。
+            ⚠️ 未消込額(¥{recordable.toLocaleString()}{pendingAmount > 0 ? "、承認待ちを除く" : ""})を超える金額は記録できません。
           </p>
         )}
         <div className="flex justify-end gap-2">
@@ -265,7 +272,8 @@ export function PaymentDetailModal({
                 <span className="text-slate-600">
                   {METHOD_LABELS[d.method] || d.method}
                 </span>
-                <span className="font-mono font-bold text-slate-800">
+                <span className="flex items-center gap-1.5 font-mono font-bold text-slate-800">
+                  <ReconciliationApprovalBadge status={d.approvalStatus} />
                   ¥{d.amount.toLocaleString()}
                 </span>
               </div>

@@ -8,6 +8,7 @@ import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletio
 import { METHOD_LABELS } from "../../../_shared/payment-method-labels";
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { ReconciliationApprovalBadge, pendingApprovalAmount } from "../../../_shared/ui/ReconciliationApprovalBadge";
 
 interface BillingDetailModalProps {
   detail: BillingDetail | null;
@@ -74,13 +75,16 @@ export function BillingDetailModal({
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
+  // REQ-018: 承認待ちの入金(消込額にはまだ入っていない)
+  const pendingAmount = pendingApprovalAmount(detail.paymentReceipts);
   // BUG-051: 未発行(下書き)の請求には入金を記録できない(請求書を発行するとISSUEDになる)
   // REQ-017: 承認申請中・承認済み(まだ発行していない)の請求も、入金を記録できない
   const isDraft = detail.status === "DRAFT" || detail.status === "PENDING_APPROVAL" || detail.status === "APPROVED";
   // REQ-017: 承認が ON の時、承認済み(または発行済み)になるまで PDF の発行・送信はできない
   const awaitingApproval = approvalEnabled && (detail.status === "DRAFT" || detail.status === "PENDING_APPROVAL");
   // BUG-094: 請求額が0円(相殺・赤伝など)で未完了の請求は、金額を入力せずに0円で完了にできる
-  const canCompleteWithZero = !isDraft && remaining === 0 && detail.reconciliationStatus !== "RECONCILED";
+  const canCompleteWithZero =
+    !isDraft && remaining === 0 && pendingAmount === 0 && detail.reconciliationStatus !== "RECONCILED";
 
   const toggleExpanded = (itemId: string) => {
     setExpandedInvoiceIds((prev) => {
@@ -177,6 +181,11 @@ export function BillingDetailModal({
               ¥{detail.reconciledAmount.toLocaleString()} / ¥
               {remaining.toLocaleString()}
             </span>
+            {pendingAmount > 0 && (
+              <span className="block font-mono font-bold text-amber-800">
+                承認待ち ¥{pendingAmount.toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -427,7 +436,8 @@ export function BillingDetailModal({
                   <span className="text-slate-600">
                     {METHOD_LABELS[r.method] || r.method}
                   </span>
-                  <span className="font-mono font-bold text-slate-800">
+                  <span className="flex items-center gap-1.5 font-mono font-bold text-slate-800">
+                    <ReconciliationApprovalBadge status={r.approvalStatus} />
                     ¥{r.amount.toLocaleString()}
                   </span>
                 </div>

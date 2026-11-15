@@ -21,6 +21,9 @@ const WORKFLOW_FLAG_CONFIG_KEYS = {
   isItemReorderSettingWfEnabled: "is_item_reorder_setting_approval_enabled",
   // REQ-017: 請求の承認(既定 OFF)
   isBillingWfEnabled: "is_billing_approval_enabled",
+  // REQ-018: 入金(請求への入金・単体入金)と、支払の消込の承認
+  isCashReceiptWfEnabled: "is_cash_receipt_approval_enabled",
+  isPaymentDisbursementWfEnabled: "is_payment_disbursement_approval_enabled",
   isReceivingWfEnabled: "is_receiving_approval_enabled",
   isShippingWfEnabled: "is_shipping_approval_enabled",
   isInventoryWfEnabled: "is_inventory_approval_enabled",
@@ -376,6 +379,14 @@ export async function isPurchaseRequisitionWorkflowGloballyEnabled(
 // REQ-017: 請求の承認
 export async function isBillingWorkflowGloballyEnabled(kv: any): Promise<boolean> {
   return readWorkflowFlagFromKv(kv, "isBillingWfEnabled", "請求承認ワークフロー設定");
+}
+
+export async function isCashReceiptWorkflowGloballyEnabled(kv: any): Promise<boolean> {
+  return readWorkflowFlagFromKv(kv, "isCashReceiptWfEnabled", "入金承認ワークフロー設定");
+}
+
+export async function isPaymentDisbursementWorkflowGloballyEnabled(kv: any): Promise<boolean> {
+  return readWorkflowFlagFromKv(kv, "isPaymentDisbursementWfEnabled", "支払消込承認ワークフロー設定");
 }
 
 export async function isSalesInvoiceWorkflowGloballyEnabled(kv: any): Promise<boolean> {

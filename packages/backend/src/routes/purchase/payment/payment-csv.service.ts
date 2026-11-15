@@ -5,6 +5,8 @@ import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-wr
 import { parseCsv } from "../../../platform/csv/csv-parser";
 import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconLimit, type ReconRow } from "../../../platform/csv/reconciliation-rows";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { isPaymentDisbursementWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
 
 // Item10 Phase5: billing-csv.service.tsと同じ方針。payment_headers+payment_header_items
 // (1行1明細のフラット形式)、および payment_disbursements(手動消込結果の一括登録用)の
@@ -218,6 +220,10 @@ export class PaymentCsvService {
   }
 
   async bulkImportDisbursementsCsv(c: Context, file: File) {
+    // REQ-018: 承認機能が ON の時は、CSV からは取り込まない(1行ごとに申請を作ると、DB の問い合わせ回数の上限に当たるため)
+    if (await isPaymentDisbursementWorkflowGloballyEnabled(c.env.COMPANY_SETTINGS)) {
+      throw new BadRequestError("支払消込の承認機能が有効なため、CSV からは取り込めません。画面から1件ずつ記録して承認を申請してください");
+    }
     const opId = await this.repo.getFallbackOperatorId(c);
     const text = await file.text();
 
@@ -271,7 +277,8 @@ export class PaymentCsvService {
       const header = await this.repo.findHeaderById(id);
       if (!header) continue;
       existingHeaderIds.add(id);
-      const existing = await this.repo.findDisbursementsByHeaderId(id);
+      // REQ-018: 差し戻された行は数えない(消込額・重複の確認とも)
+      const existing = (await this.repo.findDisbursementsByHeaderId(id)).filter((r) => r.approvalStatus !== "REMANDED");
       limits.set(id, {
         totalAmount: header.totalAmount,
         reconciledAmount: existing.reduce((sum, r) => sum + r.amount, 0),

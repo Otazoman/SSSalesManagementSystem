@@ -46,6 +46,8 @@ const REF_BY_KEY: Record<string, PreviewRef> = {
   salesPersonEmployeeNumber: "employee",
   inputPersonEmployeeNumber: "employee",
   purchasePersonEmployeeNumber: "employee",
+  // REQ-018: 入金・支払の消込を記録した人(社員番号)
+  reconciledById: "employee",
   applicantId: "user",
   companyDepartment: "department",
   company_department: "department",

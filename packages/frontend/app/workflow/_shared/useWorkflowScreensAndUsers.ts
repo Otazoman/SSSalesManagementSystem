@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiFetch, apiFetchShared } from "../../_shared/hooks/use-api-fetch";
+import { APPROVAL_ONLY_REQUEST_TYPES } from "./approval-only-request-types";
 
 export interface WorkflowUserRelation {
   roleId: string;
@@ -68,7 +69,9 @@ export function useWorkflowScreensAndUsers(enabled: boolean) {
     const matched = screens.find(
       (s) => s.resource.toLowerCase() === targetType.toLowerCase(),
     );
-    return matched ? matched.name : targetType;
+    if (matched) return matched.name;
+    // REQ-018: 画面を持たない申請の種類(入金・支払の消込)
+    return APPROVAL_ONLY_REQUEST_TYPES.find((t) => t.resource === targetType)?.name ?? targetType;
   };
 
   // 💡 targetType+targetIdから、対応する編集画面のパスを解決する(差戻し履歴からの

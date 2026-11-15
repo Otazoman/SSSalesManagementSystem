@@ -519,6 +519,9 @@ export const paymentReceipts = sqliteTable("payment_receipts", {
   cashReceiptId: text("cash_receipt_id").references((): AnySQLiteColumn => cashReceipts.id),
   reconciledById: text("reconciled_by_id").notNull(),
   reconciledAt: integer("reconciled_at", { mode: "timestamp" }).notNull(),
+  // REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。
+  // 既定は承認済(承認機能が OFF の時・今あるデータはそのまま有効)
+  approvalStatus: text("approval_status").notNull().default("APPROVED"),
 });
 
 // ==========================================
@@ -584,6 +587,9 @@ export const paymentDisbursements = sqliteTable("payment_disbursements", {
   memo: text("memo"),
   reconciledById: text("reconciled_by_id").notNull(),
   reconciledAt: integer("reconciled_at", { mode: "timestamp" }).notNull(),
+  // REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。
+  // 既定は承認済(承認機能が OFF の時・今あるデータはそのまま有効)
+  approvalStatus: text("approval_status").notNull().default("APPROVED"),
 });
 
 // ==========================================
@@ -1328,6 +1334,9 @@ export const cashReceipts = sqliteTable("cash_receipts", {
   status: text("status").notNull().default("UNLINKED"),
   billingHeaderId: text("billing_header_id").references(() => billingHeaders.id),
   linkedAt: integer("linked_at", { mode: "timestamp" }),
+  // REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。
+  // 既定は承認済(承認機能が OFF の時・今あるデータはそのまま有効)
+  approvalStatus: text("approval_status").notNull().default("APPROVED"),
   ...withAuditColumns(),
 });
 

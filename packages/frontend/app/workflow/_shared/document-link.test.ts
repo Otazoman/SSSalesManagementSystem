@@ -34,6 +34,11 @@ describe("buildApprovalDocumentHref", () => {
     expect(buildApprovalDocumentHref("sales_billing", "/sales/billing", "BL-1")).toBe("/sales/billing?openId=BL-1");
   });
 
+  it("入金・支払の消込は画面だけを開く(REQ-018)", () => {
+    expect(buildApprovalDocumentHref("sales_payment_receipts", "/sales/billing", "uuid-1")).toBe("/sales/billing");
+    expect(buildApprovalDocumentHref("purchase_payment_disbursements", "/purchase/payment", "uuid-2")).toBe("/purchase/payment");
+  });
+
   it("画面のパスが解決できない時はリンクを出さない", () => {
     expect(buildApprovalDocumentHref("sales_quotes", null, "Q-1")).toBeNull();
   });

@@ -80,6 +80,8 @@ export interface PaymentDisbursementRecord {
   memo?: string | null;
   reconciledById: string;
   reconciledAt: string;
+  // REQ-018: 承認の状態(承認済みだけが消込額に入る)
+  approvalStatus?: "PENDING" | "APPROVED" | "REMANDED";
 }
 
 export interface PaymentDetail extends PaymentRecord {

@@ -275,6 +275,7 @@ erDiagram
 | `status` | 文字列 | ○ | `UNLINKED` |  | 状態 |
 | `billing_header_id` | 文字列 |  |  | [billing_headers](#billing_headers).id | 請求 |
 | `linked_at` | 日時 |  |  |  | 紐づけた日時 |
+| `approval_status` | 文字列 | ○ | `APPROVED` |  | REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 | `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |
@@ -299,6 +300,7 @@ erDiagram
 | `cash_receipt_id` | 文字列 |  |  | [cash_receipts](#cash_receipts).id | 単体入金 |
 | `reconciled_by_id` | 文字列 | ○ |  |  | 消込をした人 |
 | `reconciled_at` | 日時 | ○ |  |  | 消込日時 |
+| `approval_status` | 文字列 | ○ | `APPROVED` |  | REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。 |
 
 <a id="quote_attachments"></a>
 
@@ -378,9 +380,9 @@ erDiagram
 | `partner_id` | 文字列 | ○ |  | [partners](master.md#partners).id | 取引先 |
 | `quote_date` | 日時 | ○ |  |  | 見積日 |
 | `valid_until` | 日時 |  |  |  | 有効期限 |
-| `status` | 文字列 | ○ | `DRAFT` |  | 状態(DRAFT・PENDING_APPROVAL・APPROVED・PENDING_DELETION・LOST(失注、REQ-015)) |
-| `lost_date` | 文字列 |  |  |  | REQ-015: 失注日(YYYY-MM-DD)。失注の取消で空に戻す。2026-11-15 追加(migration 0103) |
-| `lost_reason` | 文字列 |  |  |  | REQ-015: 失注理由 |
+| `status` | 文字列 | ○ | `DRAFT` |  | 状態 |
+| `lost_date` | 文字列 |  |  |  | 失注。status が LOST(失注)の時の失注日(YYYY-MM-DD)と失注理由。 |
+| `lost_reason` | 文字列 |  |  |  |  |
 | `current_approval_layer` | 整数 | ○ | `1` |  | 承認中の段(何段目の承認待ちか) |
 | `approval_flow_id` | 文字列 |  |  | [approval_flows](workflow.md#approval_flows).id | 使用中の承認フロー |
 | `total_amount` | 整数 | ○ | `0` |  | 合計金額 |

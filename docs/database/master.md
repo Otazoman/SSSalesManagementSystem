@@ -268,7 +268,7 @@ erDiagram
 | `reorder_point` | 数値 | ○ | `0` |  | 発注点 |
 | `safety_stock` | 数値 | ○ | `0` |  | 安全在庫 |
 | `memo` | 文字列 |  |  |  | 備考 |
-| `status` | 文字列 | ○ | `active` |  | BUG-098: 承認の状態。承認 ON の新規登録は `temporary`(仮登録)で、承認で `active`。仮登録は発注の候補に使わない。2026-11-15 追加(migration 0101) |
+| `status` | 文字列 | ○ | `active` |  | 状態 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 | `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |

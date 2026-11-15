@@ -34,6 +34,9 @@ export interface SystemSettings {
   is_purchase_order_approval_enabled: boolean;
   // REQ-017: 請求の承認(ON の時は、承認済みの請求だけ PDF の発行・メール送信ができる)
   is_billing_approval_enabled: boolean;
+  // REQ-018: 入金(請求への入金・単体入金)と支払の消込の承認
+  is_cash_receipt_approval_enabled: boolean;
+  is_payment_disbursement_approval_enabled: boolean;
   is_sales_approval_enabled: boolean;
   is_purchase_approval_enabled: boolean;
   is_sales_invoice_requires_shipment: boolean;
