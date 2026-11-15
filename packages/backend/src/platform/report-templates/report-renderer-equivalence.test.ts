@@ -14,6 +14,9 @@ import { renderReportPdf } from "report-renderer";
  * PDF には作成日時と、フォント名に付く乱数が入るため、時刻と Math.random を固定して作る。
  * 期待値(EXPECTED)は、移す前のコード(コミット 1ea7ac5)で作った PDF のもの。
  * 帳票の見た目を意図して変えた時(BUG-092 など)は、この期待値を作り直す。
+ * 2026-11-15 BUG-092 で作り直した: 担当者名が無い帳票で「担当: 営業担当者」の行を描かなくなり、納品書は登録番号の行も描かなくなったため、
+ * 担当者名を渡していない10件(見積・請求・発注・注文請書・納品・検収・仕入計上・売上計上と、ロゴ付き見積・見積+ご発注書)が変わった。
+ * ご発注書・指示書・Excel テンプレートは変わっていない(担当者・登録番号の行を描かないため)。
  */
 
 const FIXED_NOW = new Date("2026-11-14T00:00:00Z");
@@ -144,17 +147,17 @@ async function compiledLayout() {
 
 // 移す前のコード(コミット 1ea7ac5)で作った PDF のページ数とバイト列の SHA-256
 const EXPECTED: Record<string, { pages: number; sha256: string }> = {
-  "QUOTATION": { pages: 1, sha256: "d60a3c911b3a532a67aafb80b0a1365fd44cb67e12e1336d2a067fde6f5b59c8" },
-  "INVOICE": { pages: 1, sha256: "42232b0406ce688a77fc7731d4da5bc716a34ba868b46a701880f7bdaaddfd77" },
-  "ORDER": { pages: 1, sha256: "3e224e0506d6412e7a3bb58304cec21d6e893f2a4d5a858c8861a1e59f97928b" },
-  "ORDER_ACKNOWLEDGMENT": { pages: 1, sha256: "ff37cfa84c639f4ada6e3adff4c6587202ba5a5c03ccf90d8f509d96854c0765" },
-  "DELIVERY": { pages: 1, sha256: "3db467b783b09420716861f71caafd0576231c7da9f8dcc2f2cbc72432a70e43" },
-  "ACCEPTANCE": { pages: 1, sha256: "8c1622b34526a986fd0d760b683082f52198d2dfb7c4ff26d9314c67ad938981" },
-  "PURCHASE_RECOGNITION": { pages: 1, sha256: "311cda4d71883eb9b82347ac2d0aba01bf0f84dc47bef56a32740aac109de6f6" },
-  "SALES_RECOGNITION": { pages: 1, sha256: "fffe1de967c063e25deeb63f2bd43cafe199256d99cd57d05a77d79dbb94aee6" },
+  "QUOTATION": { pages: 1, sha256: "d38aef14b47123457a5325f61cbc0909784bab8c9069b736ba1a0ffed484d51d" },
+  "INVOICE": { pages: 1, sha256: "4fb662aa76275a5ab0d84eeb9e46414a8448b002ed6f862d1c8fad730629dfa8" },
+  "ORDER": { pages: 1, sha256: "cf573bc7f5d8a702ea16ff4df0a223fdb86f659d655d35a4020a22ff6e67697c" },
+  "ORDER_ACKNOWLEDGMENT": { pages: 1, sha256: "ed053ebef048a0da55e3f499715b00221c455efe74be3864b69044965a9962e4" },
+  "DELIVERY": { pages: 1, sha256: "170905805df86b65185a18cb444463aa2ec2ff7a6aa45d5ae26b16be1acea2c9" },
+  "ACCEPTANCE": { pages: 1, sha256: "2c3021ef2653799191563501c72d874ea1c1109aa39248f6d104ac065954cd63" },
+  "PURCHASE_RECOGNITION": { pages: 1, sha256: "ab058f946acb2b2f2af92ac961d878d14c0fc53c9968369586028ada93a0d361" },
+  "SALES_RECOGNITION": { pages: 1, sha256: "2382f073956d90c3bf3f161ec8865841f523d67a01311b55a3dd07d7e581bcd4" },
   "CUSTOMER_ORDER_FORM": { pages: 1, sha256: "ff59acab4508773c6638cf41c6d430dd63b20c332f39a9edd0bebcdc751f3638" },
-  "QUOTATION(ロゴ・社印・改ページ)": { pages: 3, sha256: "72e13a1938fa5b272e21f9b1a53ecf8208b90316b5b09770b4856fb6d6ce7c8c" },
-  "見積書+ご発注書(appendPdfPages)": { pages: 2, sha256: "16ca67c9faf67a4cfe50b914e379c842a216271443c21ee7d89216ed6c3e63d8" },
+  "QUOTATION(ロゴ・社印・改ページ)": { pages: 3, sha256: "ef74b127cd4e26c3de73b31a65254b390900ba9cf3e66a857a450c9cf9f2776c" },
+  "見積書+ご発注書(appendPdfPages)": { pages: 2, sha256: "dfa1205d9f16c6c6fd0dc6de21b5e575ce2d584e2b2196265f4e26318ff62b67" },
   "指示書(receipt)": { pages: 1, sha256: "92154ff16072e7f5123cf1b3d83aced9188e0fe642d77b9fcfc722c9bf55a99b" },
   "指示書(shipment)": { pages: 1, sha256: "bfa375a693f7ef5cc016cfba09cf85c0fdc63c9ec119623855074aa5bf1acdd3" },
   "指示書(delivery)": { pages: 1, sha256: "61e5ce75be616582096adff5c3e473d5edad7eeca495d3762937327d5fcf2f9d" },

@@ -12,6 +12,7 @@ import {
   ProspectContact,
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
+import { usePermissionContext } from "../../../context/permissioncontext";
 
 const BASE = "/api/sales-deals";
 
@@ -32,7 +33,8 @@ export interface DealFormState {
 }
 
 
-export const emptyDealForm = (): DealFormState => ({
+// BUG-096: 新規登録の商談担当(自社)の初期値に、ログイン中のユーザーの従業員番号を渡す(省略時は空欄)
+export const emptyDealForm = (ownerEmployeeNumber = ""): DealFormState => ({
   id: null,
   partnerId: "",
   title: "",
@@ -42,7 +44,7 @@ export const emptyDealForm = (): DealFormState => ({
   location: "",
   memo: "",
   status: "OPEN",
-  ownerEmployeeNumber: "",
+  ownerEmployeeNumber,
   attendees: [],
   tasks: [],
   quoteIds: [],
@@ -69,6 +71,7 @@ const nullIfEmpty = (value: string) => (value.trim() === "" ? null : value.trim(
 // 商談の登録・編集フォーム。面談者(見込客担当者/取引先担当者/自社同席者/自由記入)・次回までのタスク・
 // 見積の紐づけ・添付ファイルを扱う。見込客担当者は商談入力中にその場で登録できる
 export function useDealForm(onSaved: () => Promise<void>) {
+  const { user } = usePermissionContext();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<DealFormState>(emptyDealForm());
   const [detail, setDetail] = useState<DealDetail | null>(null); // 保存済みの添付・紐づけ見積の表示用
@@ -98,7 +101,8 @@ export function useDealForm(onSaved: () => Promise<void>) {
   };
 
   const openNew = () => {
-    setForm(emptyDealForm());
+    // BUG-096: 新規登録の時だけ、商談担当(自社)にログイン中のユーザーを入れる(編集の時は保存済みの値のまま)
+    setForm(emptyDealForm(user?.employeeNumber ?? ""));
     setDetail(null);
     setCandidates({ partnerContacts: [], prospectContacts: [] });
     setQuoteCandidates([]);

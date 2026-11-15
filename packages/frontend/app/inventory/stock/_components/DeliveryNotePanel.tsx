@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SourceDocumentLink } from "./SourceDocumentLink";
 import { Button } from "../../../_shared/ui/Button";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
 import { useCsvDownload } from "../../../_shared/hooks/use-csv-download";
@@ -35,6 +36,8 @@ const COLUMNS: DataTableColumn[] = [
   { key: "id", label: "出庫伝票番号", sortable: true },
   { key: "shippedDate", label: "出荷日", sortable: true },
   { key: "partnerId", label: "得意先", sortable: true },
+  // REQ-022: 元の受注
+  { key: "salesOrderId", label: "受注番号" },
   { key: "status", label: "ステータス", sortable: true },
   { key: "actions", label: "帳票・メール", align: "right" },
 ];
@@ -321,6 +324,9 @@ export function DeliveryNotePanel() {
               <td className="px-4 py-3 font-mono text-slate-700">{h.id}</td>
               <td className="px-4 py-3">{h.shippedDate?.slice(0, 10)}</td>
               <td className="px-4 py-3">{partner?.name || "-"}</td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                {h.salesOrderId ? <SourceDocumentLink kind="sales_order" id={h.salesOrderId} /> : <span className="text-slate-500">-</span>}
+              </td>
               <td className="px-4 py-3">
                 <StatusBadge {...getApprovalResultStatus(h.status)} />
               </td>

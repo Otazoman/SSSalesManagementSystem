@@ -111,6 +111,14 @@ describe("BillingPdfService.buildPdfSource", () => {
     expect(built!.source.fallback).toMatchObject({ kind: "document", data: { templateType: "INVOICE", code: "BL-1" } });
   });
 
+  it("BUG-092: 担当者に、固定の文言ではなく請求の作成者の氏名を渡す", async () => {
+    const built = await withContext((c) => {
+      const service = new BillingPdfService(new BillingRepository(c.env.DB));
+      return service.buildPdfSource(c, "BL-1");
+    });
+    expect(built!.source.fallback).toMatchObject({ kind: "document", data: { salesPersonName: "テストユーザー" } });
+  });
+
   it("対象の請求が存在しない場合はnullを返す", async () => {
     const result = await withContext((c) => {
       const service = new BillingPdfService(new BillingRepository(c.env.DB));

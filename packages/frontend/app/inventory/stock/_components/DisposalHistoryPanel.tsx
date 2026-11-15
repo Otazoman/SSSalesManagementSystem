@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
@@ -283,7 +284,7 @@ export function DisposalHistoryPanel({ onEdit }: DisposalHistoryPanelProps) {
             <td className="px-4 py-2">
               <StatusBadge {...getApprovalResultStatus(d.status)} />
             </td>
-            <td className="px-4 py-2 text-slate-600">{d.createdBy}</td>
+            <td className="px-4 py-2 text-slate-700">{displayUserName(history.users, d.createdBy)}</td>
             <td className="px-4 py-2 text-right">
               {d.status === "REMANDED" && onEdit && (
                 <Button

@@ -263,6 +263,7 @@ async function drawCompanyInfoBlock(
   resources: PDFResource,
   height: number,
   drawTextOnPage: DrawTextFn,
+  options: { showInvoiceNo: boolean } = { showInvoiceNo: true },
 ): Promise<void> {
   const rightAreaX = 360; // 右側エリアの開始X座標
 
@@ -381,26 +382,29 @@ async function drawCompanyInfoBlock(
     rgb(0.3, 0.3, 0.3),
   );
 
-  // 担当者名の描画
-  const dispatcherName = data.salesPersonName || "営業担当者";
-  drawTextOnPage(
-    page,
-    `担当: ${dispatcherName}`,
-    rightAreaX,
-    height - 150,
-    9,
-    rgb(0.2, 0.2, 0.2),
-  );
+  // 担当者名の描画。BUG-092: 担当者名が無い時は「担当:」の行を描かない(以前は固定の「営業担当者」を出していた)
+  if (data.salesPersonName) {
+    drawTextOnPage(
+      page,
+      `担当: ${data.salesPersonName}`,
+      rightAreaX,
+      height - 150,
+      9,
+      rgb(0.2, 0.2, 0.2),
+    );
+  }
 
-  // Item4-f: 適格請求書発行事業者の登録番号(会社設定が未入力の場合はラベルのみ表示)
-  drawTextOnPage(
-    page,
-    `登録番号: ${data.companyInvoiceNo || ""}`,
-    rightAreaX,
-    height - 161,
-    8,
-    rgb(0.3, 0.3, 0.3),
-  );
+  // Item4-f: 適格請求書発行事業者の登録番号(会社設定が未入力の場合はラベルのみ表示)。BUG-092: 納品書では出さない
+  if (options.showInvoiceNo) {
+    drawTextOnPage(
+      page,
+      `登録番号: ${data.companyInvoiceNo || ""}`,
+      rightAreaX,
+      height - 161,
+      8,
+      rgb(0.3, 0.3, 0.3),
+    );
+  }
 
   // 2. 社印（角印）の調整
   if (resources.sealBuffer) {
@@ -932,7 +936,10 @@ export async function generateDocumentPDF(
   if ((layoutConfig as { customerFillsIssuer?: boolean }).customerFillsIssuer) {
     drawCustomerFillBlock(page, height, drawTextOnPage, (layoutConfig as { customerFillNote?: string }).customerFillNote);
   } else {
-    await drawCompanyInfoBlock(pdfDoc, page, data, resources, height, drawTextOnPage);
+    await drawCompanyInfoBlock(pdfDoc, page, data, resources, height, drawTextOnPage, {
+      // BUG-092: 登録番号を出すかは帳票ごと(report-layouts.json の showInvoiceNo。省略時は出す。納品書は出さない)
+      showInvoiceNo: (layoutConfig as { showInvoiceNo?: boolean }).showInvoiceNo !== false,
+    });
   }
 
   const tableResult = drawItemsTable(

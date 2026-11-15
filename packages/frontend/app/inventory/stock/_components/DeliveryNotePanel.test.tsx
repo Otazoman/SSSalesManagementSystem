@@ -110,4 +110,13 @@ describe("DeliveryNotePanel(納品書PDFの作成 BUG-030)", () => {
     render(<DeliveryNotePanel />);
     expect(screen.queryByText("📄 納品書PDFを作成")).toBeNull();
   });
+
+  it("REQ-022: 受注から作った出庫は、受注番号を元の受注を開くリンクで出す。単独の出庫は出さない", () => {
+    headers = [header({ id: "SH-1", salesOrderId: "SO-9" }), header({ id: "SH-2", salesOrderId: null })];
+    render(<DeliveryNotePanel />);
+    const link = screen.getByRole("link", { name: /SO-9/ });
+    expect(link).toHaveAttribute("href", "/sales/orders?editId=SO-9");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.getAllByRole("link").filter((a) => a.textContent?.includes("🔗"))).toHaveLength(1);
+  });
 });

@@ -308,6 +308,9 @@ export function usePurchaseOrderOperations({
     setError("");
   }, [currentUserEmployeeNumber]);
 
+  // REQ-008: 保存に成功した時の要約(仕入の画面と同じ SavedSummaryModal で出す)。閉じると null
+  const [savedSummary, setSavedSummary] = useState<{ id: string; title: string; partnerName: string; totalAmount: number } | null>(null);
+
   // BUG-101: 一覧の「内容確認」。一覧の行は明細を含まないため、詳細を取得してから参照用パネルに出す
   const [previewOrder, setPreviewOrder] = useState<PurchaseOrderRecord | null>(null);
   const handleOpenPreview = useCallback(async (record: PurchaseOrderRecord) => {
@@ -462,6 +465,8 @@ export function usePurchaseOrderOperations({
         memo: "",
         // 新規要望(2026-10-18): 発注書印字納期が日付なら、追加した行の希望納期にもセットする
         requestedDeliveryDate: parseDeliveryDateText(deliveryDate),
+        // REQ-020: 受注とつながらない明細は、希望納期を回答納期にも入れる(変更できる)
+        answeredDeliveryDate: parseDeliveryDateText(deliveryDate),
       },
     ]);
   }, [deliveryDate]);
@@ -852,6 +857,12 @@ export function usePurchaseOrderOperations({
       // 「納期のみ保存」ができるよう保存後の明細(ID込み)を取り直す
       const savedId = editingId || data.id;
       if (savedId) {
+        setSavedSummary({
+          id: savedId,
+          title: title || "(件名なし)",
+          partnerName: suppliers.find((s) => s.id === partnerId)?.name ?? partnerId ?? "(未設定)",
+          totalAmount: Number(totalAmount) || 0,
+        });
         try {
           const saved = await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${savedId}`);
           setItems(saved.items || []);
@@ -1096,6 +1107,8 @@ export function usePurchaseOrderOperations({
     total,
     totalPages,
     orders,
+    savedSummary,
+    setSavedSummary,
     previewOrder,
     setPreviewOrder,
     handleOpenPreview,

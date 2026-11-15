@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
@@ -623,7 +624,7 @@ export function ShipmentInstructionPanel({
               <td className="px-4 py-2">
                 <StatusBadge {...getInstructionStatus(i.status)} />
               </td>
-              <td className="px-4 py-2 text-slate-600">{i.createdBy}</td>
+              <td className="px-4 py-2 text-slate-700">{displayUserName(history.users, i.createdBy)}</td>
               <td className="px-4 py-2 text-right space-x-2 whitespace-nowrap">
                 {eligibleForPdf(i.status) && (
                   <Button size="sm" onClick={() => void toggleExpand(i.id)}>

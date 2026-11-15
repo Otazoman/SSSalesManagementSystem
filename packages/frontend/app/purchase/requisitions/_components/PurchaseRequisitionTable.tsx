@@ -1,7 +1,7 @@
 "use client";
 
 import { DataTable } from "../../../_shared/ui/DataTable";
-import { PurchaseRequisitionRecord } from "../_types";
+import { PurchaseRequisitionRecord, UserOption } from "../_types";
 import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 import { formatJstDate } from "../../../_shared/jst-date";
@@ -26,6 +26,8 @@ interface PurchaseRequisitionTableProps {
   onCopyToNewDraft: (r: PurchaseRequisitionRecord) => void;
   // BUG-099: 「内容確認」(見積の一覧と同じ参照用パネル)
   onPreview?: (r: PurchaseRequisitionRecord) => void;
+  // BUG-102: 申請者・入力者を名前で出すためのユーザー一覧
+  userMaster?: UserOption[];
   sortBy?: string | null;
   sortDirection?: "asc" | "desc";
   sortKeys?: { key: string; direction: "asc" | "desc" }[];
@@ -43,11 +45,14 @@ export function PurchaseRequisitionTable({
   onDeleteLink,
   onCopyToNewDraft,
   onPreview,
+  userMaster = [],
   sortBy,
   sortDirection,
   sortKeys,
   onSortChange,
 }: PurchaseRequisitionTableProps) {
+  const userName = (employeeNumber?: string | null) =>
+    (employeeNumber && userMaster.find((u) => u.employeeNumber === employeeNumber)?.name) || employeeNumber || "-";
   return (
     <DataTable
       columns={[
@@ -55,6 +60,9 @@ export function PurchaseRequisitionTable({
         { key: "title", label: "件名", sortable: true },
         // BUG-099: 申請日は作成日(created_at)
         { key: "createdAt", label: "申請日", sortable: true },
+        // BUG-102: 申請者・入力者(見積の一覧の「自社担当者」「入力担当者」と同じ)
+        { key: "applicantId", label: "申請者", sortable: true },
+        { key: "inputPersonEmployeeNumber", label: "入力者", sortable: true },
         { key: "requestType", label: "購買区分", sortable: true },
         { key: "attachments", label: "添付" },
         { key: "status", label: "ステータス", sortable: true },
@@ -79,6 +87,8 @@ export function PurchaseRequisitionTable({
           <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
             {r.createdAt ? formatJstDate(new Date(r.createdAt)) : "-"}
           </td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.applicantId)}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.inputPersonEmployeeNumber)}</td>
           <td className="px-4 py-3 text-xs text-slate-600">
             {CATEGORY_LABEL[r.requestType] || r.requestType}
           </td>

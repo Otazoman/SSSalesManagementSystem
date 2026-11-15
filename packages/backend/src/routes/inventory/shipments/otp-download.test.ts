@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { env } from "cloudflare:test";
+import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+import { Hono } from "hono";
+import type { Env } from "../../../types/env";
+import { DeliveryNotePdfService } from "./delivery-note-pdf.service";
+import { ShipmentsRepository } from "./shipments.repository";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
@@ -302,5 +306,53 @@ describe("Item7残課題7: 納品書OTPダウンロード", () => {
   it("存在しない出庫IDへのOTP発行要求は404を返す", async () => {
     const res = await postJson("/download-request/NOPE/NOPE");
     expect(res.status).toBe(404);
+  });
+});
+
+// BUG-092: 帳票の担当者名は、作成者の氏名(従業員番号ではない)
+async function buildSourceInContext<T>(fn: (c: any) => Promise<T>): Promise<T> {
+  const app = new Hono<{ Bindings: Env }>();
+  let result!: T;
+  let caught: unknown;
+  app.get("/run", async (c) => {
+    try {
+      result = await fn(c);
+    } catch (err) {
+      caught = err;
+    }
+    return c.json({});
+  });
+  const ctx = createExecutionContext();
+  await app.request("/run", {}, env, ctx);
+  await waitOnExecutionContext(ctx);
+  if (caught) throw caught;
+  return result;
+}
+
+async function seedStaffUser() {
+  await db.delete(schema.users).where(eq(schema.users.employeeNumber, "EMP001"));
+  await db.insert(schema.users).values({
+    id: "user-staff-001",
+    employeeNumber: "EMP001",
+    email: "staff@example.com",
+    name: "倉庫花子",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+describe("BUG-092: 納品書の担当者・登録番号", () => {
+  it("担当に出庫の作成者の氏名を渡す。引けない時は空欄(担当の行を描かない)", async () => {
+    await seedStaffUser();
+    const built = await buildSourceInContext((c) =>
+      new DeliveryNotePdfService(new ShipmentsRepository(c.env.DB)).buildPdfSource(c, HEADER_LINKED_ID, false),
+    );
+    expect(built!.source.fallback).toMatchObject({ kind: "document", data: { templateType: "DELIVERY", salesPersonName: "倉庫花子" } });
+
+    await db.delete(schema.users).where(eq(schema.users.employeeNumber, "EMP001"));
+    const noName = await buildSourceInContext((c) =>
+      new DeliveryNotePdfService(new ShipmentsRepository(c.env.DB)).buildPdfSource(c, HEADER_LINKED_ID, false),
+    );
+    expect((noName!.source.fallback as { data: { salesPersonName?: string } }).data.salesPersonName).toBe("");
   });
 });

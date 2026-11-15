@@ -15,7 +15,7 @@ export function parseDeliveryDateText(text: string | null | undefined): string |
 // 希望納期が空欄の明細と、直前の印字納期から自動でセットされた値のままの明細だけを新しい日付に合わせる
 // (明細ごとに手で入れた希望納期は上書きしない)。文言など日付として読めない値になった場合、
 // 自動でセットされた値のままの明細は空欄に戻す
-export function applyDeliveryDateTextToItems<T extends { requestedDeliveryDate?: string | null }>(
+export function applyDeliveryDateTextToItems<T extends DeliveryDateItem>(
   items: T[],
   prevText: string,
   nextText: string,
@@ -25,7 +25,28 @@ export function applyDeliveryDateTextToItems<T extends { requestedDeliveryDate?:
   if (prevDate === nextDate) return items;
   return items.map((it) =>
     !it.requestedDeliveryDate || (prevDate !== null && it.requestedDeliveryDate === prevDate)
-      ? { ...it, requestedDeliveryDate: nextDate }
+      ? { ...it, ...withRequestedDeliveryDate(it, nextDate) }
       : it,
   );
+}
+
+interface DeliveryDateItem {
+  requestedDeliveryDate?: string | null;
+  answeredDeliveryDate?: string | null;
+  salesOrderItemId?: string | null;
+}
+
+// REQ-020: 明細の希望納期を nextRequested にする時の変更。受注とつながらない明細(salesOrderItemId が空)は、
+// 回答納期が空か直前の希望納期と同じ(=希望納期から自動で入った値のまま)なら、回答納期にも同じ日付を入れる。
+// 回答納期を手で別の日にした後は上書きしない。受注とつながる明細の回答納期は、仕入先の回答を入れて受注の納期へ反映するため触らない
+export function withRequestedDeliveryDate(
+  item: DeliveryDateItem,
+  nextRequested: string | null,
+): Pick<DeliveryDateItem, "requestedDeliveryDate" | "answeredDeliveryDate"> {
+  const follows =
+    !item.salesOrderItemId &&
+    (!item.answeredDeliveryDate || item.answeredDeliveryDate === (item.requestedDeliveryDate ?? null));
+  return follows
+    ? { requestedDeliveryDate: nextRequested, answeredDeliveryDate: nextRequested }
+    : { requestedDeliveryDate: nextRequested };
 }

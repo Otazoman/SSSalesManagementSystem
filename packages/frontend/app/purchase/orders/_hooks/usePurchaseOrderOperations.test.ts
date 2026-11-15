@@ -145,3 +145,33 @@ describe("usePurchaseOrderOperations: 発注の複写", () => {
     expect(result.current.error).toContain("購買申請から発注を作成");
   });
 });
+
+// REQ-008: 保存した後に、仕入と同じ確認のダイアログ(番号・件名・仕入先・合計)を出す
+describe("usePurchaseOrderOperations: REQ-008 保存した後の確認", () => {
+  it("新規の保存に成功すると、番号・件名・仕入先の名前を要約に入れる", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const u = url.toString();
+        if (u.includes("/api/purchase-orders/register")) return json({ id: "PO-NEW" });
+        if (u.includes("/api/partners")) return json([{ id: "SUP-1", name: "部品商事" }]);
+        if (u.includes("/api/purchase-orders/PO-NEW")) return json({ id: "PO-NEW", items: [] });
+        return json([]);
+      }),
+    );
+    const { result } = renderHook(() => usePurchaseOrderOperations({ canRead: true, isPurchaseOrderWfEnabled: false }));
+    await vi.waitFor(() => expect(result.current.suppliers.length).toBeGreaterThan(0));
+    act(() => {
+      result.current.setTitle("部品の発注");
+      result.current.setPartnerId("SUP-1");
+      result.current.addItemRow();
+    });
+    act(() => {
+      result.current.updateItemRow(result.current.items.length - 1, { itemId: "ITEM-1", quantity: 1, unitPrice: 100 });
+    });
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+    expect(result.current.savedSummary).toMatchObject({ id: "PO-NEW", title: "部品の発注", partnerName: "部品商事" });
+  });
+});

@@ -273,3 +273,48 @@ describe("ご発注書(CUSTOMER_ORDER_FORM)", () => {
     expect(m.getPageCount()).toBe(q.getPageCount() + o.getPageCount());
   });
 });
+
+// BUG-092: 担当者名が無い時は「担当:」の行を描かない(以前は「営業担当者」)。納品書には登録番号を出さない
+describe("担当者・登録番号の行(BUG-092)", () => {
+  async function drawnTexts(data: PDFInvoiceData): Promise<string[]> {
+    // 描画は report-renderer の中の pdf-lib で行うため、そちらの PDFPage の drawText を見張る(backend の pdf-lib とは別のもの)
+    const { PDFPage } = await import("../../../report-renderer/node_modules/pdf-lib");
+    const texts: string[] = [];
+    const original = PDFPage.prototype.drawText;
+    PDFPage.prototype.drawText = function (this: InstanceType<typeof PDFPage>, text: string, options?: Parameters<typeof original>[1]) {
+      texts.push(text);
+      return original.call(this, text, options);
+    };
+    try {
+      await generateDocumentPDF(data, { fontBuffer });
+    } finally {
+      PDFPage.prototype.drawText = original;
+    }
+    return texts;
+  }
+  const base = (overrides: Partial<PDFInvoiceData>): PDFInvoiceData => ({
+    templateType: "INVOICE",
+    code: "BL-1",
+    date: "2026-11-15",
+    customCompanyName: "テスト株式会社",
+    customerName: "得意先",
+    totalAmount: 1100,
+    taxAmount: 100,
+    memo: "",
+    companyInvoiceNo: "T1234567890123",
+    items: [{ itemName: "品目", quantity: 1, unitPrice: 1000 }],
+    ...overrides,
+  } as PDFInvoiceData);
+
+  it("担当者名があれば「担当: 氏名」を描き、無ければ担当の行を描かない", async () => {
+    expect(await drawnTexts(base({ salesPersonName: "請求太郎" }))).toContain("担当: 請求太郎");
+    const texts = await drawnTexts(base({ salesPersonName: "" }));
+    expect(texts.some((t) => t.startsWith("担当:"))).toBe(false);
+  });
+
+  it("請求書には登録番号を描き、納品書には描かない", async () => {
+    expect(await drawnTexts(base({}))).toContain("登録番号: T1234567890123");
+    const delivery = await drawnTexts(base({ templateType: "DELIVERY" }));
+    expect(delivery.some((t) => t.startsWith("登録番号"))).toBe(false);
+  });
+});

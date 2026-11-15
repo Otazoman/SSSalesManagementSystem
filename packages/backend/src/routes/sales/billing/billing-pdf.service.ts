@@ -1,5 +1,7 @@
 import { Context } from "hono";
 import { BillingRepository } from "./billing.repository";
+import { findUserName } from "../../../platform/repository/common-queries";
+import { createDb } from "../../../platform/db/create-db";
 import { RESOURCE_KEY } from "./billing-constants";
 import { type ReportPdfSource } from "report-renderer";
 import { DEFAULT_ITEM_NAME, DEFAULT_PAYMENT_TERMS } from "../../../platform/documents/document-defaults";
@@ -73,6 +75,7 @@ export class BillingPdfService {
     const allLineItems = [...invoiceLineItems, ...manualLineItems];
     const taxCategoryRates = await this.repo.findTaxCategoryRates();
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
+    const staffName = await findUserName(createDb(c.env.DB), header.createdBy);
 
     // BUG-042: 税率別の内訳は、請求の合計(billing-crud.service.ts)と同じ明細・同じ計算で出す(返品・値引の売上はマイナス)
     const invoices = await this.repo.findSalesInvoicesByIds(invoiceIds);
@@ -92,7 +95,8 @@ export class BillingPdfService {
       memo: header.memo,
       quoteTitle: header.title || "ご請求の件",
       paymentTerms: DEFAULT_PAYMENT_TERMS,
-      salesPersonName: "営業部 担当者",
+      // BUG-092: 固定の文言(営業部 担当者)をやめ、請求の作成者の氏名を出す(引けない時は担当の行を描かない)
+      salesPersonName: staffName,
       customCompanyName: systemConfig.company_name || "",
       customCompanyZip: systemConfig.company_zip || "",
       customCompanyAddress: systemConfig.company_address || "",
@@ -126,7 +130,7 @@ export class BillingPdfService {
           totalAmount: header.totalAmount,
           taxAmount: header.taxAmount,
           items: allLineItems,
-          staffName: "",
+          staffName,
           company: {
             name: pdfData.customCompanyName,
             zip: pdfData.customCompanyZip,

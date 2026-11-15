@@ -1,5 +1,7 @@
 import { Context } from "hono";
 import { Env } from "../../../types/env";
+import { findUserName } from "../../../platform/repository/common-queries";
+import { createDb } from "../../../platform/db/create-db";
 import { ShipmentsRepository } from "./shipments.repository";
 import { WarehousesRepository } from "../../master/warehouses/warehouses.repository";
 import { PartnersRepository } from "../../master/partners/partners.repository";
@@ -75,6 +77,8 @@ export class DeliveryNotePdfService {
     );
 
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
+    // BUG-092: 納品書の担当は出庫の作成者の氏名(引けない時は担当の行を描かない)
+    const staffName = await findUserName(createDb(c.env.DB), header.createdBy);
 
     const deliveryNoteData: InstructionPdfData = {
       documentTitle: "納品書",
@@ -98,6 +102,7 @@ export class DeliveryNotePdfService {
       // Item7残課題7: 受注に紐づく出庫のみ設定(単独出庫はnullのまま、受注番号欄・単価列を出さない)
       salesOrderId: header.salesOrderId || null,
       showPriceColumns: true,
+      staffName,
     };
 
     // カスタムExcelテンプレート判定は既存の指示書向けデータ構造(InstructionPdfData)のまま
@@ -130,6 +135,7 @@ export class DeliveryNotePdfService {
         deliveryPlace: recipientAddress,
         sourceWarehouseName: warehouse?.name || "-",
         salesOrderNumber: header.salesOrderId || "",
+        salesPersonName: staffName,
         items: itemsWithNames.map((item) => ({
           itemName: item.lotNumber ? `${item.itemName}(ロット:${item.lotNumber})` : item.itemName,
           quantity: item.quantity,

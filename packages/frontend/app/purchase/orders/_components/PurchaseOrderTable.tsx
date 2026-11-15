@@ -2,7 +2,7 @@
 
 import { formatJstDate } from "../../../_shared/jst-date";
 import { DataTable } from "../../../_shared/ui/DataTable";
-import { PurchaseOrderRecord, PartnerLookup } from "../_types";
+import { PurchaseOrderRecord, PartnerLookup, UserOption } from "../_types";
 import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 
@@ -27,6 +27,8 @@ interface PurchaseOrderTableProps {
   onSortChange?: (key: string) => void;
   // BUG-101: 「内容確認」(見積・購買申請の一覧と同じ参照用パネル)
   onPreview?: (r: PurchaseOrderRecord) => void;
+  // BUG-102: 発注担当者・入力者を名前で出すためのユーザー一覧
+  userMaster?: UserOption[];
 }
 
 export function PurchaseOrderTable({
@@ -47,7 +49,10 @@ export function PurchaseOrderTable({
   sortKeys,
   onSortChange,
   onPreview,
+  userMaster = [],
 }: PurchaseOrderTableProps) {
+  const userName = (employeeNumber?: string | null) =>
+    (employeeNumber && userMaster.find((u) => u.employeeNumber === employeeNumber)?.name) || employeeNumber || "-";
   const partnerName = (partnerId?: string | null) =>
     partners.find((p) => p.id === partnerId)?.name || partnerId || "-";
 
@@ -60,6 +65,9 @@ export function PurchaseOrderTable({
         { key: "orderDate", label: "発注日", sortable: true },
         { key: "title", label: "件名", sortable: true },
         { key: "partnerId", label: "仕入先", sortable: true },
+        // BUG-102: 発注担当者・入力者(見積の一覧の「自社担当者」「入力担当者」と同じ)
+        { key: "purchasePersonEmployeeNumber", label: "発注担当者", sortable: true },
+        { key: "inputPersonEmployeeNumber", label: "入力者", sortable: true },
         { key: "status", label: "ステータス", sortable: true },
         { key: "attachments", label: "添付" },
         { key: "totalAmount", label: "合計金額", align: "right", sortable: true },
@@ -91,6 +99,8 @@ export function PurchaseOrderTable({
           </td>
           <td className="px-4 py-3 font-semibold text-slate-900">{r.title || "-"}</td>
           <td className="px-4 py-3 text-xs text-slate-600">{partnerName(r.partnerId)}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.purchasePersonEmployeeNumber)}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.inputPersonEmployeeNumber)}</td>
           <td className="px-4 py-3">
             <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
           </td>

@@ -284,10 +284,12 @@ export class PurchaseOrderCsvService {
                 getCellVal(idxRequestedDeliveryDate),
                 "requestedDeliveryDate",
               ),
-              answeredDeliveryDate: normalizeCsvDate(
-                getCellVal(idxAnsweredDeliveryDate),
-                "answeredDeliveryDate",
-              ),
+              // REQ-020: 回答納期が空で、受注とつながらない明細は、希望納期を回答納期に入れる(画面と同じ規則)
+              answeredDeliveryDate:
+                normalizeCsvDate(getCellVal(idxAnsweredDeliveryDate), "answeredDeliveryDate") ??
+                (getCellVal(idxSalesOrderItemId)
+                  ? null
+                  : normalizeCsvDate(getCellVal(idxRequestedDeliveryDate), "requestedDeliveryDate")),
               salesOrderItemId: getCellVal(idxSalesOrderItemId),
               purchaseRequestItemId: getCellVal(idxPurchaseRequestItemId),
             },

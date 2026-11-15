@@ -9,6 +9,7 @@ import { usePurchaseOrderOperations } from "./_hooks/usePurchaseOrderOperations"
 import { PurchaseOrderForm } from "./_components/PurchaseOrderForm";
 import { PurchaseOrderTable } from "./_components/PurchaseOrderTable";
 import { PurchaseOrderPreview } from "./_components/PurchaseOrderPreview";
+import { SavedSummaryModal } from "../../_shared/ui/SavedSummaryModal";
 import { PurchaseRequisitionPickerModal } from "./_components/PurchaseRequisitionPickerModal";
 import { SalesOrderShortagePickerModal } from "./_components/SalesOrderShortagePickerModal";
 import { PurchaseOrderReorderPickerModal } from "./_components/PurchaseOrderReorderPickerModal";
@@ -160,6 +161,8 @@ export default function PurchaseOrdersPage() {
     previewOrder,
     setPreviewOrder,
     handleOpenPreview,
+    savedSummary,
+    setSavedSummary,
     handleCopyToNewForm,
     handleSubmit,
     handleSaveDeliveryDatesOnly,
@@ -418,6 +421,7 @@ export default function PurchaseOrdersPage() {
             onDeleteLink={handleDeleteLink}
             onCopy={handleCopyToNewForm}
             onPreview={handleOpenPreview}
+            userMaster={userMaster}
             canCopy={canCreate && !isPurchaseOrderWfEnabled}
             sortBy={sortBy}
             sortDirection={sortDirection}
@@ -580,6 +584,32 @@ export default function PurchaseOrdersPage() {
           onClose={() => setMailModalOrderId(null)}
           onSend={handleSendSingleMail}
           isMailSending={isMailSending}
+        />
+      )}
+      {/* REQ-008: 保存した後の確認(仕入の画面と同じ) */}
+      {savedSummary && (
+        <SavedSummaryModal
+          title="発注を保存しました"
+          codeLabel="発注番号"
+          partnerLabel="仕入先名"
+          summary={savedSummary}
+          previewLabel="👁️ 保存した発注を内容確認で見る"
+          approveLabel={isPurchaseOrderWfEnabled ? "🚀 このまま承認を申請する" : "✅ このまま確定する"}
+          onPreview={() => {
+            const targetId = savedSummary.id;
+            setSavedSummary(null);
+            void handleOpenPreview({ id: targetId } as PurchaseOrderRecord);
+          }}
+          onApprove={() => {
+            setSavedSummary(null);
+            void handleSubmitForApproval();
+          }}
+          onContinue={() => setSavedSummary(null)}
+          onBackToList={() => {
+            setSavedSummary(null);
+            handleClearForm();
+            setViewMode("LIST");
+          }}
         />
       )}
     </div>

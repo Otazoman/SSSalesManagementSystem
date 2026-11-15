@@ -59,6 +59,29 @@ describe("PurchaseRequisitionTable(BUG-099)", () => {
   });
 });
 
+describe("PurchaseRequisitionTable(BUG-102)", () => {
+  it("申請者・入力者をユーザーの名前で出す(ユーザーが見つからなければ従業員番号)", () => {
+    render(
+      <PurchaseRequisitionTable
+        requisitions={[record({ applicantId: "E001", inputPersonEmployeeNumber: "E999" })]}
+        canCreate
+        canUpdate
+        canDelete
+        isSubmitting={false}
+        onSelectEdit={vi.fn()}
+        onDeleteLink={vi.fn()}
+        onCopyToNewDraft={vi.fn()}
+        userMaster={[{ id: "u1", name: "申請花子", employeeNumber: "E001" }]}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /申請者/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /入力者/ })).toBeInTheDocument();
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("申請花子")).toBeInTheDocument();
+    expect(within(row).getByText("E999")).toBeInTheDocument();
+  });
+});
+
 describe("PurchaseRequisitionPreview(BUG-099)", () => {
   it("件名・仕入先(マスタの名前)・申請日・明細(品目マスタの名前)・添付・合計を出す", () => {
     render(

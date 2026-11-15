@@ -618,6 +618,16 @@ describe("BUG-095: 発注一覧を発注日で並べ替えられる", () => {
   });
 });
 
+describe("BUG-102: 発注一覧を発注担当者で並べ替えられる", () => {
+  it("sortBy=purchasePersonEmployeeNumber の昇順で並ぶ", async () => {
+    await seedOrder("PO-X", { purchasePersonEmployeeNumber: "E003" });
+    await seedOrder("PO-Y", { purchasePersonEmployeeNumber: "E001" });
+    await seedOrder("PO-Z", { purchasePersonEmployeeNumber: "E002" });
+    const res = (await (await callSearchOrders("buyer-1", "sortBy=purchasePersonEmployeeNumber&sortOrder=asc")).json()) as Array<{ id: string }>;
+    expect(res.map((o) => o.id)).toEqual(["PO-Y", "PO-Z", "PO-X"]);
+  });
+});
+
 describe("追加要望: 発注一覧の検索で注残(仕入計上が未済)の有無で絞り込める", () => {
   async function seedApprovedRecognition(
     id: string,

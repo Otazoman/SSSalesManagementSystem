@@ -63,6 +63,7 @@
     "showSeal": true,
     "showConditionTable": true,
     "showTotals": false,
+    "showInvoiceNo": false,
     "conditions": [
       { "key": "deliveryDate", "label": "出荷日" },
       { "key": "deliveryPlace", "label": "納品先住所" },

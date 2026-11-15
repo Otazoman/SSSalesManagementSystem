@@ -54,4 +54,14 @@ describe("OpenedStockDocumentCard", () => {
     await waitFor(() => expect(screen.getByText("WH-DST")).toBeTruthy());
     expect(screen.getByText("移動先倉庫")).toBeTruthy();
   });
+
+  it("REQ-021: 入庫の発注番号は、元の発注を開くリンクで出す", async () => {
+    mockFetchOnce({
+      header: { id: "RC-1", status: "APPROVED", receivedDate: "2026-09-23T00:00:00.000Z", orderId: "PO-7", createdBy: "EMP001" },
+      items: [],
+    });
+    render(<OpenedStockDocumentCard kind="receipt" id="RC-1" onClose={() => {}} />);
+    const link = await screen.findByRole("link", { name: /PO-7/ });
+    expect(link).toHaveAttribute("href", "/purchase/orders?editId=PO-7");
+  });
 });

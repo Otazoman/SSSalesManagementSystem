@@ -9,6 +9,7 @@ import { usePurchaseRequisitionOperations } from "./_hooks/usePurchaseRequisitio
 import { PurchaseRequisitionForm } from "./_components/PurchaseRequisitionForm";
 import { PurchaseRequisitionTable } from "./_components/PurchaseRequisitionTable";
 import { PurchaseRequisitionPreview } from "./_components/PurchaseRequisitionPreview";
+import { SavedSummaryModal } from "../../_shared/ui/SavedSummaryModal";
 import { PurchaseRequisitionSearchForm } from "./_components/PurchaseRequisitionSearchForm";
 import { SalesOrderPickerModal } from "./_components/SalesOrderPickerModal";
 import { PurchaseOrderPickerModal } from "./_components/PurchaseOrderPickerModal";
@@ -87,9 +88,7 @@ export default function PurchaseRequisitionsPage() {
     accounts,
     partnerId,
     partnerName,
-    setPartnerName,
     partnerInputType,
-    onPartnerTypeChange,
     onSupplierMasterSelect,
     projectId,
     setProjectId,
@@ -126,6 +125,8 @@ export default function PurchaseRequisitionsPage() {
     previewRequisition,
     setPreviewRequisition,
     handleOpenPreview,
+    savedSummary,
+    setSavedSummary,
     handlePrefillFromSalesOrder,
     handlePrefillFromPurchaseOrder,
     handlePrefillFromReorderSuggestion,
@@ -325,6 +326,7 @@ export default function PurchaseRequisitionsPage() {
             onDeleteLink={handleDeleteLink}
             onCopyToNewDraft={handleCopyToNewDraft}
             onPreview={handleOpenPreview}
+            userMaster={userMaster}
             sortBy={sortBy}
             sortDirection={sortDirection}
             sortKeys={sortKeys}
@@ -390,9 +392,7 @@ export default function PurchaseRequisitionsPage() {
             moveItemDown={moveItemDown}
             partnerId={partnerId}
             partnerName={partnerName}
-            setPartnerName={setPartnerName}
             partnerInputType={partnerInputType}
-            onPartnerTypeChange={onPartnerTypeChange}
             onSupplierMasterSelect={onSupplierMasterSelect}
             suppliers={suppliers}
             projectId={projectId}
@@ -443,6 +443,36 @@ export default function PurchaseRequisitionsPage() {
             }}
           />
         </div>
+      )}
+      {/* REQ-008: 保存した後の確認(仕入の画面と同じ) */}
+      {savedSummary && (
+        <SavedSummaryModal
+          title="購買申請を保存しました"
+          codeLabel="購買申請番号"
+          partnerLabel="仕入先名"
+          summary={savedSummary}
+          previewLabel="👁️ 保存した購買申請を内容確認で見る"
+          approveLabel={isPurchaseRequisitionWfEnabled ? "🚀 このまま承認を申請する" : undefined}
+          onPreview={() => {
+            const targetId = savedSummary.id;
+            setSavedSummary(null);
+            void handleOpenPreview({ id: targetId } as PurchaseRequisitionRecord);
+          }}
+          onApprove={
+            isPurchaseRequisitionWfEnabled
+              ? () => {
+                  setSavedSummary(null);
+                  void handleSubmitForApproval();
+                }
+              : undefined
+          }
+          onContinue={() => setSavedSummary(null)}
+          onBackToList={() => {
+            setSavedSummary(null);
+            handleClearForm();
+            setViewMode("LIST");
+          }}
+        />
       )}
     </div>
   );

@@ -25,6 +25,9 @@ const PURCHASE_ORDERS_SORT_COLUMNS = {
   partnerId: schema.orders.partnerId,
   // BUG-095: 一覧の「発注日」で並べ替える
   orderDate: schema.orders.orderDate,
+  // BUG-102: 一覧の「発注担当者」「入力者」で並べ替える
+  purchasePersonEmployeeNumber: schema.orders.purchasePersonEmployeeNumber,
+  inputPersonEmployeeNumber: schema.orders.inputPersonEmployeeNumber,
   createdAt: schema.orders.createdAt,
 };
 

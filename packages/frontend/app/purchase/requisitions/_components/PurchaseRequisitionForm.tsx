@@ -67,9 +67,7 @@ interface PurchaseRequisitionFormProps {
   moveItemDown: (index: number) => void;
   partnerId: string;
   partnerName: string;
-  setPartnerName: (v: string) => void;
   partnerInputType: "MASTER" | "DIRECT";
-  onPartnerTypeChange: (type: "MASTER" | "DIRECT") => void;
   onSupplierMasterSelect: (partnerId: string) => void;
   suppliers: PartnerLookup[];
   projectId: string;
@@ -144,9 +142,7 @@ export function PurchaseRequisitionForm({
   moveItemDown,
   partnerId,
   partnerName,
-  setPartnerName,
   partnerInputType,
-  onPartnerTypeChange,
   onSupplierMasterSelect,
   suppliers,
   projectId,
@@ -273,46 +269,28 @@ export function PurchaseRequisitionForm({
           </FormField>
 
           <FormField label="仕入先" required>
-            <div className="flex gap-1.5">
-              <select
-                className="border border-slate-300 p-2 text-[11px] rounded bg-white text-slate-800 font-bold focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 cursor-pointer shrink-0"
-                value={partnerInputType}
-                disabled={isLocked}
-                onChange={(e) =>
-                  onPartnerTypeChange(e.target.value as "MASTER" | "DIRECT")
-                }
-              >
-                <option value="MASTER">マスタ</option>
-                <option value="DIRECT">手入力</option>
-              </select>
-              {partnerInputType === "MASTER" ? (
-                <select
-                  required
-                  className={`${formFieldInputClass} cursor-pointer`}
-                  value={partnerId}
-                  onChange={(e) => onSupplierMasterSelect(e.target.value)}
-                  disabled={isLocked}
-                >
-                  <option value="" disabled>
-                    -- 仕入先を選択 --
-                  </option>
-                  {selectablePartners(suppliers, partnerId).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      [{s.id}] {s.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  required
-                  className={formFieldInputClass}
-                  placeholder="仕入先名(自由入力)"
-                  value={partnerName}
-                  onChange={(e) => setPartnerName(e.target.value)}
-                  disabled={isLocked}
-                />
-              )}
-            </div>
+            {/* REQ-019: 仕入先はマスタからの選択だけ(自由入力の欄をやめた) */}
+            <select
+              required
+              className={`${formFieldInputClass} cursor-pointer`}
+              value={partnerId}
+              onChange={(e) => onSupplierMasterSelect(e.target.value)}
+              disabled={isLocked}
+            >
+              <option value="" disabled>
+                -- 仕入先を選択 --
+              </option>
+              {selectablePartners(suppliers, partnerId).map((s) => (
+                <option key={s.id} value={s.id}>
+                  [{s.id}] {s.name}
+                </option>
+              ))}
+            </select>
+            {partnerInputType === "DIRECT" && !partnerId && partnerName && (
+              <p className="mt-1 text-[11px] font-bold text-amber-800">
+                以前は自由入力の仕入先「{partnerName}」で保存されています。保存する時は、仕入先マスタから選び直してください。
+              </p>
+            )}
           </FormField>
 
           <FormField label="プロジェクト" required>

@@ -395,7 +395,8 @@ export class DealsService {
     if (file.size > MAX_ATTACHMENT_BYTES) {
       throw new BadRequestError("ファイルサイズは20MB以下にしてください");
     }
-    const key = generateAttachmentKey("deals", file.name);
+    // BUG-088: 見積(quotes/<見積番号>)と同じく、商談番号のフォルダに入れる(保存済みのファイルは DB にキーを持つため動かさない)
+    const key = generateAttachmentKey(`deals/${dealId}`, file.name);
     await c.env.DEALS_BUCKET.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
 
     const operator = await this.repo.getOperatorEmployeeNumber(c);

@@ -237,9 +237,10 @@ describe("取込後のデータが、サンプルの想定どおりになって�
       requestedDeliveryDate: "2026-08-03",
       answeredDeliveryDate: "2026-08-03",
     });
+    // REQ-020: 回答納期が空で受注とつながらない明細は、取込の時に希望納期を回答納期に入れる
     expect(by(poItems, "orderId", "PO-2026-0004")[0]).toMatchObject({
       requestedDeliveryDate: "2026-09-15",
-      answeredDeliveryDate: null,
+      answeredDeliveryDate: "2026-09-15",
     });
   });
 

@@ -115,3 +115,21 @@ describe("PurchaseOrderPreview(BUG-101)", () => {
     expect(screen.getByText("¥2,200")).toBeInTheDocument();
   });
 });
+
+describe("PurchaseOrderTable: BUG-102 発注担当者・入力者", () => {
+  it("発注担当者・入力者をユーザーの名前で出す(ユーザーが見つからなければ従業員番号)", () => {
+    render(
+      <PurchaseOrderTable
+        {...baseProps({
+          orders: [order({ purchasePersonEmployeeNumber: "E001", inputPersonEmployeeNumber: "E999" })],
+          userMaster: [{ id: "u1", name: "購買太郎", employeeNumber: "E001" }],
+        })}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /発注担当者/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /入力者/ })).toBeInTheDocument();
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("購買太郎")).toBeInTheDocument();
+    expect(within(row).getByText("E999")).toBeInTheDocument();
+  });
+});

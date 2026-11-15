@@ -404,6 +404,10 @@ export class PurchaseRequisitionCrudService {
     if (requisition.status !== "DRAFT") {
       throw new BadRequestError("下書き状態の購買申請のみ承認申請できます");
     }
+    // REQ-019: 仕入先はマスタからの選択だけ。申請(確定)する時は、仕入先マスタの指定を必須にする(下書きの保存・CSV の取込は今のまま)
+    if (!requisition.partnerId) {
+      throw new BadRequestError("仕入先をマスタから選択してから申請してください");
+    }
 
     const employeeNumber = await this.repo.getFallbackOperatorId(c);
     const wfEnabled = await isPurchaseRequisitionWorkflowGloballyEnabled(

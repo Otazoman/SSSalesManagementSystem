@@ -275,12 +275,22 @@ async function seedApprovalFlow(
   }
 }
 
+// REQ-019: 申請には仕入先マスタの指定が要るため、既定でテスト用の仕入先を付ける(partnerId を渡せば上書きできる)
+const DEFAULT_SUPPLIER_ID = "SUP-REQ-DEFAULT";
+
 async function seedRequisition(
   id: string,
   overrides: Partial<typeof schema.purchaseRequests.$inferInsert> = {},
 ) {
+  if (overrides.partnerId === undefined) {
+    await db
+      .insert(schema.partners)
+      .values({ id: DEFAULT_SUPPLIER_ID, name: "既定の仕入先", type: "SUPPLIER", createdBy: "system", createdAt: now, updatedBy: "system", updatedAt: now })
+      .onConflictDoNothing();
+  }
   await db.insert(schema.purchaseRequests).values({
     id,
+    partnerId: DEFAULT_SUPPLIER_ID,
     title: `購買申請${id}`,
     departmentSurrogateId: "dept-a",
     applicantId: "applicant-1",
@@ -489,6 +499,14 @@ describe("DELETE /:id のステータスガード", () => {
 });
 
 describe("POST /:id/submit-for-approval", () => {
+  it("REQ-019: 仕入先マスタの指定が無い購買申請は申請できない(下書きのまま)", async () => {
+    await seedRequisition("PR-NOSUP", { partnerId: null, partnerName: "自由入力商店", partnerInputType: "DIRECT" });
+    const res = await callSubmitForApproval("PR-NOSUP", "applicant-1");
+    expect(res.status).toBe(400);
+    const row = (await db.select().from(schema.purchaseRequests).where(eq(schema.purchaseRequests.id, "PR-NOSUP")))[0];
+    expect(row.status).toBe("DRAFT");
+  });
+
   it("DRAFT以外は申請できない(400)", async () => {
     await seedRequisition("PR-1", { status: "APPROVED" });
     const res = await callSubmitForApproval("PR-1", "applicant-1");

@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { Env } from "../../../types/env";
+import { findUserName } from "../../../platform/repository/common-queries";
 import { ReceiptsRepository } from "./receipts.repository";
 import { ProductsRepository } from "../../master/products/products.repository";
 import { type ReportPdfSource, type PDFInvoiceData } from "report-renderer";
@@ -46,7 +47,8 @@ export class AcceptanceInspectionPdfService {
 
     const db = createDb(c.env.DB);
     const fallbackId = await resolveOperatorEmployeeNumber(c, db);
-    const staffName = header.createdBy || fallbackId;
+    // BUG-092: 検収担当者は入庫の作成者の氏名(以前は従業員番号を出していた)。引けない時は空欄
+    const staffName = await findUserName(db, header.createdBy);
 
     const productsRepo = new ProductsRepository(c.env.DB);
     const itemsWithNames = await Promise.all(

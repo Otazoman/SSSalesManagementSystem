@@ -250,4 +250,35 @@ describe("CSV入出力", () => {
     expect(items.map((i) => i.sortOrder)).toEqual([0, 1, 2]);
     expect(items.map((i) => i.itemId)).toEqual(["ITEM-A", "ITEM-B", "ITEM-C"]);
   });
+
+  it("REQ-020: 回答納期が空で受注とつながらない明細は、希望納期を回答納期に入れる。回答納期があればそのまま", async () => {
+    const csvHeader = "id,partnerId,title,orderDate,status,totalAmount,memo,itemId,quantity,unitPrice,itemMemo,requestedDeliveryDate,answeredDeliveryDate";
+    const csvText = [
+      csvHeader,
+      "PO-CSV-DATE-1,,納期確認,,DRAFT,2000,,ITEM-A,1,1000,,2026-11-20,",
+      "PO-CSV-DATE-1,,納期確認,,DRAFT,2000,,ITEM-B,1,1000,,2026-11-20,2026-11-30",
+      "",
+    ].join("\n");
+    const formData = new FormData();
+    formData.append("file", new File([csvText], "purchase_orders.csv", { type: "text/csv" }));
+    const ctx = createExecutionContext();
+    const res = await purchaseOrdersRouter.request(
+      "/bulk-register",
+      { method: "POST", headers: { Cookie: await buildSessionCookieHeader("importer-1") }, body: formData },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(200);
+
+    const items = await db
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, "PO-CSV-DATE-1"))
+      .orderBy(asc(schema.orderItems.sortOrder));
+    expect(items.map((i) => [i.requestedDeliveryDate, i.answeredDeliveryDate])).toEqual([
+      ["2026-11-20", "2026-11-20"],
+      ["2026-11-20", "2026-11-30"],
+    ]);
+  });
 });
