@@ -34,9 +34,9 @@ export function PurchaseRequisitionPreview({
     itemName || allItems.find((i) => i.id === itemId)?.name || itemId || "品目項目";
 
   return (
-    <SidePanel eyebrow={requisition.id} title="購買申請の内容確認" onClose={onClose}>
+    <SidePanel eyebrow={requisition.id} title="購買申請プレビュー内容の最終確認" onClose={onClose}>
       <div>
-        <label className="text-slate-600 font-bold block text-[10px]">件名</label>
+        <label className="text-slate-600 font-bold block text-[10px]">申請件名 / タイトル</label>
         <div className="font-bold text-slate-800 text-sm mt-0.5">{requisition.title || "(無題の購買申請)"}</div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -53,7 +53,7 @@ export function PurchaseRequisitionPreview({
         </div>
       </div>
       <div className="border-t border-slate-100 pt-3">
-        <label className="text-slate-600 font-bold block text-[10px] mb-1">明細</label>
+        <label className="text-slate-600 font-bold block text-[10px] mb-1">申請構成明細</label>
         <div className="divide-y border border-slate-200 rounded-lg bg-slate-50/50 overflow-hidden">
           {(requisition.items ?? []).length === 0 && (
             <div className="p-2 bg-white text-slate-700">明細がありません</div>

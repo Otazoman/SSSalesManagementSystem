@@ -22,9 +22,9 @@ export function PurchaseOrderPreview({ order, suppliers, allItems, onClose }: Pu
     itemName || allItems.find((i) => i.id === itemId)?.name || itemId || "品目項目";
 
   return (
-    <SidePanel eyebrow={order.id} title="発注の内容確認" onClose={onClose}>
+    <SidePanel eyebrow={order.id} title="発注書プレビュー内容の最終確認" onClose={onClose}>
       <div>
-        <label className="text-slate-600 font-bold block text-[10px]">件名</label>
+        <label className="text-slate-600 font-bold block text-[10px]">発注件名 / タイトル</label>
         <div className="font-bold text-slate-800 text-sm mt-0.5">{order.title || "(無題の発注)"}</div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -54,7 +54,7 @@ export function PurchaseOrderPreview({ order, suppliers, allItems, onClose }: Pu
         </div>
       )}
       <div className="border-t border-slate-100 pt-3">
-        <label className="text-slate-600 font-bold block text-[10px] mb-1">明細</label>
+        <label className="text-slate-600 font-bold block text-[10px] mb-1">発注構成明細</label>
         <div className="divide-y border border-slate-200 rounded-lg bg-slate-50/50 overflow-hidden">
           {(order.items ?? []).length === 0 && <div className="p-2 bg-white text-slate-700">明細がありません</div>}
           {(order.items ?? []).map((item, idx) => (

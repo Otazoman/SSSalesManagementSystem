@@ -16,14 +16,18 @@ import type {
   HistoryPreviewParams,
   HistoryPreviewResult,
 } from "./registry";
+import { assertNotWarehousePartner } from "../../platform/partners/warehouse-partner";
 
 // 移設元: approvals.service.ts handleRequestUpdate() の targetType==="master_partners" 分岐
+
 async function resolveAmount({
   db,
   targetId,
   isRegister,
   payload,
 }: ResolveAmountParams): Promise<number> {
+  // REQ-006: 倉庫の取引先(種類「倉庫」)は、取引先マスタの申請では変えない(倉庫マスタで直す)
+  await assertNotWarehousePartner(db, targetId, payload?.type);
   if (!isRegister) {
     const currentPartner = await ApprovalRepository.findPartnerById(
       db,

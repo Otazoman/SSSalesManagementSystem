@@ -17,6 +17,8 @@ export const receiptItemInputSchema = v.object({
   // Item9: どの発注明細に対する入荷かのトレーサビリティ(起票トリガー「発注から選ぶ」)。
   // 任意起票の入庫はnullのまま
   orderItemId: v.optional(v.nullable(v.string())),
+  // REQ-006: 倉庫間移動の入庫(移動の画面から入庫する時だけ指定する)
+  stockTransferItemId: v.optional(v.nullable(v.string())),
 });
 
 export const createReceiptSchema = v.object({

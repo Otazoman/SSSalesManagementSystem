@@ -32,7 +32,8 @@ const STEPS: Step[] = [
   { file: "users_import.csv" },
   { file: "warehouses_import_sample.csv", verify: async () => expect(await count(schema.warehouses)).toBe(dataRows("warehouses_import_sample.csv")) },
   { file: "locations_import_sample.csv", verify: async () => expect(await count(schema.locations)).toBe(dataRows("locations_import_sample.csv")) },
-  { file: "partners_import_sample.csv", verify: async () => expect(await count(schema.partners)).toBe(dataRows("partners_import_sample.csv")) },
+  // REQ-006: 倉庫マスタに合わせて作る倉庫の取引先(種類 WAREHOUSE)は数えない
+  { file: "partners_import_sample.csv", verify: async () => expect((await db.select().from(schema.partners)).filter((p) => p.type !== "WAREHOUSE").length).toBe(dataRows("partners_import_sample.csv")) },
   { file: "partner_contacts_import_sample.csv", verify: async () => expect(await count(schema.partnerContacts)).toBe(dataRows("partner_contacts_import_sample.csv")) },
   { file: "projects_import_sample.csv", verify: async () => expect(await count(schema.projects)).toBe(dataRows("projects_import_sample.csv")) },
   { file: "products_import_sample.csv", verify: async () => expect(await count(schema.items)).toBe(dataRows("products_import_sample.csv")) },
@@ -118,7 +119,10 @@ describe("取込後のデータが、サンプルの想定どおりになって�
   });
 
   it("マスタ: 取引先・担当者・品目・所属が揃い、兼務の社員は2つの所属を持つ", async () => {
-    expect(await count(schema.partners)).toBe(13);
+    // REQ-006: 普通の取引先13件と、倉庫マスタ(直送用を除く4件)に合わせて作った倉庫の取引先4件
+    const partners = await db.select().from(schema.partners);
+    expect(partners.filter((p) => p.type !== "WAREHOUSE").length).toBe(13);
+    expect(partners.filter((p) => p.type === "WAREHOUSE").map((p) => p.id).sort()).toEqual(["WH-001", "WH-002", "WH-003", "WH-009"]);
     expect((await db.select().from(schema.userRoles)).length).toBe(13); // 12人 + 兼務の1件
     const users = await db.select().from(schema.users);
     expect(users.filter((u) => u.employeeNumber.startsWith("EMP")).length).toBe(12);

@@ -319,4 +319,14 @@ export class ShipmentsRepository {
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(schema.itemShipmentHeaders.createdAt));
   }
+
+  // REQ-006: 倉庫間移動(stock_transfers)の出庫か
+  async isTransferShipment(headerId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: schema.stockTransfers.id })
+      .from(schema.stockTransfers)
+      .where(eq(schema.stockTransfers.shipmentId, headerId))
+      .limit(1);
+    return rows.length > 0;
+  }
 }

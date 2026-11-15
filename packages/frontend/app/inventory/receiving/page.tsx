@@ -32,8 +32,9 @@ import {
   ReceiptInstructionItemRecord,
 } from "../stock/_types";
 
+import { StockTransferPanel } from "../stock/_components/transfers/StockTransferPanel";
 type Tab =
-  "instruction" | "receipt" | "actual" | "history" | "stocks" | "acceptance";
+  "instruction" | "receipt" | "actual" | "history" | "stocks" | "acceptance" | "transfer";
 
 interface PurchaseOrderReceiptProgressItem {
   orderItemId: string;
@@ -51,6 +52,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "history", label: "📜 入庫入荷実績履歴" },
   { key: "stocks", label: "🗂️ 在庫照会" },
   { key: "acceptance", label: "📄 検収書発行" },
+  // REQ-006: 倉庫間移動(輸送中の物を入庫する)
+  { key: "transfer", label: "🔁 倉庫間移動" },
 ];
 
 const CREATE_REQUIRED_TABS: Tab[] = ["instruction", "receipt", "actual"];
@@ -380,6 +383,7 @@ export default function InventoryReceivingPage() {
       )}
 
       {tab === "acceptance" && <AcceptanceInspectionPanel />}
+      {tab === "transfer" && <StockTransferPanel mode="receive" canCreate={canCreate} />}
     </div>
   );
 }

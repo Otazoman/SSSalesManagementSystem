@@ -10,6 +10,7 @@ import { combineConditions } from "../../../platform/repository/search-condition
 import { PaginationParams, toOffset } from "../../../platform/http/pagination";
 import { buildOrderBy, SortQuery } from "../../../platform/http/sort";
 import { containsText } from "../../../platform/repository/text-search";
+import { assertWarehouseIdNotUsedByPartner, syncWarehousePartner } from "../../../platform/partners/warehouse-partner";
 
 type WarehouseSearchParams = { id?: string; name?: string; status?: string; includeDirect?: string };
 
@@ -117,6 +118,9 @@ export class WarehousesRepository {
       .update(schema.warehouses)
       .set({ status, updatedBy: opId, updatedAt: now })
       .where(eq(schema.warehouses.id, id));
+    // REQ-006: 倉庫の取引先の状態も合わせる(状態以外は今の倉庫マスタのまま)
+    const current = await this.findById(id);
+    if (current) await syncWarehousePartner(this.db, id, opId, now, { ...current, status });
   }
 
   // IDで1件取得
@@ -180,6 +184,8 @@ export class WarehousesRepository {
       updatedAt: now,
     };
 
+    // REQ-006: 倉庫コードと同じ番号の普通の取引先があれば登録しない(倉庫の取引先に同じ番号を使うため)
+    await assertWarehouseIdNotUsedByPartner(this.db, data.id);
     const batchQueries: [any, ...any[]] = [
       this.db.insert(schema.warehouses).values(warehouseInsert),
     ];
@@ -204,6 +210,8 @@ export class WarehousesRepository {
     }
 
     await this.db.batch(batchQueries);
+    // REQ-006: 倉庫の取引先を作る
+    await syncWarehousePartner(this.db, data.id, operatorId, now, warehouseInsert);
 
     if (data.attachments && Array.isArray(data.attachments)) {
       for (const att of data.attachments) {
@@ -278,6 +286,8 @@ export class WarehousesRepository {
     }
 
     await this.db.batch(batchQueries);
+    // REQ-006: 倉庫の取引先の名前・住所・状態を合わせる
+    await syncWarehousePartner(this.db, id, operatorId, now, warehouseUpdate);
 
     // 添付ファイルの洗い替え
     await this.db
@@ -314,6 +324,8 @@ export class WarehousesRepository {
         .where(eq(schema.warehouseAttachments.warehouseId, id)),
       this.db.delete(schema.warehouses).where(eq(schema.warehouses.id, id)),
     ]);
+    // REQ-006: 倉庫の取引先も消す(指示書などで使われていれば停止にする)
+    await syncWarehousePartner(this.db, id, "SYSTEM", new Date(), null);
   }
 
   // CSV用データ取得(検索条件対応)
@@ -327,6 +339,8 @@ export class WarehousesRepository {
   // 一括Upsert（CSV）
   async upsertWarehouseFromCsv(row: any, operatorId: string) {
     const now = new Date();
+    // REQ-006: 倉庫コードと同じ番号の普通の取引先があれば取り込まない
+    await assertWarehouseIdNotUsedByPartner(this.db, row.id);
     await this.db
       .insert(schema.warehouses)
       .values({
@@ -367,5 +381,15 @@ export class WarehousesRepository {
           updatedAt: now,
         },
       });
+    // REQ-006: 倉庫の取引先を作る・合わせる
+    await syncWarehousePartner(this.db, row.id, operatorId, now, {
+      name: row.name,
+      postalCode: row.postalCode,
+      address: row.address,
+      phoneNumber: row.phoneNumber,
+      faxNumber: row.faxNumber,
+      status: row.status || "temporary",
+      warehouseType: row.warehouseType || "INTERNAL",
+    });
   }
 }

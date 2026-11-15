@@ -78,11 +78,25 @@ describe("PurchaseOrderTable: BUG-095 発注日・BUG-101 内容確認", () => {
     expect(within(screen.getAllByRole("row")[1]).getByText("2026-11-15")).toBeInTheDocument();
   });
 
+  it("発注日は入力者の後に並ぶ(BUG-104。見積の一覧と同じ順)", () => {
+    render(<PurchaseOrderTable {...baseProps()} />);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const input = headers.findIndex((h) => h.includes("入力者"));
+    expect(headers.findIndex((h) => h.includes("発注日"))).toBe(input + 1);
+  });
+
+  it("合計金額の後にステータスが並ぶ(見積の一覧と同じ順)", () => {
+    render(<PurchaseOrderTable {...baseProps()} />);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const total = headers.findIndex((h) => h.includes("合計金額"));
+    expect(headers.findIndex((h) => h.includes("ステータス"))).toBe(total + 1);
+  });
+
   it("内容確認を押すと onPreview を呼び、行の編集は開かない", async () => {
     const onPreview = vi.fn();
     const onSelectEdit = vi.fn();
     render(<PurchaseOrderTable {...baseProps({ onPreview, onSelectEdit })} />);
-    await userEvent.click(screen.getByRole("button", { name: /内容確認/ }));
+    await userEvent.click(screen.getByRole("button", { name: "確認" }));
     expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ id: "PO-1" }));
     expect(onSelectEdit).not.toHaveBeenCalled();
   });

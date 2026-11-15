@@ -19,7 +19,7 @@ export interface BankAccountItem {
 export interface PartnerRecord {
   id: string;
   name: string;
-  type: "CUSTOMER" | "SUPPLIER" | "BOTH" | "PROSPECT";
+  type: "CUSTOMER" | "SUPPLIER" | "BOTH" | "PROSPECT" | "WAREHOUSE";
   postalCode: string | null;
   address: string | null;
   phone?: string;
@@ -43,4 +43,4 @@ export interface PartnerRecord {
 }
 
 // PROSPECT=見込み客(追加要望M-1: 商談管理の対象。受注・売上・請求・購買の取引先には選べない。見積・商談では選べる)
-export type PartnerType = "CUSTOMER" | "SUPPLIER" | "BOTH" | "PROSPECT";
+export type PartnerType = "CUSTOMER" | "SUPPLIER" | "BOTH" | "PROSPECT" | "WAREHOUSE";

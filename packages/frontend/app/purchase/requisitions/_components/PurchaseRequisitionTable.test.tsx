@@ -41,6 +41,13 @@ function renderTable(requisitions: PurchaseRequisitionRecord[], onPreview = vi.f
 }
 
 describe("PurchaseRequisitionTable(BUG-099)", () => {
+  it("申請日は入力者の後に並ぶ(BUG-104。見積の一覧と同じ順)", () => {
+    renderTable([record()]);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const input = headers.findIndex((h) => h.includes("入力者"));
+    expect(headers.findIndex((h) => h.includes("申請日"))).toBe(input + 1);
+  });
+
   it("申請日(日本時間の作成日)・添付・内容確認の列を出す", () => {
     renderTable([record(), record({ id: "PR-2", attachments: [{ fileName: "見積書.pdf", storageType: "R2" }] })]);
     for (const label of ["申請日", "添付", "内容確認"]) {
@@ -52,9 +59,16 @@ describe("PurchaseRequisitionTable(BUG-099)", () => {
     expect(within(rows[2]).getByText("📎 あり")).toBeInTheDocument();
   });
 
+  it("合計金額の後にステータスが並ぶ(見積の一覧と同じ順)", () => {
+    renderTable([record()]);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const total = headers.findIndex((h) => h.includes("合計金額"));
+    expect(headers.findIndex((h) => h.includes("ステータス"))).toBe(total + 1);
+  });
+
   it("内容確認を押すと onPreview を呼ぶ(行の編集は開かない)", async () => {
     const onPreview = renderTable([record()]);
-    await userEvent.click(screen.getByRole("button", { name: /内容確認/ }));
+    await userEvent.click(screen.getByRole("button", { name: "確認" }));
     expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ id: "PR-1" }));
   });
 });

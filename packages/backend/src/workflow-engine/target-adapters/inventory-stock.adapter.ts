@@ -11,6 +11,7 @@
  */
 import { ReceiptsRepository } from "../../routes/inventory/receipts/receipts.repository";
 import { cancelMoveToStockOfReceipt, confirmMoveToStockOfReceipt } from "../../routes/inventory/temporary-holdings/temporary-holdings.ledger";
+import { recalculateTransfersOfReceipt, recalculateTransfersOfShipment } from "../../routes/inventory/transfers/transfers.ledger";
 import { ShipmentsRepository } from "../../routes/inventory/shipments/shipments.repository";
 import { ReclassificationsRepository } from "../../routes/inventory/reclassifications/reclassifications.repository";
 import { DisposalsRepository } from "../../routes/inventory/disposals/disposals.repository";
@@ -95,6 +96,8 @@ async function applyApproved({
     await confirmDirectShipmentOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now, c as any);
     // REQ-011(3): 一時保管から在庫へ移す入庫なら、台帳を「在庫へ移行済」にする
     await confirmMoveToStockOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now);
+    // REQ-006: 倉庫間移動の入庫なら、移動の入庫済み数・状態を計算し直す
+    await recalculateTransfersOfReceipt(db, reqParent.targetId, now);
     return;
   }
 
@@ -118,6 +121,8 @@ async function applyApproved({
       now,
     );
     await shipmentsRepo.updateHeaderStatus(reqParent.targetId, "APPROVED");
+    // REQ-006: 倉庫間移動の出庫なら、移動を「輸送中」にする
+    await recalculateTransfersOfShipment(db, reqParent.targetId, now);
     // Item6 Phase6-4: 消込。この出庫実績が出荷指示に紐づく場合、指示側の充足状況を更新する
     if (shipmentHeader.shipmentInstructionId) {
       const shipmentInstructionsRepo = ShipmentInstructionsRepository.fromDb(db);
@@ -260,6 +265,8 @@ async function applyRemanded({
     await syncDirectShipmentStatusOfReceipt(db, reqParent.targetId, status);
     // REQ-011(3): 一時保管から在庫へ移す入庫が取り下げられたら、在庫へ移す動きを差戻しにする(差戻しは再申請できるため残す)
     if (status === "CANCELED") await cancelMoveToStockOfReceipt(db, reqParent.targetId, new Date());
+    // REQ-006: 倉庫間移動の入庫なら、承認待ちの入庫が減るため計算し直す
+    await recalculateTransfersOfReceipt(db, reqParent.targetId);
     return;
   }
 
@@ -267,6 +274,8 @@ async function applyRemanded({
   const shipmentHeader = await shipmentsRepo.findHeaderById(reqParent.targetId);
   if (shipmentHeader) {
     await shipmentsRepo.updateHeaderStatus(reqParent.targetId, status);
+    // REQ-006: 倉庫間移動の出庫が取り下げられたら、移動を「取消」にする
+    await recalculateTransfersOfShipment(db, reqParent.targetId);
     return;
   }
 

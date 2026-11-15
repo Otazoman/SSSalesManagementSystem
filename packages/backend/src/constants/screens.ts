@@ -60,18 +60,19 @@ export const SCREEN_MASTER: ScreenDefinition[] = [
     path: "/sales/orders",
   },
   {
-    resource: "sales_invoices",
-    name: "売上管理",
-    category: "daily_work",
-    icon: "📈",
-    path: "/sales/invoices",
-  },
-  {
     resource: "inventory_shipping",
     name: "出荷",
     category: "daily_work",
     icon: "📤",
     path: "/inventory/shipping",
+  },
+  // 2026-11-15: ユーザーの要望で、売上管理は出荷の後に並べる
+  {
+    resource: "sales_invoices",
+    name: "売上管理",
+    category: "daily_work",
+    icon: "📈",
+    path: "/sales/invoices",
   },
   {
     resource: "sales_billing",

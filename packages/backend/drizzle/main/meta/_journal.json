@@ -743,6 +743,20 @@
       "when": 1794721707710,
       "tag": "0105_messy_wendell_rand",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "6",
+      "when": 1794724316323,
+      "tag": "0106_cute_scarlet_witch",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "6",
+      "when": 1794725243764,
+      "tag": "0107_warehouse_partners",
+      "breakpoints": true
     }
   ]
 }

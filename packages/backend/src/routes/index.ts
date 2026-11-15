@@ -30,6 +30,8 @@ export { stockReclassificationsRouter as stockReclassifications } from "./invent
 export { stockReturnsRouter as stockReturns } from "./inventory/returns";
 // REQ-011(2): 一時保管の台帳(/api/temporary-holdings)
 export { temporaryHoldingsRouter as temporaryHoldings } from "./inventory/temporary-holdings";
+// REQ-006: 倉庫間移動(/api/stock-transfers)
+export { stockTransfersRouter as stockTransfers } from "./inventory/transfers";
 export { stockShipmentsRouter as stockShipments } from "./inventory/shipments";
 export { stocksRouter as stocks } from "./inventory/stocks";
 export { locationsRouter as locations } from "./master/locations";

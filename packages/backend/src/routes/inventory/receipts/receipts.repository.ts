@@ -70,6 +70,7 @@ export class ReceiptsRepository {
           inspectionStatus: item.inspectionStatus || "PASSED",
           inspectionMemo: item.inspectionMemo || null,
           qrCodeKey: item.qrCodeKey || null,
+          stockTransferItemId: item.stockTransferItemId || null,
         }),
       );
     });
@@ -119,6 +120,7 @@ export class ReceiptsRepository {
           inspectionStatus: item.inspectionStatus || "PASSED",
           inspectionMemo: item.inspectionMemo || null,
           qrCodeKey: item.qrCodeKey || null,
+          stockTransferItemId: item.stockTransferItemId || null,
         }),
       );
     });

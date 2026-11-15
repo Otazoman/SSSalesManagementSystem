@@ -29,15 +29,15 @@
 | [商談管理](sales/deals.md) | 見込み客・得意先との商談の記録、次のタスク | 全員 |
 | [見積管理](sales/quotes.md) | 見積の作成、見積書の PDF・メール送信 | 全員 |
 | [受注管理](sales/orders.md) | 受注の登録、在庫の引当、注文請書 | 全員 |
+| [出荷](inventory/shipping.md) | 出荷指示、出庫(スマートフォンでのスキャン)、納品書、倉庫間移動 | 全員 |
 | [売上管理](sales/invoices.md) | 売上の計上、赤伝(返品・値引) | 全員 |
-| [出荷](inventory/shipping.md) | 出荷指示、出庫(スマートフォンでのスキャン)、納品書 | 全員 |
 | [請求管理](sales/billing.md) | 請求書の作成、入金の消込 | 全員 |
 | [購買申請](purchase/requisitions.md) | 購買の申請 | 全員 |
 | [発注管理](purchase/orders.md) | 発注、発注書の PDF・メール送信 | 全員 |
-| [入荷](inventory/receiving.md) | 入荷指示、入庫(スマートフォンでのスキャン)、検収書 | 全員 |
+| [入荷](inventory/receiving.md) | 入荷指示、入庫(スマートフォンでのスキャン)、検収書、倉庫間移動の入庫 | 全員 |
 | [仕入管理](purchase/receipts.md) | 仕入の計上 | 全員 |
 | [支払管理](purchase/payment.md) | 支払の作成、支払の消込、振込ファイル | 全員 |
-| [在庫・棚卸管理](inventory/audit.md) | 在庫の照会、棚卸、品質区分の変更、廃棄、返品 | 全員 |
+| [在庫・棚卸管理](inventory/audit.md) | 在庫の照会、棚卸、品質区分の変更、廃棄、返品、一時保管 | 全員 |
 
 ## 経理・統制
 

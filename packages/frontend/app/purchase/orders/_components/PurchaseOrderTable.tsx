@@ -61,16 +61,17 @@ export function PurchaseOrderTable({
       columns={[
         { key: "select", label: "選択", align: "center" },
         { key: "id", label: "発注番号", sortable: true },
-        // BUG-095: 発注日
-        { key: "orderDate", label: "発注日", sortable: true },
         { key: "title", label: "件名", sortable: true },
         { key: "partnerId", label: "仕入先", sortable: true },
         // BUG-102: 発注担当者・入力者(見積の一覧の「自社担当者」「入力担当者」と同じ)
         { key: "purchasePersonEmployeeNumber", label: "発注担当者", sortable: true },
         { key: "inputPersonEmployeeNumber", label: "入力者", sortable: true },
-        { key: "status", label: "ステータス", sortable: true },
+        // BUG-095: 発注日。BUG-104: 見積の一覧(見積日は入力担当者の後)と同じく、入力者の後に並べる
+        { key: "orderDate", label: "発注日", sortable: true },
         { key: "attachments", label: "添付" },
+        // 見積の一覧と同じく、合計金額の後にステータス
         { key: "totalAmount", label: "合計金額", align: "right", sortable: true },
+        { key: "status", label: "ステータス", sortable: true },
         { key: "preview", label: "内容確認", align: "center" },
         { key: "actions", label: "操作", align: "center" },
       ]}
@@ -94,15 +95,12 @@ export function PurchaseOrderTable({
             />
           </td>
           <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{r.id}</td>
-          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
-            {r.orderDate ? formatJstDate(new Date(r.orderDate)) : "-"}
-          </td>
           <td className="px-4 py-3 font-semibold text-slate-900">{r.title || "-"}</td>
           <td className="px-4 py-3 text-xs text-slate-600">{partnerName(r.partnerId)}</td>
           <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.purchasePersonEmployeeNumber)}</td>
           <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.inputPersonEmployeeNumber)}</td>
-          <td className="px-4 py-3">
-            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+            {r.orderDate ? formatJstDate(new Date(r.orderDate)) : "-"}
           </td>
           <td className="px-4 py-3 whitespace-nowrap">
             {r.attachments && r.attachments.length > 0 ? (
@@ -113,17 +111,22 @@ export function PurchaseOrderTable({
               <span className="text-slate-600 italic">なし</span>
             )}
           </td>
+          {/* 見積の一覧と同じく、合計金額の後にステータス */}
           <td className="px-4 py-3 text-right text-xs font-mono text-slate-700">
             ¥{Number(r.totalAmount || 0).toLocaleString()}
           </td>
+          <td className="px-4 py-3">
+            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
+          </td>
           <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+            {/* BUG-105: 見積・受注・売上・仕入の一覧と同じ「確認」の文字のボタン */}
             <button
               type="button"
               onClick={() => onPreview?.(r)}
               disabled={!onPreview}
-              className="text-xs font-bold px-2 py-1 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              className="font-bold text-indigo-600 hover:text-indigo-900 hover:underline cursor-pointer transition-colors text-xs disabled:opacity-50"
             >
-              👁️ 内容確認
+              確認
             </button>
           </td>
           <td className="px-4 py-3 text-center space-x-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>

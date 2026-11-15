@@ -30,6 +30,7 @@ import {
 } from "../../../workflow-engine/settings";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { SortQuery } from "../../../platform/http/sort";
+import { assertTransferReceiptLine, assignTransferItemsToReceiptLines, recalculateTransfersOfReceipt } from "../transfers/transfers.ledger";
 
 const RESOURCE_KEY = "inventory_stock";
 
@@ -269,6 +270,15 @@ export class ReceiptsService {
       if (item.orderItemId) {
         await purchaseOrderReceiptService.validateRemainingQuantity(item.orderItemId, item.quantity);
       }
+      // REQ-006: 倉庫間移動の入庫は、輸送中の残りを超えないこと
+      if (item.stockTransferItemId) {
+        await assertTransferReceiptLine(createDb(c.env.DB), {
+          stockTransferItemId: item.stockTransferItemId,
+          itemId: item.itemId,
+          warehouseId: item.warehouseId,
+          quantity: item.quantity,
+        });
+      }
 
       const product = await productsRepo.findProductById(item.itemId);
       if (!product) throw new NotFoundError(`品目が見つかりません: ${item.itemId}`);
@@ -314,8 +324,13 @@ export class ReceiptsService {
     };
   }
 
-  async createReceipt(c: Context<{ Bindings: Env }>, input: CreateReceiptInput) {
+  async createReceipt(c: Context<{ Bindings: Env }>, rawInput: CreateReceiptInput) {
     const db = createDb(c.env.DB);
+    // REQ-006: 倉庫間移動の入荷指示の実績なら、明細に移動の明細を付ける(輸送中の残りの確認・消し込みに使う)
+    const input: CreateReceiptInput = {
+      ...rawInput,
+      items: await assignTransferItemsToReceiptLines(db, rawInput.receiptInstructionId, rawInput.items),
+    };
     const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(
       c,
       input,
@@ -372,6 +387,8 @@ export class ReceiptsService {
         const instructionsRepo = ReceiptInstructionsRepository.fromDb(db);
         await instructionsRepo.recalculateFulfillment(input.receiptInstructionId);
       }
+      // REQ-006: 倉庫間移動の入庫なら、移動の入庫済み数・状態を計算し直す
+      await recalculateTransfersOfReceipt(db, headerId, now);
 
       c.executionCtx.waitUntil(
         logAuditEvent(c, "CONFIRM_STOCK_RECEIPT_DIRECT", RESOURCE_KEY, headerId, null, {
@@ -443,6 +460,10 @@ export class ReceiptsService {
     // REQ-005: 直送完了の入庫は、出庫と対のため修正して再提出しない(発注の画面から直送完了をやり直す)
     if (await ShipmentsRepository.fromDb(db).findHeaderByDirectReceiptId(headerId)) {
       throw new BadRequestError("直送完了の入庫は修正して再提出できません。発注の画面から直送完了をやり直してください");
+    }
+    // REQ-006: 倉庫間移動の入庫は、移動の明細とのつながりを保つため修正して再提出しない
+    if ((await this.repo.findItemsByHeaderId(headerId)).some((item: any) => item.stockTransferItemId)) {
+      throw new BadRequestError("倉庫間移動の入庫は修正して再提出できません。申請を取り下げて、倉庫間移動の画面から入庫し直してください");
     }
 
     const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(

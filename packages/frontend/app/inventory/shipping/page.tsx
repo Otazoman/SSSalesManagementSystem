@@ -32,9 +32,10 @@ import {
   WarehouseRecord,
 } from "../stock/_types";
 import { ShipmentProgressItem } from "../../sales/orders/_types";
+import { StockTransferPanel } from "../stock/_components/transfers/StockTransferPanel";
 
 type Tab =
-  "instruction" | "shipment" | "actual" | "history" | "stocks" | "deliveryNote";
+  "instruction" | "shipment" | "actual" | "history" | "stocks" | "deliveryNote" | "transfer";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "instruction", label: "📋 出荷指示" },
@@ -43,6 +44,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "history", label: "📜 出庫出荷実績履歴" },
   { key: "stocks", label: "🗂️ 在庫照会" },
   { key: "deliveryNote", label: "📄 納品書発行" },
+  // REQ-006: 倉庫間移動(移動を作る)
+  { key: "transfer", label: "🔁 倉庫間移動" },
 ];
 
 const CREATE_REQUIRED_TABS: Tab[] = ["instruction", "shipment", "actual"];
@@ -429,6 +432,7 @@ export default function InventoryShippingPage() {
       )}
 
       {tab === "deliveryNote" && <DeliveryNotePanel />}
+      {tab === "transfer" && <StockTransferPanel mode="ship" canCreate={canCreate} />}
     </div>
   );
 }

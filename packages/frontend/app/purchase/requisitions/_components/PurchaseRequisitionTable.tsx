@@ -58,15 +58,16 @@ export function PurchaseRequisitionTable({
       columns={[
         { key: "id", label: "申請番号", sortable: true },
         { key: "title", label: "件名", sortable: true },
-        // BUG-099: 申請日は作成日(created_at)
-        { key: "createdAt", label: "申請日", sortable: true },
         // BUG-102: 申請者・入力者(見積の一覧の「自社担当者」「入力担当者」と同じ)
         { key: "applicantId", label: "申請者", sortable: true },
         { key: "inputPersonEmployeeNumber", label: "入力者", sortable: true },
+        // BUG-099: 申請日は作成日(created_at)。BUG-104: 見積の一覧と同じく、入力者の後に並べる
+        { key: "createdAt", label: "申請日", sortable: true },
         { key: "requestType", label: "購買区分", sortable: true },
         { key: "attachments", label: "添付" },
-        { key: "status", label: "ステータス", sortable: true },
+        // 見積の一覧と同じく、合計金額の後にステータス
         { key: "totalAmount", label: "合計金額", align: "right", sortable: true },
+        { key: "status", label: "ステータス", sortable: true },
         { key: "preview", label: "内容確認", align: "center" },
         { key: "actions", label: "操作", align: "center" },
       ]}
@@ -84,11 +85,11 @@ export function PurchaseRequisitionTable({
         >
           <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{r.id}</td>
           <td className="px-4 py-3 font-semibold text-slate-900">{r.title}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.applicantId)}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.inputPersonEmployeeNumber)}</td>
           <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
             {r.createdAt ? formatJstDate(new Date(r.createdAt)) : "-"}
           </td>
-          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.applicantId)}</td>
-          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.inputPersonEmployeeNumber)}</td>
           <td className="px-4 py-3 text-xs text-slate-600">
             {CATEGORY_LABEL[r.requestType] || r.requestType}
           </td>
@@ -101,20 +102,22 @@ export function PurchaseRequisitionTable({
               <span className="text-slate-500 italic">なし</span>
             )}
           </td>
-          <td className="px-4 py-3">
-            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
-          </td>
+          {/* 見積の一覧と同じく、合計金額の後にステータス */}
           <td className="px-4 py-3 text-right text-xs font-mono text-slate-700">
             ¥{Number(r.totalAmount || 0).toLocaleString()}
           </td>
+          <td className="px-4 py-3">
+            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
+          </td>
           <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+            {/* BUG-105: 見積・受注・売上・仕入の一覧と同じ「確認」の文字のボタン */}
             <button
               type="button"
               onClick={() => onPreview?.(r)}
               disabled={!onPreview}
-              className="text-xs font-bold px-2 py-1 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              className="font-bold text-indigo-600 hover:text-indigo-900 hover:underline cursor-pointer transition-colors text-xs disabled:opacity-50"
             >
-              👁️ 内容確認
+              確認
             </button>
           </td>
           <td

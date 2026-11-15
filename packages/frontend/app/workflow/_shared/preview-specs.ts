@@ -531,6 +531,7 @@ const INVENTORY_SPECS: Record<string, PreviewSpec> = {
         ...ITEM_HIDDEN,
         receiptHeaderId: "入庫番号(ヘッダーに出す)",
         orderItemId: "発注明細とのつながり(内部番号)",
+        stockTransferItemId: "倉庫間移動の明細とのつながり(内部番号。REQ-006)",
         actualProductPhotoR2Path: "現物の写真の場所(内部用)",
         itemAttachmentR2Path: "明細の添付の場所(内部用)",
         qrCodeKey: "QR コードの読み取り用の番号(内部用)",

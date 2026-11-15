@@ -873,6 +873,8 @@ export const itemReceiptItems = sqliteTable("item_receipt_items", {
   itemAttachmentR2Path: text("item_attachment_r2_path"),
   qrCodeKey: text("qr_code_key"),
   memo: text("memo"),
+  // REQ-006: 倉庫間移動の入庫の場合、どの移動の明細に対する入庫か(分けて入庫した分の消し込みに使う)。FK は付けない(移動の表は後で定義するため)
+  stockTransferItemId: text("stock_transfer_item_id"),
 });
 
 // 検収書発行: order_attachmentsと同型の複数バージョン管理テーブル(発注書と同じ方式)。
@@ -1190,6 +1192,51 @@ export const stockReturns = sqliteTable("stock_returns", {
   memo: text("memo"),
   createdBy: text("created_by").notNull(), // Item1: employeeNumberを保存(FK制約は意図的に外している)
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// REQ-006: 倉庫間移動の伝票。実際の在庫の増減は、今の出庫(移動元)・入庫(移動先)で行い、この伝票がそれを束ねる。
+// 状態: SHIPPING_PENDING=出庫の承認待ち、IN_TRANSIT=輸送中、PARTIALLY_RECEIVED=一部入庫、RECEIVED=入庫済み、
+// CLOSED_WITH_DIFFERENCE=差異で完了、CANCELED=取消(出庫が取り下げられた)。輸送中の数量は、どちらの倉庫の在庫数にも含めない
+export const stockTransfers = sqliteTable("stock_transfers", {
+  id: text("id").primaryKey(),
+  sourceWarehouseId: text("source_warehouse_id")
+    .notNull()
+    .references(() => warehouses.id),
+  destinationWarehouseId: text("destination_warehouse_id")
+    .notNull()
+    .references(() => warehouses.id),
+  shippedDate: integer("shipped_date", { mode: "timestamp" }).notNull(),
+  status: text("status").notNull().default("SHIPPING_PENDING"),
+  // 移動元の出庫(自社倉庫)。移動元が外部倉庫の場合は、出荷指示の実績の取込で作られた出庫
+  shipmentId: text("shipment_id"),
+  // 外部倉庫が絡む場合の指示書(移動元が外部倉庫なら出荷指示、移動先が外部倉庫なら入荷指示)
+  shipmentInstructionId: text("shipment_instruction_id"),
+  receiptInstructionId: text("receipt_instruction_id"),
+  // 差異で完了した理由
+  closedReason: text("closed_reason"),
+  memo: text("memo"),
+  ...withAuditColumns(),
+});
+
+// REQ-006: 倉庫間移動の明細。入庫済み数は、承認済みの入庫(item_receipt_items.stock_transfer_item_id)の合計で計算し直して保存する
+export const stockTransferItems = sqliteTable("stock_transfer_items", {
+  id: text("id").primaryKey(),
+  transferId: text("transfer_id")
+    .notNull()
+    .references(() => stockTransfers.id, { onDelete: "cascade" }),
+  itemId: text("item_id")
+    .notNull()
+    .references(() => items.id),
+  lotNumber: text("lot_number").notNull().default("NONE"),
+  accountCode: text("account_code").references(() => accounts.code),
+  // 移動元のロケーション(外部倉庫から出す場合は、出荷指示の実績で決まるため空のことがある)
+  sourceLocationId: text("source_location_id"),
+  // 出庫数(移動する数量)
+  quantity: real("quantity").notNull(),
+  receivedQuantity: real("received_quantity").notNull().default(0),
+  // 差異で完了した時の、届かなかった数量
+  differenceQuantity: real("difference_quantity").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 // REQ-011(2): 一時保管の台帳。品目マスタに無い物(発注・受注の直接入力の明細など)を、在庫(stocks)とは別に管理する。

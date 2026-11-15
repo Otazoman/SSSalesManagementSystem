@@ -88,6 +88,7 @@ export default function SearchPanel({
           <option value="SUPPLIER">SUPPLIER (仕入先)</option>
           <option value="BOTH">BOTH (双方取引)</option>
           <option value="PROSPECT">PROSPECT (見込み客)</option>
+          <option value="WAREHOUSE">WAREHOUSE (倉庫・倉庫間移動の宛先)</option>
         </select>
       </div>
     </SearchPanelShell>
