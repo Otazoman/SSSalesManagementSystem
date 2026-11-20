@@ -1,5 +1,6 @@
 export type BillingMode = "PER_TRANSACTION" | "PERIODIC";
-export type BillingStatus = "DRAFT" | "ISSUED";
+// REQ-017: 承認申請中(PENDING_APPROVAL)・承認済み(APPROVED)は、請求の承認が ON の時だけ使う
+export type BillingStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "ISSUED";
 export type ReconciliationStatus = "UNRECONCILED" | "PARTIALLY_RECONCILED" | "RECONCILED";
 export type PaymentReceiptMethod = "BANK_TRANSFER" | "CASH" | "OTHER";
 
@@ -66,6 +67,8 @@ export interface PaymentReceiptRecord {
   memo?: string | null;
   reconciledById: string;
   reconciledAt: string;
+  // REQ-018: 承認の状態(承認済みだけが消込額に入る)
+  approvalStatus?: "PENDING" | "APPROVED" | "REMANDED";
 }
 
 export interface BillingDetail extends BillingRecord {

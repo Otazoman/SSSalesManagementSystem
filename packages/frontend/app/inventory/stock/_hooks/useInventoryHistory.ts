@@ -68,7 +68,8 @@ export function useInventoryHistory(
       try {
         const [userResult, whs, locs, partnerList] = await Promise.all([
           apiFetch<UserOption[]>("/api/users"),
-          apiFetch<WarehouseRecord[]>("/api/warehouses?status=active"),
+          // REQ-005: 直送完了の入庫・出庫も履歴に出るため、直送用の倉庫も含める
+          apiFetch<WarehouseRecord[]>("/api/warehouses?status=active&includeDirect=true"),
           apiFetch<LocationRecord[]>("/api/locations?status=active"),
           apiFetch<PartnerRecord[]>("/api/partners?status=active"),
         ]);

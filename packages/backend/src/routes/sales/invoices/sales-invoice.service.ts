@@ -82,8 +82,14 @@ export class SalesInvoiceService {
   }
 
   // --- PDF生成 ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(...args: Parameters<SalesInvoicePdfService["buildPdfSource"]>) {
+    return this.pdf.buildPdfSource(...args);
+  }
+
+  storePdf(...args: Parameters<SalesInvoicePdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- 添付ファイルダウンロード(認証済みルート) ---
@@ -92,7 +98,7 @@ export class SalesInvoiceService {
   }
 
   // --- K-4-1: OTPダウンロード(外部公開ルート) ---
-  requestDownloadOtp(c: Context, invoiceId: string, attachmentId: string, email: string) {
+  requestDownloadOtp(c: Context, invoiceId: string, attachmentId: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, invoiceId, attachmentId, email);
   }
 
@@ -100,7 +106,7 @@ export class SalesInvoiceService {
     c: Context,
     invoiceId: string,
     attachmentId: string,
-    email: string,
+    email: string | undefined,
     otp: string,
   ) {
     return this.download.verifyDownloadOtp(c, invoiceId, attachmentId, email, otp);

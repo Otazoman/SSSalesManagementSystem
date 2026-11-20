@@ -17,6 +17,8 @@ export const receiptItemInputSchema = v.object({
   // Item9: どの発注明細に対する入荷かのトレーサビリティ(起票トリガー「発注から選ぶ」)。
   // 任意起票の入庫はnullのまま
   orderItemId: v.optional(v.nullable(v.string())),
+  // REQ-006: 倉庫間移動の入庫(移動の画面から入庫する時だけ指定する)
+  stockTransferItemId: v.optional(v.nullable(v.string())),
 });
 
 export const createReceiptSchema = v.object({
@@ -71,19 +73,19 @@ export type BulkRegisterReceiptInput = v.InferOutput<typeof bulkRegisterReceiptS
 // 検収書発行(方式A、purchase-order.schema.tsのRequestDownloadOtpSchema等と同型): 発注書と同じ
 // メールアドレス入力型のOTPダウンロード(受け身の一斉送信ではなく、相手が自分でメールを入力する)
 export const RequestAcceptanceInspectionDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.nonEmpty("メールアドレスは必須です"),
     v.email("有効なメールアドレスの形式で入力してください"),
-  ),
+  )),
 });
 
 export const VerifyAcceptanceInspectionDownloadOtpSchema = v.object({
-  email: v.pipe(
+  email: v.optional(v.pipe(
     v.string(),
     v.nonEmpty("メールアドレスは必須です"),
     v.email("有効なメールアドレスの形式で入力してください"),
-  ),
+  )),
   otp: v.pipe(
     v.string(),
     v.regex(/^\d{4,8}$/, "確認コードは4〜8桁の数字で入力してください"),

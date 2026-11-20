@@ -75,7 +75,9 @@ export default function PartnerTable({
                   ? "仕入先"
                   : c.type === "PROSPECT"
                     ? "見込み客"
-                    : "両方 (双方取引)"}
+                    : c.type === "WAREHOUSE"
+                      ? "倉庫(倉庫間移動の宛先)"
+                      : "両方 (双方取引)"}
             </span>
           </td>
           <td className="px-4 py-3">

@@ -481,6 +481,141 @@ describe("GET /profile", () => {
   });
 });
 
+// PERF-04: 承認ワークフローのスイッチ(26個)は、会社設定(KV の "config")を1回だけ読んで返す
+// 応答の項目名 → 会社設定のキー
+const WORKFLOW_FLAG_CONFIG_KEYS: Record<string, string> = {
+  isPartnerWfEnabled: "is_partner_approval_enabled",
+  isQuoteWfEnabled: "is_quote_approval_enabled",
+  isPartnerContactWfEnabled: "is_partner_contact_approval_enabled",
+  isUnitWfEnabled: "is_unit_approval_enabled",
+  isLocationWfEnabled: "is_location_approval_enabled",
+  isProductPriceWfEnabled: "is_product_price_approval_enabled",
+  isProductWfEnabled: "is_product_approval_enabled",
+  isAccountWfEnabled: "is_account_approval_enabled",
+  isWarehouseWfEnabled: "is_warehouse_approval_enabled",
+  isBusinessLocationWfEnabled: "is_business_location_approval_enabled",
+  isItemStructureWfEnabled: "is_item_structure_approval_enabled",
+  isReceivingWfEnabled: "is_receiving_approval_enabled",
+  isShippingWfEnabled: "is_shipping_approval_enabled",
+  isInventoryWfEnabled: "is_inventory_approval_enabled",
+  isDamageWfEnabled: "is_damage_approval_enabled",
+  isDisposalWfEnabled: "is_disposal_approval_enabled",
+  isReturnWfEnabled: "is_return_approval_enabled",
+  isShippingInstructionWfEnabled: "is_shipping_instruction_approval_enabled",
+  isShippingResultWfEnabled: "is_shipping_result_approval_enabled",
+  isReceivingInstructionWfEnabled: "is_receiving_instruction_approval_enabled",
+  isReceivingResultWfEnabled: "is_receiving_result_approval_enabled",
+  isSalesOrderWfEnabled: "is_sales_order_approval_enabled",
+  isPurchaseRequisitionWfEnabled: "is_purchase_requisition_approval_enabled",
+  isPurchaseOrderWfEnabled: "is_purchase_order_approval_enabled",
+  isSalesInvoiceWfEnabled: "is_sales_approval_enabled",
+  isPurchaseRecognitionWfEnabled: "is_purchase_approval_enabled",
+};
+
+// COMPANY_SETTINGS の get("config") の回数を数える env を作る
+function envCountingConfigReads() {
+  const counter = { configReads: 0 };
+  const kv = env.COMPANY_SETTINGS;
+  const countingKv = new Proxy(kv, {
+    get(target, prop) {
+      if (prop === "get") {
+        return (key: string, ...rest: unknown[]) => {
+          if (key === "config") counter.configReads += 1;
+          return (target.get as (...a: unknown[]) => unknown).call(target, key, ...rest);
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { testEnv: { ...env, COMPANY_SETTINGS: countingKv }, counter };
+}
+
+async function profileToken() {
+  return signSessionToken(
+    {
+      userId: "user-1",
+      employeeNumber: "EMP-user-1",
+      name: "山田太郎",
+      role: "admin",
+      deptName: "全社共通",
+      companyName: "サンプル会社",
+      isAuditEnabled: false,
+    },
+    await env.SESSION_SECRET.get(),
+    3600,
+  );
+}
+
+describe("GET /profile の承認ワークフローのスイッチ(PERF-04)", () => {
+  it("26個のスイッチを会社設定の値どおりに返し、会社設定は1回だけ読む", async () => {
+    await seedUser("user-1", { name: "山田太郎" });
+    const responseKeys = Object.keys(WORKFLOW_FLAG_CONFIG_KEYS);
+    // 1つおきに ON(true と "true" を交互)、残りは OFF(false・"false"・未設定)
+    const config: Record<string, unknown> = { company_name: "サンプル会社" };
+    const expected: Record<string, boolean> = {};
+    responseKeys.forEach((responseKey, i) => {
+      const configKey = WORKFLOW_FLAG_CONFIG_KEYS[responseKey];
+      if (i % 2 === 0) {
+        config[configKey] = i % 4 === 0 ? true : "true";
+        expected[responseKey] = true;
+      } else {
+        if (i % 3 === 0) config[configKey] = "false";
+        else if (i % 3 === 1) config[configKey] = false;
+        expected[responseKey] = false;
+      }
+    });
+    await env.COMPANY_SETTINGS.put("config", JSON.stringify(config));
+
+    const { testEnv, counter } = envCountingConfigReads();
+    const res = await authRouter.request(
+      "/profile",
+      { headers: { Cookie: `session_token=${await profileToken()}` } },
+      testEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    for (const responseKey of responseKeys) {
+      expect({ [responseKey]: body[responseKey] }).toEqual({ [responseKey]: expected[responseKey] });
+    }
+    expect(counter.configReads).toBe(1);
+  });
+
+  it("会社設定が無い時は、26個とも false を返す", async () => {
+    await seedUser("user-1", { name: "山田太郎" });
+
+    const res = await authRouter.request(
+      "/profile",
+      { headers: { Cookie: `session_token=${await profileToken()}` } },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    for (const responseKey of Object.keys(WORKFLOW_FLAG_CONFIG_KEYS)) {
+      expect({ [responseKey]: body[responseKey] }).toEqual({ [responseKey]: false });
+    }
+  });
+
+  it("会社設定が JSON として壊れている時も、200 で 26個とも false を返す", async () => {
+    await seedUser("user-1", { name: "山田太郎" });
+    await env.COMPANY_SETTINGS.put("config", "{broken");
+
+    const res = await authRouter.request(
+      "/profile",
+      { headers: { Cookie: `session_token=${await profileToken()}` } },
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    for (const responseKey of Object.keys(WORKFLOW_FLAG_CONFIG_KEYS)) {
+      expect({ [responseKey]: body[responseKey] }).toEqual({ [responseKey]: false });
+    }
+  });
+});
+
 describe("POST /logout", () => {
   it("200を返し、session_token cookieを失効させるSet-Cookieを返す", async () => {
     const res = await authRouter.request(

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Button } from "../../../_shared/ui/Button";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface SourceQuoteAttachment {
   id?: string;
@@ -81,10 +82,7 @@ export function SourceQuoteViewer({ quoteId }: SourceQuoteViewerProps) {
     setError("");
     setGenerating(true);
     try {
-      await apiFetch(`/api/quotes/${quoteId}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      await issueReportPdf("/api/quotes", quoteId, { defaultErrorMessage: "PDF生成に失敗しました" });
       await loadPdf();
     } catch (err) {
       setError(err instanceof Error ? err.message : "PDF生成に失敗しました");

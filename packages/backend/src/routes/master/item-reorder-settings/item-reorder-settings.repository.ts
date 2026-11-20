@@ -25,6 +25,13 @@ export class ItemReorderSettingsRepository {
     this.db = drizzle(d1, { schema });
   }
 
+  // BUG-098: 承認のアダプター(workflow-engine)から、取得済みの drizzle を使って作る(他のマスタの repository と同じ)
+  static fromDb(db: ReturnType<typeof drizzle<typeof schema>>): ItemReorderSettingsRepository {
+    const repo: ItemReorderSettingsRepository = Object.create(ItemReorderSettingsRepository.prototype);
+    repo.db = db;
+    return repo;
+  }
+
   async getFallbackOperatorId(c: Context<{ Bindings: Env }>): Promise<string> {
     return resolveOperatorEmployeeNumber(c, this.db);
   }
@@ -44,6 +51,8 @@ export class ItemReorderSettingsRepository {
         reorderPoint: schema.itemReorderSettings.reorderPoint,
         safetyStock: schema.itemReorderSettings.safetyStock,
         memo: schema.itemReorderSettings.memo,
+        // BUG-098
+        status: schema.itemReorderSettings.status,
       })
       .from(schema.itemReorderSettings)
       .innerJoin(schema.items, eq(schema.items.id, schema.itemReorderSettings.itemId))
@@ -82,6 +91,8 @@ export class ItemReorderSettingsRepository {
     input: ItemReorderSettingPayload,
     opId: string,
     now: Date,
+    // BUG-098: 新規登録の状態(承認 ON なら temporary)。省略時は active(今まで通り)
+    status: "active" | "temporary" = "active",
   ) {
     await this.db.insert(schema.itemReorderSettings).values({
       id,
@@ -90,6 +101,7 @@ export class ItemReorderSettingsRepository {
       reorderPoint: input.reorderPoint,
       safetyStock: input.safetyStock,
       memo: input.memo || null,
+      status,
       createdBy: opId,
       createdAt: now,
       updatedBy: opId,
@@ -106,10 +118,35 @@ export class ItemReorderSettingsRepository {
         reorderPoint: input.reorderPoint,
         safetyStock: input.safetyStock,
         memo: input.memo || null,
+        ...(input.status ? { status: input.status } : {}),
         updatedBy: opId,
         updatedAt: now,
       })
       .where(eq(schema.itemReorderSettings.id, id));
+  }
+
+  // BUG-098: 承認で状態だけ変える
+  async updateStatus(id: string, status: string, opId: string, now: Date) {
+    await this.db
+      .update(schema.itemReorderSettings)
+      .set({ status, updatedBy: opId, updatedAt: now })
+      .where(eq(schema.itemReorderSettings.id, id));
+  }
+
+  // BUG-098: 承認のプレビュー用(品目名・倉庫名つき)
+  async findWithNamesById(id: string) {
+    const res = await this.db
+      .select({
+        setting: schema.itemReorderSettings,
+        itemName: schema.items.name,
+        warehouseName: schema.warehouses.name,
+      })
+      .from(schema.itemReorderSettings)
+      .leftJoin(schema.items, eq(schema.items.id, schema.itemReorderSettings.itemId))
+      .leftJoin(schema.warehouses, eq(schema.warehouses.id, schema.itemReorderSettings.warehouseId))
+      .where(eq(schema.itemReorderSettings.id, id))
+      .limit(1);
+    return res[0] || null;
   }
 
   async delete(id: string) {

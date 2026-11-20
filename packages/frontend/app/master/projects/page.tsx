@@ -1,7 +1,9 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
+import { useSearchParams } from "next/navigation";
+import { apiFetch } from "../../_shared/hooks/use-api-fetch";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { usePagePermissions } from "../../hooks/use-page-permission";
 import { useProjects } from "./_hooks/useProjects";
@@ -16,7 +18,7 @@ import { StatusTabs } from "../../_shared/ui/StatusTabs";
 import { Pagination } from "../../_shared/ui/Pagination";
 
 export default function MasterProjectsPage() {
-  const { canCreate, canRead, canUpdate, canDelete, loading } =
+  const { canCreate, canRead, canUpdate, canDelete, loading, isProjectWfEnabled, departments = [] } =
     usePagePermissions();
 
   const [showForm, setShowForm] = useState(false);
@@ -46,7 +48,10 @@ export default function MasterProjectsPage() {
     sortDirection,
     sortKeys,
     setSort,
-  } = useProjects({ canRead, canCreate, canUpdate, canDelete, loading });
+    isProjectCurrentlyLocked,
+    applicantDepartmentSurrogateId,
+    setApplicantDepartmentSurrogateId,
+  } = useProjects({ canRead, canCreate, canUpdate, canDelete, loading, isProjectWfEnabled, departments });
 
   const onSelectProject = (project: ProjectRecord) => {
     setEditingProject(project);
@@ -58,10 +63,34 @@ export default function MasterProjectsPage() {
     setShowForm(false);
   };
 
-  const guard = useDiscardGuard(showForm);
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
+  // BUG-097: 承認履歴の「修正して再申請」・承認のプレビューの「伝票を開く」(?editId=xxx)で、そのプロジェクトの編集フォームを開く。
+  // 一覧は状態で絞り込まれているため、状態を問わずコードで探す
+  const searchParams = useSearchParams();
+  const urlEditId = searchParams?.get("editId") ?? null;
+  useEffect(() => {
+    if (!urlEditId || loading || !canRead) return;
+    void (async () => {
+      try {
+        const found = await apiFetch<ProjectRecord[] | { data: ProjectRecord[] }>(
+          `/api/projects?${new URLSearchParams({ id: urlEditId, status: "all" }).toString()}`,
+        );
+        const list = Array.isArray(found) ? found : found.data || [];
+        const target = list.find((p) => p.id === urlEditId);
+        if (target) {
+          setEditingProject(target);
+          setShowForm(true);
+        }
+      } catch (err) {
+        console.error("プロジェクトの取得に失敗しました", err);
+      } finally {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("editId");
+        window.history.replaceState({}, "", url.pathname);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlEditId, loading, canRead]);
+
 
   if (loading) {
     return <LoadingGate />;
@@ -108,6 +137,8 @@ export default function MasterProjectsPage() {
           <StatusTabs
             options={[
               { value: "active", label: "🟢 有効" },
+              // BUG-097: 承認 ON の時の仮登録(承認待ち・差戻し)
+              ...(isProjectWfEnabled ? [{ value: "temporary", label: "🟡 仮登録" }] : []),
               { value: "suspended", label: "🔴 無効" },
               { value: "", label: "🌐 すべて" },
             ]}
@@ -123,40 +154,53 @@ export default function MasterProjectsPage() {
             件
           </span>
           <button
-            onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-            disabled={!canCreate && !showForm}
+            onClick={() => setShowForm(true)}
+            disabled={!canCreate}
             className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-              canCreate || showForm
+              canCreate
                 ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                 : "bg-slate-300 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </button>
         </div>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingProject ? "プロジェクトの編集" : "プロジェクトの新規登録・CSVインポート"}
+          onClose={handleCloseForm}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <>
           <ProjectForm
             editingProject={editingProject}
-            onCancelEdit={requestCloseForm}
+            onCancelEdit={() => void requestClose()}
             onSubmit={handleSubmit}
             canCreate={canCreate}
             canUpdate={canUpdate}
             isSubmitting={isSubmitting}
+            isProjectWfEnabled={isProjectWfEnabled}
+            isProjectCurrentlyLocked={isProjectCurrentlyLocked}
+            departments={departments}
+            applicantDepartmentSurrogateId={applicantDepartmentSurrogateId}
+            setApplicantDepartmentSurrogateId={setApplicantDepartmentSurrogateId}
           />
           <ProjectCsvImport
             canCreate={canCreate}
             editingProject={editingProject}
             isSubmitting={isSubmitting}
             onImportCsv={handleImportCsv}
+            isProjectWfEnabled={isProjectWfEnabled}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

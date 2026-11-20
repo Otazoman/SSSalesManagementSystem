@@ -1,5 +1,6 @@
 import { SalesOrderRepository } from "./sales-order.repository";
 import { WarehouseStockReservationRepository } from "../../../platform/inventory/warehouse-stock-reservation.repository";
+import { isOutsideInventoryLine } from "../../../platform/inventory/service-items";
 import { WarehousesRepository } from "../../master/warehouses/warehouses.repository";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 
@@ -19,6 +20,8 @@ export interface ShipmentProgressItem {
   shippedQuantity: number;
   remainingQuantity: number;
   reservations: ShipmentProgressWarehouseBreakdown[];
+  // BUG-109: 直送の発注とつながる明細。発注の「直送完了」で出荷するため、出荷指示・出庫の対象にしない
+  isDirectShipment: boolean;
 }
 
 // Item7残課題6: 受注→出荷指示/出庫の消込連携。既存のsales-order-csv.service.ts等と同じ、
@@ -33,13 +36,15 @@ export class SalesOrderShipmentService {
     // BUG-065: サービス品目(役務)は在庫を持たず出荷しないため、出荷の残数量(出荷指示・出庫の作成用)に含めない
     const allItems = await this.repo.findOrderItems(orderId);
     const serviceItemIds = await this.repo.findServiceItemIds(allItems.map((i: any) => i.itemId));
-    const items = allItems.filter((i: any) => !serviceItemIds.has(i.itemId));
+    // REQ-011(1): 品目マスタに無い明細(直接入力)も含めない
+    const items = allItems.filter((i: any) => !isOutsideInventoryLine(i, serviceItemIds));
     const itemIds = items.map((i: any) => i.id);
 
     const warehouseReservationRepo = new WarehouseStockReservationRepository(d1);
-    const [shippedRows, reservationRows] = await Promise.all([
+    const [shippedRows, reservationRows, directItemIds] = await Promise.all([
       this.repo.getShippedQuantitiesByOrderItemIds(itemIds),
       warehouseReservationRepo.findReservationsByOrderItemIds(itemIds),
+      this.repo.findDirectShipmentOrderItemIds(itemIds),
     ]);
 
     const shippedByItemId = new Map(shippedRows.map((r) => [r.salesOrderItemId, r.shippedQuantity]));
@@ -81,20 +86,35 @@ export class SalesOrderShipmentService {
         shippedQuantity,
         remainingQuantity: Math.max(item.quantity - shippedQuantity, 0),
         reservations: reservationsByItemId.get(item.id) || [],
+        isDirectShipment: directItemIds.has(item.id),
       };
     });
   }
 
   // 出荷指示・出庫の明細作成時、対応する受注明細の残数量(受注数量-既出荷数量)を
-  // 超えていないか検証する(超過時はエラーでブロックする、ユーザー確認済み)
-  async validateRemainingQuantity(salesOrderItemId: string, requestedQuantity: number): Promise<void> {
+  // 超えていないか検証する(超過時はエラーでブロックする、ユーザー確認済み)。
+  // BUG-109: 直送の明細は出荷指示・出庫の対象外。発注の直送完了から呼ぶ時だけ allowDirectShipment を付ける
+  async validateRemainingQuantity(
+    salesOrderItemId: string,
+    requestedQuantity: number,
+    options: { allowDirectShipment?: boolean } = {},
+  ): Promise<void> {
     const orderItem = await this.repo.findOrderItemById(salesOrderItemId);
     if (!orderItem) {
       throw new NotFoundError(`受注明細が見つかりません: ${salesOrderItemId}`);
     }
     // BUG-065: サービス品目(役務)は出荷の対象外
+    // REQ-011(1): 品目マスタに無い明細(直接入力)も出荷の対象外
+    if (orderItem.inputType === "DIRECT") {
+      throw new BadRequestError(`受注明細[${salesOrderItemId}]は品目マスタに無いため、出荷の対象外です(一時保管で管理できます)`);
+    }
     if ((await this.repo.findServiceItemIds([orderItem.itemId])).size > 0) {
       throw new BadRequestError(`受注明細[${salesOrderItemId}]はサービス品目(役務)のため、出荷の対象外です`);
+    }
+    if (!options.allowDirectShipment && (await this.repo.findDirectShipmentOrderItemIds([salesOrderItemId])).size > 0) {
+      throw new BadRequestError(
+        `受注明細[${salesOrderItemId}]は直送の発注とつながっているため、出荷指示・出庫の対象外です(発注の「直送完了」で出荷します)`,
+      );
     }
     const shippedRows = await this.repo.getShippedQuantitiesByOrderItemIds([salesOrderItemId]);
     const shippedQuantity = shippedRows[0]?.shippedQuantity || 0;
@@ -111,7 +131,8 @@ export class SalesOrderShipmentService {
     // BUG-065: サービス品目(役務)は出荷しないため、出荷状況の判定に含めない
     const allItems = await this.repo.findOrderItems(orderId);
     const serviceItemIds = await this.repo.findServiceItemIds(allItems.map((i: any) => i.itemId));
-    const items = allItems.filter((i: any) => !serviceItemIds.has(i.itemId));
+    // REQ-011(1): 品目マスタに無い明細(直接入力)も含めない
+    const items = allItems.filter((i: any) => !isOutsideInventoryLine(i, serviceItemIds));
     const itemIds = items.map((i: any) => i.id);
     const shippedRows = await this.repo.getShippedQuantitiesByOrderItemIds(itemIds);
     const shippedByItemId = new Map(shippedRows.map((r) => [r.salesOrderItemId, r.shippedQuantity]));

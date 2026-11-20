@@ -69,41 +69,18 @@ export class SalesInvoiceMailService {
     const executionResults = [];
 
     for (const invoice of targetInvoices) {
-      let pdfAttachment = await this.repo.findLatestPdfAttachment(invoice.id);
+      // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。無ければ「先に PDF を発行してください」
+    const pdfAttachment = await this.repo.findLatestPdfAttachment(invoice.id);
 
-      if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-        try {
-          await this.pdfService.generatePdf(c, invoice.id);
-          pdfAttachment = await this.repo.findLatestPdfAttachment(invoice.id);
-        } catch (genErr: any) {
-          console.error(
-            `[BULK SEND] PDF Auto-generation failed for sales_invoice: ${invoice.id}`,
-            genErr,
-          );
-        }
-      }
 
       if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
         failCount++;
         executionResults.push({
           id: invoice.id,
           status: "FAILED",
-          error: "売上関連書類PDFの自動生成に失敗しました",
+          error: "先に PDF を発行してください",
         });
-        await writeMailDeliveryLog({
-          dbLogBinding: c.env.DB_LOG,
-          category: "sales_invoice",
-          documentId: invoice.id,
-          smtpFrom: "",
-          recipientTo: "⚠️ 送信前エラー(PDF自動生成失敗)",
-          recipientCc: mailTemplate.ccAddress,
-          subject: `【配信拒否】${mailTemplate.subjectTemplate}`,
-          attachedR2Path: null,
-          status: "FAILED",
-          errorMessage:
-            "一括送信時の売上関連書類PDF自動生成処理に失敗しました。フォントや設定等をご確認ください。",
-          performedById: invoice.updatedBy || fallbackOperatorId || "UNKNOWN",
-        });
+        // PERF-07 B-6: PDF の未発行はメールの失敗ではない(画面がブラウザで発行して送り直す)ため、メールの記録は残さない
         continue;
       }
 
@@ -208,17 +185,10 @@ export class SalesInvoiceMailService {
     const invoice = targetInvoices[0];
 
     // BUG-029: 1件の送信でも、PDF が無ければその場で作ってから送る(一括送信と同じ)
-    let pdfAttachment = await this.repo.findLatestPdfAttachment(invoice.id);
+    // PERF-07 B-6: PDF はブラウザで作る(サーバーでは作らない)。無ければ「先に PDF を発行してください」
+    const pdfAttachment = await this.repo.findLatestPdfAttachment(invoice.id);
     if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-      try {
-        await this.pdfService.generatePdf(c, invoice.id);
-        pdfAttachment = await this.repo.findLatestPdfAttachment(invoice.id);
-      } catch (genErr) {
-        console.error(`[SINGLE SEND] PDF Auto-generation failed: ${invoice.id}`, genErr);
-      }
-    }
-    if (!pdfAttachment || !pdfAttachment.attachmentR2Path) {
-      throw new BadRequestError("売上関連書類PDFの作成に失敗しました。帳票テンプレートの設定をご確認ください。");
+      throw new BadRequestError("先に PDF を発行してください");
     }
 
     const targetToEmails = recipientEmail.trim();

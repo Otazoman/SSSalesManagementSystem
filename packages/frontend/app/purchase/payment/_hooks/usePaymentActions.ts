@@ -350,12 +350,37 @@ export function usePaymentActions({
     }
   };
 
+  // REQ-026: 支払の承認申請(会社設定で支払の承認が ON の時だけ使う)。承認されると支払の記録・総合振込データの対象になる
+  const handleSubmitForApproval = async (id: string) => {
+    if (!(await confirm(`支払 [ ${id} ] の承認を申請しますか？`))) return;
+    setError("");
+    setMessage("");
+    try {
+      const data = await apiFetch<{ message?: string }>(`/api/purchase-payments/${id}/submit-for-approval`, {
+        method: "POST",
+        json: { applicantDepartmentSurrogateId: null },
+        defaultErrorMessage: "承認申請に失敗しました",
+      });
+      setMessage(data.message || "支払の承認を申請しました");
+      void handleOpenDetail(id);
+      void syncPayments({
+        ...filters,
+        mode: filterMode === "all" ? "" : filterMode,
+        reconciliationStatus: filterReconciliationStatus === "all" ? "" : filterReconciliationStatus,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "承認申請に失敗しました");
+    }
+  };
+
   // ファームバンキング: 一覧での選択トグル
   const handleToggleSelectPayment = (id: string) => {
     setSelectedPaymentIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const handleOpenFirmBankingModal = () => {
+    // BUG-120: エラーはモーダルの中にも出すため、前の操作のエラーを残さない
+    setError("");
     setFirmBankingPreview(null);
     setFirmBankingTransferDate(todayJst());
     setIsFirmBankingModalOpen(true);
@@ -380,6 +405,8 @@ export function usePaymentActions({
       );
       setFirmBankingPreview(data);
     } catch (err) {
+      // BUG-120: 確認に失敗したら、前の確認の結果(ダウンロードできる状態)を残さない
+      setFirmBankingPreview(null);
       if (err instanceof Error) setError(err.message);
     } finally {
       setIsFirmBankingLoading(false);
@@ -508,6 +535,7 @@ export function usePaymentActions({
     setCreateForm,
     handleSubmitCreatePayment,
     handleRecordDisbursement,
+    handleSubmitForApproval,
     handleCSVImportChange,
     selectedPaymentIds,
     handleToggleSelectPayment,

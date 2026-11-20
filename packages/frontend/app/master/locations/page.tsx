@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { useSearchParams } from "next/navigation";
@@ -41,7 +41,6 @@ export default function AdminLocationsPage() {
 
   // フォーム開閉表示制御State
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
 
   // 🔎 検索パネル用State
   const [searchId, setSearchId] = useState("");
@@ -322,20 +321,29 @@ export default function AdminLocationsPage() {
         </span>
         <Button
           size="sm"
-          onClick={async () => {
-            if (showForm && !(await guard.confirmDiscard())) return;
-            if (showForm) form.resetForm();
-            setShowForm(!showForm);
+          onClick={() => {
             form.setEditingId(null);
+            setShowForm(true);
           }}
         >
-          {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+          ➕ 新規個別登録・CSVインポート
         </Button>
       </div>
 
-      {/* 登録・編集フォーム */}
+{/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div className="contents" {...guard.scopeProps}>
+        <MasterFormModal
+          title={form.editingId ? "ロケーションの編集" : "ロケーションの新規登録・CSVインポート"}
+          onClose={() => {
+            form.resetForm();
+            form.setEditingId(null);
+            setShowForm(false);
+          }}
+          error={error}
+          message={message}
+        >
+          {() => (
+            <>
           <LocationForm
             form={form}
             warehouses={warehouses}
@@ -349,7 +357,9 @@ export default function AdminLocationsPage() {
               void syncLocations();
             }}
           />
-        </div>
+</>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

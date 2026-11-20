@@ -114,7 +114,7 @@ describe("AdminProductStructuresPage", () => {
     expect(screen.getByText("🛠️ 品目構成マスタ")).toBeInTheDocument();
   });
 
-  it("「新規個別登録・CSVインポート」クリックでフォーム(BomForm+ツリービューア)を開閉する", async () => {
+  it("「新規個別登録・CSVインポート」クリックでフォーム(BomForm+ツリービューア)をモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(basePermissions());
     const fetchSpy = vi.fn();
     mockAllFetches(fetchSpy);
@@ -129,7 +129,7 @@ describe("AdminProductStructuresPage", () => {
     );
     expect(screen.getByText("新規品目構成(BOM)の登録")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規品目構成(BOM)の登録")).not.toBeInTheDocument();
   });
 });

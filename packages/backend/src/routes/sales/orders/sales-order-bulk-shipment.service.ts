@@ -108,7 +108,8 @@ export class SalesOrderBulkShipmentService {
       // BUG-056: サービス品目(isService)は在庫を持たず出荷しないため、一括作成の対象(要手動対応を含む)から除く
       const serviceItemIds = await reservationRepo.findServiceItemIds(progress.map((p) => p.itemId));
       const remaining = progress.filter(
-        (p) => p.remainingQuantity > 0 && p.itemId && !serviceItemIds.has(p.itemId),
+        // BUG-109: 直送の明細は発注の「直送完了」で出荷するため、一括の出荷指示・出庫に含めない
+        (p) => p.remainingQuantity > 0 && p.itemId && !serviceItemIds.has(p.itemId) && !p.isDirectShipment,
       );
 
       if (remaining.length === 0) {

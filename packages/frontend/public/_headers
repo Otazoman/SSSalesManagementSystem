@@ -5,7 +5,9 @@
 # - Referrer-Policy: 外部サイトへのリンクで、画面の URL(伝票番号など)を渡さない
 # - Permissions-Policy: カメラは入出庫のバーコード読み取りで使うため、このシステムの画面にだけ許可する
 # - Strict-Transport-Security: 以後は必ず https で接続させる
-# Content-Security-Policy は画面の埋め込みの禁止だけにしている(スクリプトの制限は、Next.js が埋め込むスクリプトと両立させる検証が必要なため)
+# Content-Security-Policy: ここでは画面の埋め込みの禁止だけを指定する。スクリプトの実行元の制限(BUG-083)は、ページごとに
+#   埋め込まれたインラインスクリプトのハッシュが必要なため、npm run build の最後に scripts/csp/generate-csp-headers.mjs が
+#   out/_headers の末尾にページごとのルールとして追記する(両方の Content-Security-Policy が適用される)
 /*
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'

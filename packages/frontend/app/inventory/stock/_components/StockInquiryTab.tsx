@@ -14,6 +14,7 @@ import { ReclassifyModal, ReclassificationEditTarget } from "./ReclassifyModal";
 import { ReturnModal, ReturnEditTarget } from "./ReturnModal";
 import { DisposalModal, DisposalEditTarget } from "./DisposalModal";
 import { StockReservationsModal } from "./StockReservationsModal";
+import { InTransitStockSection } from "./transfers/InTransitStockSection";
 import type { ApplicantDepartmentOption } from "../../../types";
 
 interface StockInquiryTabProps {
@@ -154,6 +155,12 @@ export function StockInquiryTab({
         limit={inquiry.limit}
         onPageChange={inquiry.setPage}
         onLimitChange={inquiry.setLimit}
+      />
+      {/* REQ-006: 倉庫間移動で輸送中の在庫(どちらの倉庫の在庫数にも含めない) */}
+      <InTransitStockSection
+        enabled={enabled}
+        warehouseName={(id) => inquiry.warehouses.find((w) => w.id === id)?.name ?? id}
+        productName={(id) => inquiry.products.find((p) => p.id === id)?.name ?? id}
       />
 
       {reclassifyModal && (

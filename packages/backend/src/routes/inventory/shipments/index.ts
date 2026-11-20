@@ -7,6 +7,8 @@ import { DeliveryNoteDownloadService } from "./delivery-note-download.service";
 import { DeliveryNoteMailService } from "./delivery-note-mail.service";
 import { DeliveryNotePdfService } from "./delivery-note-pdf.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
   describeMutationRoute,
@@ -209,34 +211,25 @@ stockShipmentsRouter.get(
   },
 );
 
-// BUG-030: 納品書PDFの作成(作り直し)。承認時の自動作成に失敗した場合や、内容を直した後に使う。
-// 他の帳票の POST /:id/generate-pdf と同じ形。対象は出庫確定済み(APPROVED)の出庫のみ
-stockShipmentsRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "納品書PDF作成(作り直し)",
-    tags: ["stock-shipments"],
-    responses: {
-      200: { description: "作成成功" },
-      400: { description: "得意先が未設定・明細が無い・出庫が未確定など、作成できない" },
-      404: { description: "対象の出庫が無い" },
-    },
-  }),
-  async (c) => {
-    const id = c.req.param("id");
-    try {
-      const repo = new ShipmentsRepository(c.env.DB);
-      const header = await repo.findHeaderById(id);
-      if (!header) return c.json({ success: false, message: "対象の出庫が見つかりません" }, 404);
-      if (header.status !== "APPROVED") {
-        return c.json({ success: false, message: "出庫が確定(承認済み)していないため、納品書を作成できません" }, 400);
-      }
-      return c.json(await new DeliveryNotePdfService(repo).generatePdf(c, id));
-    } catch (err) {
-      return respondError(c, err, "納品書PDFの作成に失敗しました");
+
+// PERF-07 B-3・B-4: ブラウザで納品書 PDF を作るためのデータ(GET /:id/pdf-source)と、ブラウザが作った PDF の受け取り(POST /:id/pdf)。
+// 納品書は出荷の画面(inventory_shipping)から発行する。以前の POST /:id/generate-pdf と同じく、出庫が確定(承認済み)している時だけ
+registerBrowserPdfRoutes(stockShipmentsRouter, {
+  tag: "stock-shipments",
+  label: "納品書",
+  resource: "inventory_shipping",
+  build: async (c, id, withLayout) => {
+    const repo = new ShipmentsRepository(c.env.DB);
+    const header = await repo.findHeaderById(id);
+    if (!header) return null;
+    if (header.status !== "APPROVED") {
+      throw new BadRequestError("出庫が確定(承認済み)していないため、納品書を作成できません");
     }
+    return new DeliveryNotePdfService(repo).buildPdfSource(c, id, withLayout);
   },
-);
+  store: (c, id, pdf, built, uploadedBy) =>
+    new DeliveryNotePdfService(new ShipmentsRepository(c.env.DB)).storePdf(c, id, pdf, built, uploadedBy),
+});
 
 // 納品予定データCSVダウンロード (GET /:id/delivery-schedule-csv) : 出庫確定済み(APPROVED)かつ
 // 得意先設定済みの場合のみ出力可能

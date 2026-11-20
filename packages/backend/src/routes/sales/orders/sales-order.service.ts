@@ -138,8 +138,14 @@ export class SalesOrderService {
   }
 
   // --- PDF生成 (sales-order-pdf.service.ts) ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(...args: Parameters<SalesOrderPdfService["buildPdfSource"]>) {
+    return this.pdf.buildPdfSource(...args);
+  }
+
+  storePdf(...args: Parameters<SalesOrderPdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- ダウンロード/OTP (sales-order-download.service.ts) ---
@@ -147,11 +153,11 @@ export class SalesOrderService {
     return this.download.getDownloadStream(id, attachmentId);
   }
 
-  requestDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string) {
+  requestDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, orderId, attachmentId, email);
   }
 
-  verifyDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string, otp: string) {
+  verifyDownloadOtp(c: Context, orderId: string, attachmentId: string, email: string | undefined, otp: string) {
     return this.download.verifyDownloadOtp(c, orderId, attachmentId, email, otp);
   }
 

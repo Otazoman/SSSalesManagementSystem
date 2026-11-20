@@ -8,6 +8,7 @@
 import { LocationsRepository } from "../../routes/master/locations/locations.repository";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import { resolveMasterPreview } from "./master-pending-change";
 import type {
   TargetAdapter,
   ApplyApprovedParams,
@@ -72,26 +73,31 @@ async function applyApproved({
 
 async function getTaskPreview({
   db,
+  requestId,
   targetId,
 }: TaskPreviewParams): Promise<TaskPreviewResult> {
   const repo = LocationsRepository.fromDb(db);
   const location = await repo.findById(targetId);
   return {
     targetName: location ? location.name : "不明なロケーション",
-    previewData: location,
+    previewData: (await resolveMasterPreview(db, requestId, location)).newData,
   };
 }
 
 async function getHistoryPreview({
   db,
+  requestId,
   targetId,
+  requestType,
 }: HistoryPreviewParams): Promise<HistoryPreviewResult> {
   const repo = LocationsRepository.fromDb(db);
   const location = await repo.findById(targetId);
+  // BUG-089: 変更申請は、退避した変更後の内容を新しい内容、今の行を変更前の内容として出す
+  const pending = await resolveMasterPreview(db, requestId, location);
   return {
     targetName: location ? location.name : "不明なロケーション",
-    snapshotNew: location,
-    snapshotOld: null,
+    snapshotNew: pending.newData,
+    snapshotOld: requestType === "UPDATE" ? pending.oldData : null,
   };
 }
 

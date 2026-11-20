@@ -10,12 +10,13 @@ import { buildListResponse } from "../../../platform/http/response";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { SortQuery } from "../../../platform/http/sort";
 import { generateUniqueMasterCode } from "../../../platform/id/resolve-master-id";
+import { determineProjectInitialStatus } from "../../../workflow-engine/settings";
 
 const RESOURCE_KEY = "master_projects";
 
-// J-2-e(2026-09-13ユーザー確認済み): プロジェクトマスタ。承認ワークフローは対象外のため
-// (locations等のtemporary仮登録とは異なり)active/suspendedの2状態のみで、
-// 新規登録は常にactiveとして即時反映する
+// J-2-e(2026-09-13ユーザー確認済み): プロジェクトマスタ。
+// BUG-097: 会社設定の承認(is_project_approval_enabled)が ON の時は、単位マスタと同じく新規登録を仮登録(temporary)で保存し、
+// 承認で有効にする。OFF の間は今まで通り、新規登録は有効(active)として即時反映する
 export class ProjectsService {
   constructor(private repo: ProjectsRepository) {}
 
@@ -48,13 +49,16 @@ export class ProjectsService {
       throw new BadRequestError("登録エラー: 指定されたPJコードは既に存在します");
     }
 
+    // BUG-097: クライアントの送信値は受け付けず、会社設定の承認フラグからサーバー側で決める(単位マスタと同じ)
+    const status = await determineProjectInitialStatus(c.env.COMPANY_SETTINGS);
+
     await this.repo.insert({
       id: resolvedId,
       name: input.name,
       memo: input.memo || null,
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
-      status: "active",
+      status,
       createdBy: operatorId,
       createdAt: now,
       updatedBy: operatorId,
@@ -69,7 +73,7 @@ export class ProjectsService {
       }),
     );
 
-    return { success: true, message: "プロジェクトを登録しました", id: resolvedId };
+    return { success: true, message: "プロジェクトを登録しました", id: resolvedId, status };
   }
 
   async updateProject(c: Context<{ Bindings: Env }>, id: string, input: UpdateProjectInput) {
@@ -84,6 +88,7 @@ export class ProjectsService {
       memo: input.memo || null,
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
+      ...(input.status ? { status: input.status } : {}),
       updatedBy: operatorId,
       updatedAt: new Date(),
     });
@@ -171,6 +176,10 @@ export class ProjectsService {
     const now = new Date();
     const operatorId = await this.repo.getFallbackOperatorId(c);
 
+    // BUG-097: 承認 ON の間は、CSV で取り込むと承認を通さずに登録・変更できてしまうため受け付けない(画面も単位マスタと同じく取込を止める)
+    if ((await determineProjectInitialStatus(c.env.COMPANY_SETTINGS)) === "temporary") {
+      throw new BadRequestError("承認機能が有効な間は、CSV でプロジェクトを取り込めません。画面から登録して申請してください");
+    }
     const allRows = parseCsv(fileText);
     const header = allRows.length > 0 ? allRows[0].map((h) => h.trim()) : [];
     const idxId = header.indexOf("id");

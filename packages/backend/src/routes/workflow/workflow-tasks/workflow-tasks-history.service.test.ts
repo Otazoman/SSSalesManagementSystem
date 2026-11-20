@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
 import { WorkflowTasksHistoryService } from "./workflow-tasks-history.service";
 
@@ -548,6 +549,235 @@ describe("WorkflowTasksHistoryService.getHistory", () => {
     } as any);
 
     expect(histories).toEqual([]);
+  });
+});
+
+// PERF-02: D1 に送った文(prepare)の数を数える drizzle を作る
+function countingDb() {
+  const counter = { prepares: 0 };
+  const d1 = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (query: string) => {
+          counter.prepares += 1;
+          return target.prepare(query);
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { countedDb: drizzle(d1, { schema }), counter };
+}
+
+// 単位マスタの申請(プレビューの取得が1回の問い合わせで済む)を count 件作る。承認フローは2段
+async function seedUnitRequests(count: number, applicantId: string) {
+  await seedApprovalFlow("flow-units", "master_units", [
+    { order: 1, roleId: "role1" },
+    { order: 2, roleId: "role2" },
+  ]);
+  for (let i = 0; i < count; i++) {
+    const code = `U${String(i).padStart(4, "0")}`;
+    await db.insert(schema.units).values({
+      code,
+      name: `単位${i}`,
+      status: "temporary",
+      createdBy: applicantId,
+      createdAt: now,
+      updatedBy: applicantId,
+      updatedAt: now,
+    });
+    await db.insert(schema.masterApprovalRequests).values({
+      id: `req-${code}`,
+      targetType: "master_units",
+      targetId: code,
+      requestType: "REGISTER",
+      status: "PENDING",
+      applicantId,
+      flowId: "flow-units",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.workflowLogs).values({
+      id: `log-${code}-1`,
+      targetType: "master_units",
+      targetId: code,
+      approverRoleId: "role1",
+      approverId: "approver-1",
+      layer: 1,
+      status: "APPROVED",
+      performedAt: now,
+      requestId: `req-${code}`,
+    });
+    await db.insert(schema.workflowLogs).values({
+      id: `log-${code}-2`,
+      targetType: "master_units",
+      targetId: code,
+      approverRoleId: "role2",
+      layer: 2,
+      status: "PENDING",
+      requestId: `req-${code}`,
+    });
+  }
+}
+
+async function seedPerfUsers() {
+  await seedUser("applicant-1");
+  await seedUser("admin-1");
+  await seedUser("approver-1", { name: "承認者太郎" });
+  await seedUser("approver-2", { name: "承認者次郎" });
+  await seedRole("admin");
+  await seedRole("role1");
+  await seedRole("role2");
+  await seedUserRole("admin-1", "admin", null);
+  await seedUserRole("approver-1", "role1", null);
+  await seedUserRole("approver-2", "role2", null);
+}
+
+describe("申請履歴の問い合わせ回数(PERF-02)", () => {
+  beforeEach(async () => {
+    await db.delete(schema.units);
+  });
+
+  async function countPrepares(userId: string, requestCount: number) {
+    await seedPerfUsers();
+    await seedUnitRequests(requestCount, "applicant-1");
+    const { countedDb, counter } = countingDb();
+    const result = await WorkflowTasksHistoryService.getHistoryPage(
+      countedDb,
+      { userId } as any,
+      { page: 1, limit: 10 },
+    );
+    return { prepares: counter.prepares, result };
+  }
+
+  // 1つの申請に履歴が2行(1段目の承認・2段目の承認待ち)。承認者(2段目)に見えるのは承認待ちの1行だけ
+  for (const [label, userId, logsPerRequest] of [
+    ["管理者", "admin-1", 2],
+    ["申請者(一般ユーザー)", "applicant-1", 2],
+    ["承認者(一般ユーザー)", "approver-2", 1],
+  ] as const) {
+    it(`${label}: 申請が 10 件でも 200 件でも問い合わせ回数は同じで、limit=10 なら 30 回以下`, async () => {
+      const small = await countPrepares(userId, 10);
+      expect(small.result.data).toHaveLength(10);
+      expect(small.result.pagination.total).toBe(10 * logsPerRequest);
+
+      await db.delete(schema.workflowLogs);
+      await db.delete(schema.masterApprovalRequests);
+      await db.delete(schema.approvalFlowSteps);
+      await db.delete(schema.approvalFlows);
+      await db.delete(schema.units);
+      await db.delete(schema.userRoles);
+      await db.delete(schema.roles);
+      await db.delete(schema.users);
+
+      const large = await countPrepares(userId, 200);
+      expect(large.result.data).toHaveLength(10);
+      expect(large.result.pagination.total).toBe(200 * logsPerRequest);
+
+      expect(large.prepares).toBe(small.prepares);
+      expect(small.prepares).toBeLessThanOrEqual(30);
+    }, 60_000);
+  }
+
+  // BUG-119: 一覧(1ページ分)の行には中身(プレビュー)・承認の進み具合を付けず、名前だけを付ける。中身は行を開いた時に getHistoryDetail で読み、
+  // 以前の一覧の行と同じ内容になる
+  it("1ページ分の行は名前だけを付け、行の中身(getHistoryDetail)は以前の一覧の行と同じ内容になる", async () => {
+    await seedPerfUsers();
+    await seedUnitRequests(3, "applicant-1");
+
+    const page = await WorkflowTasksHistoryService.getHistoryPage(
+      db,
+      { userId: "admin-1" } as any,
+      { page: 1, limit: 2 },
+    );
+    const full = await WorkflowTasksHistoryService.getHistory(db, { userId: "admin-1" } as any);
+
+    expect(page.data).toHaveLength(2);
+    for (const item of page.data as any[]) {
+      const fullItem = full.histories.find((h) => h.logId === item.logId)!;
+      // 一覧の行: 中身・承認の進み具合は付けない。名前(対象・申請者・承認者)と状態は以前と同じ
+      expect(item.snapshotNew).toBeNull();
+      expect(item.flowProgress).toEqual([]);
+      expect(item.targetName).toBe(fullItem.targetName);
+      expect(item.applicantId).toBe(fullItem.applicantId);
+      expect(item.approverName).toBe(fullItem.approverName);
+      expect(item.status).toBe(fullItem.status);
+      // 行を開いた時の中身は、以前の一覧の行と同じ
+      const detail = await WorkflowTasksHistoryService.getHistoryDetail(db, { userId: "admin-1" } as any, item.logId);
+      expect(detail).toEqual(fullItem);
+    }
+    const pendingLogId = (page.data as any[]).find((h) => h.status === "PENDING").logId;
+    const pending = await WorkflowTasksHistoryService.getHistoryDetail(db, { userId: "admin-1" } as any, pendingLogId);
+    expect(pending.targetName).toBe((pending.snapshotNew as any).name);
+    expect(pending.flowProgress.map((s: any) => [s.stepOrder, s.status, s.performedBy])).toEqual([
+      [1, "APPROVED", "承認者太郎"],
+      [2, "PENDING", "承認者次郎"],
+    ]);
+  });
+
+  it("見られない行の中身は返さない(404)", async () => {
+    await seedPerfUsers();
+    await seedUnitRequests(1, "applicant-1");
+    const full = await WorkflowTasksHistoryService.getHistory(db, { userId: "admin-1" } as any);
+    await expect(
+      WorkflowTasksHistoryService.getHistoryDetail(db, { userId: "unrelated-user" } as any, full.histories[0].logId),
+    ).rejects.toThrow("対象の申請履歴が見つかりません");
+  });
+});
+
+describe("部署の判定(PERF-02): WorkflowEngine.resolveApprovers と同じ結果になる", () => {
+  // 部署・ロールの組み合わせごとに、resolveApprovers(DB)の結果に loginUser が含まれるかと、
+  // 申請履歴が使う計算(isResolvedApprover)の結果が一致することを確かめる
+  it("部署の指定あり/なし、会社全体のロール、他部署のロール、無効なユーザー", async () => {
+    const { WorkflowEngine } = await import("../../../workflow-engine/engine");
+    const { isResolvedApprover } = await import("./workflow-tasks-history.service");
+    await seedDepartment("dept-a", "D-A", "部署A");
+    await seedDepartment("dept-b", "D-B", "部署B");
+    await seedRole("manager");
+    await seedRole("staff");
+    await seedUser("applicant-a");
+    await seedUserRole("applicant-a", "staff", "dept-a");
+    await seedUser("applicant-none");
+
+    const loginCases: Array<{ id: string; active: boolean; roles: Array<[string, string | null]> }> = [
+      { id: "u-a", active: true, roles: [["manager", "dept-a"]] },
+      { id: "u-b", active: true, roles: [["manager", "dept-b"]] },
+      { id: "u-all", active: true, roles: [["manager", null]] },
+      { id: "u-ab", active: true, roles: [["manager", "dept-b"], ["manager", "dept-a"]] },
+      { id: "u-staff", active: true, roles: [["staff", "dept-a"]] },
+      { id: "u-off", active: false, roles: [["manager", "dept-a"]] },
+    ];
+    for (const u of loginCases) {
+      await seedUser(u.id, { isActive: u.active });
+      for (const [roleId, dept] of u.roles) await seedUserRole(u.id, roleId, dept);
+    }
+
+    for (const applicantId of ["applicant-a", "applicant-none"]) {
+      for (const targetDept of ["dept-a", "dept-b", null]) {
+        for (const u of loginCases) {
+          const expected = (
+            await WorkflowEngine.resolveApprovers(db, applicantId, "manager", targetDept)
+          ).includes(u.id);
+          const myUserRoles = await db.select().from(schema.userRoles).where(eq(schema.userRoles.userId, u.id));
+          const applicantFirstDept =
+            (await db.select().from(schema.userRoles).where(eq(schema.userRoles.userId, applicantId)).limit(1))[0]
+              ?.departmentSurrogateId ?? null;
+          const actual = isResolvedApprover({
+            myUserRoles,
+            loginUserActive: u.active,
+            roleId: "manager",
+            deptSurrogateId: targetDept || applicantFirstDept || null,
+          });
+          expect({ applicantId, targetDept, user: u.id, actual }).toEqual({
+            applicantId,
+            targetDept,
+            user: u.id,
+            actual: expected,
+          });
+        }
+      }
+    }
   });
 });
 

@@ -1,6 +1,8 @@
 "use client";
 
 import { ItemReorderSettingRecord } from "../_types";
+import { StatusBadge } from "../../../_shared/ui/StatusBadge";
+import { getMasterLifecycleStatus } from "../../../_shared/status/master-lifecycle-status";
 import { DataTable } from "../../../_shared/ui/DataTable";
 
 interface ItemReorderSettingTableProps {
@@ -36,6 +38,8 @@ export function ItemReorderSettingTable({
         { key: "reorderPoint", label: "発注点", align: "right", sortable: true },
         { key: "safetyStock", label: "安全在庫", align: "right", sortable: true },
         { key: "memo", label: "メモ", sortable: true },
+        // BUG-098: 承認 ON の時の仮登録(承認待ち・差戻し)を見分ける
+        { key: "status", label: "状態", align: "center" },
         { key: "actions", label: "操作", align: "center" },
       ]}
       data={settings}
@@ -62,7 +66,10 @@ export function ItemReorderSettingTable({
             </td>
             <td className="px-4 py-3 text-right font-mono text-slate-700">{s.reorderPoint}</td>
             <td className="px-4 py-3 text-right font-mono text-slate-700">{s.safetyStock}</td>
-            <td className="px-4 py-3 text-xs text-slate-500">{s.memo || "-"}</td>
+            <td className="px-4 py-3 text-xs text-slate-700">{s.memo || "-"}</td>
+            <td className="px-4 py-3 text-center">
+              <StatusBadge {...getMasterLifecycleStatus(s.status ?? "active")} />
+            </td>
             <td
               className="px-4 py-3 text-center space-x-3 whitespace-nowrap"
               onClick={(e) => e.stopPropagation()}

@@ -221,7 +221,7 @@ describe("PurchaseRequisitionsPage", () => {
     render(<Page />);
     await waitFor(() => expect(screen.queryByText("権限を確認中...")).not.toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole("button", { name: "🔗 受注の欠品から購買申請を作成" }));
+    await userEvent.click(screen.getByRole("button", { name: "🔗 受注から購買申請を作成" }));
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: /受注を指定せず、欠品明細をすべてまとめて表示/ }),

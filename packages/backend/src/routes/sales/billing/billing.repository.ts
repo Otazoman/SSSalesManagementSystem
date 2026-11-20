@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, sql, asc, inArray, sum } from "drizzle-orm";
+import { eq, sql, asc, inArray, sum, and } from "drizzle-orm";
 import { count } from "drizzle-orm";
 import { Context } from "hono";
 import * as schema from "../../../db/schema";
@@ -32,6 +32,13 @@ export class BillingRepository {
 
   constructor(d1: D1Database) {
     this.db = drizzle(d1, { schema });
+  }
+
+  // REQ-017: 承認のアダプター(workflow-engine)から、取得済みの drizzle を使って作る
+  static fromDb(db: ReturnType<typeof drizzle<typeof schema>>): BillingRepository {
+    const repo: BillingRepository = Object.create(BillingRepository.prototype);
+    repo.db = db;
+    return repo;
   }
 
   async getFallbackOperatorId(c: Context<{ Bindings: Env }>): Promise<string> {
@@ -235,12 +242,32 @@ export class BillingRepository {
     await this.db.insert(schema.paymentReceipts).values(data);
   }
 
+  // REQ-018: 消込額は承認済みの入金だけを合計する(承認機能が OFF の時は全て承認済み)
   async sumReconciledAmount(billingHeaderId: string): Promise<number> {
+    return this.sumReceiptAmount(billingHeaderId, "APPROVED");
+  }
+
+  // REQ-018: 承認申請中の入金の合計(未消込額から引いて、二重に記録しないようにする)
+  async sumPendingAmount(billingHeaderId: string): Promise<number> {
+    return this.sumReceiptAmount(billingHeaderId, "PENDING");
+  }
+
+  private async sumReceiptAmount(billingHeaderId: string, approvalStatus: string): Promise<number> {
     const rows = await this.db
       .select({ total: sum(schema.paymentReceipts.amount) })
       .from(schema.paymentReceipts)
-      .where(eq(schema.paymentReceipts.billingHeaderId, billingHeaderId));
+      .where(
+        and(
+          eq(schema.paymentReceipts.billingHeaderId, billingHeaderId),
+          eq(schema.paymentReceipts.approvalStatus, approvalStatus),
+        ),
+      );
     return Number(rows[0]?.total || 0);
+  }
+
+  // REQ-018: 承認の申請を作れなかった時に、記録した入金を取り消す
+  async deletePaymentReceipt(id: string) {
+    await this.db.delete(schema.paymentReceipts).where(eq(schema.paymentReceipts.id, id));
   }
 
   // --- CSVエクスポート用 ---

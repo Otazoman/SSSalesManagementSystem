@@ -3,6 +3,7 @@ import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { SalesInvoiceRecord } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface UseSalesInvoiceListActionsProps {
   canDelete: boolean;
@@ -157,10 +158,7 @@ export function useSalesInvoiceListActions({
     setMessage("⌛ PDFファイルを生成中...");
     setError("");
     try {
-      await apiFetch(`/api/sales-invoices/${id}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      await issueReportPdf("/api/sales-invoices", id, { defaultErrorMessage: "PDF生成に失敗しました" });
 
       setMessage("✅ 請求書PDFの生成に成功しました。添付ファイル欄をご確認ください。");
       void handleOpenEditForm(id);

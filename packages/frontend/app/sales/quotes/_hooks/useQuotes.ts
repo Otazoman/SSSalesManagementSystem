@@ -13,6 +13,7 @@ import {
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
 import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
+import { sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const DUMMY_PRODUCTS: ProductMaster[] = [
   { id: "PROD-001", name: "スタンダードサーバープラン", price: 50000 },
@@ -371,16 +372,17 @@ export function useQuotes({ canRead, permsLoading }: UseQuotesProps) {
     setError("");
 
     try {
-      const data = await apiFetch<{ message?: string }>(
+      const data = await bulkSendWithIssuedPdf("/api/quotes", selectedQuoteIds, (targetIds) =>
+        apiFetch<{ message?: string }>(
         "/api/quotes/bulk-send-email",
         {
           method: "POST",
-          json: {
-            quoteIds: selectedQuoteIds,
+          json: { quoteIds: targetIds,
             fallbackOperatorId: "CURRENT_USER",
           },
           defaultErrorMessage: "一括送信リレーに失敗しました",
         },
+      ),
       );
 
       setMessage(data.message || "一括送信を予約しました");
@@ -425,11 +427,13 @@ export function useQuotes({ canRead, permsLoading }: UseQuotesProps) {
     setError("");
 
     try {
-      await apiFetch(`/api/quotes/${params.quoteId}/send-email`, {
+      await sendWithIssuedPdf("/api/quotes", params.quoteId, () =>
+        apiFetch(`/api/quotes/${params.quoteId}/send-email`, {
         method: "POST",
         json: params,
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
 
       setMessage("📧 メールの送信を予約しました");
       return true;

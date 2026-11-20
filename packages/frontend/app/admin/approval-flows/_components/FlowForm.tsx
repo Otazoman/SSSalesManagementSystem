@@ -169,6 +169,15 @@ export function FlowForm({
           <p className="text-[10px] text-slate-600">
             金額レンジに加え、申請データ内の特定フィールドが指定した値の場合のみこのフローを適用したい場合に設定します。両方空欄なら金額レンジのみで判定します。
           </p>
+          {/* BUG-103: 承認フローはメニュー単位。同じメニューの中で伝票の種類ごとに承認者を変える時の値 */}
+          <p className="text-[10px] text-slate-600">
+            同じメニューの中で伝票の種類ごとに分ける時は、対象フィールド名に <span className="font-mono font-bold">documentKind</span>、期待値に次の値を入れます
+            (分岐条件の無いフローは、そのメニューの全ての伝票に使います)。
+            入荷: RECEIPT(入庫・入荷実績)・RECEIPT_INSTRUCTION(入荷指示) / 出荷: SHIPMENT(出庫・出荷実績)・SHIPMENT_INSTRUCTION(出荷指示) /
+            在庫・棚卸管理: AUDIT(棚卸)・RECLASSIFICATION(品質区分変更)・DISPOSAL(廃棄)・RETURN(返品) /
+            請求管理: BILLING(請求)・PAYMENT_RECEIPT(請求への入金)・CASH_RECEIPT(単体入金) /
+            支払管理: PAYMENT(支払)・PAYMENT_DISBURSEMENT(支払の消込) / 取引先マスタ: DELIVERY_DESTINATION(取引先の納品先)
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[9px] font-bold text-slate-600 mb-0.5">

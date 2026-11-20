@@ -3,6 +3,7 @@ import {
   formFieldInputClass,
   formFieldLabelClass,
 } from "../../../_shared/ui/FormField";
+import { BusinessLocationSelect } from "../../../_shared/ui/BusinessLocationSelect";
 
 interface QuoteCompanyAndTermsFieldsProps {
   companyName: string;
@@ -49,6 +50,16 @@ export function QuoteCompanyAndTermsFields({
         <h4 className="text-xs font-black text-slate-700 border-b pb-1">
           🏢 発行元・自社情報の変更
         </h4>
+        {/* REQ-003: 営業拠点を選ぶと、会社名・住所などを拠点の値に置き換える(選ばなければ会社マスタの値) */}
+        <BusinessLocationSelect
+          onApply={(v) => {
+              setCompanyName(v.companyName);
+              setCompanyZip(v.companyZip);
+              setCompanyAddress(v.companyAddress);
+              setCompanyTel(v.companyTel);
+              setCompanyFax(v.companyFax);
+          }}
+        />
         <div>
           <label className={`${formFieldLabelClass} mb-0.5`}>会社名</label>
           <input

@@ -92,7 +92,7 @@ export function ReceiptScanPanel({
 
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
         <div>
-          <label className="text-sm text-slate-600 block mb-1">
+          <label className="text-sm text-slate-700 block mb-1">
             消込対象の入荷指示(任意・指定すると指示の充足状況を更新します)
           </label>
           <select
@@ -138,7 +138,7 @@ export function ReceiptScanPanel({
 
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
         <div>
-          <label className="text-sm text-slate-600 block mb-1">
+          <label className="text-sm text-slate-700 block mb-1">
             発注から選ぶ(任意・指定すると発注明細の残数量を消込します)
           </label>
           <select
@@ -176,35 +176,41 @@ export function ReceiptScanPanel({
       </div>
 
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
-        {warehouseType === "EXTERNAL" && (
-          <div>
-            <label className="text-sm text-slate-700 block mb-1">
-              仕入先(任意)
-            </label>
-            <select
-              value={form.partnerId}
-              onChange={(e) => form.setPartnerId(e.target.value)}
-              className="w-full text-sm border border-slate-300 rounded px-2 py-2 bg-white text-slate-900 font-bold"
-            >
-              <option value="">指定しない</option>
-              {form.partners.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id} ({p.name})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* 新規要望(2026-09-23): 倉庫間移動。仕入先の代わりに移動元倉庫を選べる(排他) */}
+        {/* BUG-070: 仕入先は倉庫種別を問わず入力できる。発注を選んだ場合は発注の仕入先に固定する */}
         <div>
           <label className="text-sm text-slate-700 block mb-1">
-            移動元倉庫(任意・倉庫間移動の場合。仕入先とは同時に指定できません)
+            {form.orderId
+              ? "仕入先(選んだ発注の仕入先が設定されます)"
+              : "仕入先(任意・発注を選ぶと発注の仕入先が設定されます)"}
+          </label>
+          <select
+            value={form.partnerId}
+            onChange={(e) => form.setPartnerId(e.target.value)}
+            disabled={!!form.orderId}
+            className="w-full text-sm border border-slate-300 rounded px-2 py-2 bg-white text-slate-900 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <option value="">指定しない</option>
+            {form.partners.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.id} ({p.name})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 新規要望(2026-09-23): 倉庫間移動。仕入先の代わりに移動元倉庫を選べる(排他)。
+            BUG-078: 発注を選んだ場合は仕入先からの入荷のため、移動元倉庫は選べない */}
+        <div>
+          <label className="text-sm text-slate-700 block mb-1">
+            {form.orderId
+              ? "移動元倉庫(発注を選んでいるため指定できません)"
+              : "移動元倉庫(任意・倉庫間移動の場合。仕入先とは同時に指定できません)"}
           </label>
           <select
             value={form.sourceWarehouseId}
             onChange={(e) => form.setSourceWarehouseId(e.target.value)}
-            className="w-full text-sm border border-slate-300 rounded px-2 py-2 bg-white text-slate-900 font-bold"
+            disabled={!!form.orderId}
+            className="w-full text-sm border border-slate-300 rounded px-2 py-2 bg-white text-slate-900 font-bold disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <option value="">指定しない</option>
             {form.allWarehouses.map((w) => (
@@ -293,7 +299,7 @@ export function ReceiptScanPanel({
           </p>
         </div>
         <div>
-          <label className="text-sm text-slate-600 block mb-1">
+          <label className="text-sm text-slate-700 block mb-1">
             ロット番号(任意)
           </label>
           <input
@@ -304,7 +310,7 @@ export function ReceiptScanPanel({
           />
         </div>
         <div>
-          <label className="text-sm text-slate-600 block mb-1">数量</label>
+          <label className="text-sm text-slate-700 block mb-1">数量</label>
           <input
             type="number"
             value={form.quantity}
@@ -313,7 +319,7 @@ export function ReceiptScanPanel({
           />
         </div>
         <div>
-          <label className="text-sm text-slate-600 block mb-1">検品結果</label>
+          <label className="text-sm text-slate-700 block mb-1">検品結果</label>
           <select
             value={form.inspectionStatus}
             onChange={(e) => form.setInspectionStatus(e.target.value)}
@@ -325,7 +331,7 @@ export function ReceiptScanPanel({
           </select>
         </div>
         <div className="col-span-2 md:col-span-4">
-          <label className="text-sm text-slate-600 block mb-1">
+          <label className="text-sm text-slate-700 block mb-1">
             検品メモ(任意)
           </label>
           <input

@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { useSearchParams } from "next/navigation";
@@ -68,7 +68,6 @@ export default function AdminPartnerContactsPage() {
 
   // フォームの開閉、および編集データ管理
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRecord, setEditingRecord] = useState<ContactRecord | null>(
     null,
@@ -172,20 +171,30 @@ export default function AdminPartnerContactsPage() {
         </span>
         <Button
           size="sm"
-          onClick={async () => {
-            if (showForm && !(await guard.confirmDiscard())) return;
-            setShowForm(!showForm);
+          onClick={() => {
             setEditingId(null);
             setEditingRecord(null);
+            setShowForm(true);
           }}
         >
-          {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+          ➕ 新規個別登録・CSVインポート
         </Button>
       </div>
 
-      {/* フォームエリア */}
+{/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div className="contents" {...guard.scopeProps}>
+        <MasterFormModal
+          title={editingId ? "取引先担当者の編集" : "取引先担当者の新規登録・CSVインポート"}
+          onClose={() => {
+            setShowForm(false);
+            setEditingId(null);
+            setEditingRecord(null);
+          }}
+          error={error}
+          message={message}
+        >
+          {() => (
+            <>
           <ContactForm
             editingId={editingId}
             setEditingId={setEditingId}
@@ -202,7 +211,9 @@ export default function AdminPartnerContactsPage() {
             onImportCsv={handleImportCsv}
             onCloseForm={() => setShowForm(false)}
           />
-        </div>
+</>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

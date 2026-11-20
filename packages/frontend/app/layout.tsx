@@ -2,12 +2,14 @@
 "use client";
 
 import React, { useState } from "react";
+import { clearSharedApiCache } from "./_shared/hooks/use-api-fetch";
 import { useRouter, usePathname } from "next/navigation";
 import "./globals.css";
 import { PermissionProvider } from "./context/permissioncontext";
 import { ScreenDescriptionProvider } from "./context/screen-descriptions";
 import { ThemeProvider, THEME_INIT_SCRIPT } from "./context/theme";
 import { ConfirmProvider } from "./_shared/ui/ConfirmDialog";
+import { ReportPdfIssuingNotice } from "./_shared/report-pdf/ReportPdfIssuingNotice";
 
 // 同一階層およびhooksから必要なパーツをインポート
 import { useAuthAndMenu } from "./hooks/use-auth-and-menu";
@@ -29,6 +31,9 @@ export default function RootLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // 左のメニューで今いる画面を押した時に、画面を作り直す(フォームを開いたままでも一覧に戻れるように)。
+  // 同じ URL への router.push では画面が作り直されず、画面ごとの表示の状態(一覧/フォーム)が残るため
+  const [samePageReloadKey, setSamePageReloadKey] = useState(0);
 
   const isAuthPage =
     pathname === "/login" ||
@@ -69,6 +74,8 @@ export default function RootLayout({
     } catch (err) {
       console.error("ログアウト処理に失敗しました", err);
     }
+    // PERF-06: 前のユーザーのプロフィール・メニューを使い回さない
+    clearSharedApiCache();
 
     router.push("/login");
   };
@@ -187,6 +194,10 @@ export default function RootLayout({
                             currentPath={pathname}
                             onNavigate={(path) => {
                               setIsMobileMenuOpen(false);
+                              if (path === pathname) {
+                                setSamePageReloadKey((k) => k + 1);
+                                return;
+                              }
                               router.push(path);
                             }}
                           />
@@ -204,19 +215,21 @@ export default function RootLayout({
                           loading={loading}
                           isAuthPage={isAuthPage}
                         >
-                          {React.isValidElement(children)
-                            ? React.cloneElement(
-                                children as React.ReactElement<InjectedChildProps>,
-                                {
-                                  userName: user?.name || "ユーザー",
-                                  isPartnerWfEnabled:
-                                    !loading &&
-                                    user?.isPartnerWfEnabled === true,
-                                  isQuoteWfEnabled:
-                                    !loading && user?.isQuoteWfEnabled === true,
-                                },
-                              )
-                            : children}
+                          <React.Fragment key={samePageReloadKey}>
+                            {React.isValidElement(children)
+                              ? React.cloneElement(
+                                  children as React.ReactElement<InjectedChildProps>,
+                                  {
+                                    userName: user?.name || "ユーザー",
+                                    isPartnerWfEnabled:
+                                      !loading &&
+                                      user?.isPartnerWfEnabled === true,
+                                    isQuoteWfEnabled:
+                                      !loading && user?.isQuoteWfEnabled === true,
+                                  },
+                                )
+                              : children}
+                          </React.Fragment>
                         </PermissionGuard>
                       </div>
                     </main>
@@ -227,6 +240,8 @@ export default function RootLayout({
           </ThemeProvider>
           </ConfirmProvider>
         </PermissionProvider>
+        {/* PERF-07 B-5: ブラウザで帳票 PDF を作っている間の表示 */}
+        <ReportPdfIssuingNotice />
       </body>
     </html>
   );

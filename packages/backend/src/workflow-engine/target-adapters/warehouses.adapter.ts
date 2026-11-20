@@ -9,6 +9,7 @@
 import { WarehousesRepository } from "../../routes/master/warehouses/warehouses.repository";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import { resolveMasterPreview } from "./master-pending-change";
 import type {
   TargetAdapter,
   ApplyApprovedParams,
@@ -82,23 +83,28 @@ async function applyApproved({
 
 async function getTaskPreview({
   db,
+  requestId,
   targetId,
 }: TaskPreviewParams): Promise<TaskPreviewResult> {
   const repo = WarehousesRepository.fromDb(db);
   const warehouse = await repo.findById(targetId);
-  return { targetName: warehouse ? warehouse.name : "不明な倉庫", previewData: warehouse };
+  return { targetName: warehouse ? warehouse.name : "不明な倉庫", previewData: (await resolveMasterPreview(db, requestId, warehouse)).newData };
 }
 
 async function getHistoryPreview({
   db,
+  requestId,
   targetId,
+  requestType,
 }: HistoryPreviewParams): Promise<HistoryPreviewResult> {
   const repo = WarehousesRepository.fromDb(db);
   const warehouse = await repo.findById(targetId);
+  // BUG-089: 変更申請は、退避した変更後の内容を新しい内容、今の行を変更前の内容として出す
+  const pending = await resolveMasterPreview(db, requestId, warehouse);
   return {
     targetName: warehouse ? warehouse.name : "不明な倉庫",
-    snapshotNew: warehouse,
-    snapshotOld: null,
+    snapshotNew: pending.newData,
+    snapshotOld: requestType === "UPDATE" ? pending.oldData : null,
   };
 }
 

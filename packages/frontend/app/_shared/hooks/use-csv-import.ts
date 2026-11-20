@@ -17,9 +17,10 @@ export function useCsvImport({ onSuccess, onMessage, onError }: UseCsvImportOpti
   const [importing, setImporting] = useState(false);
 
   const importCsv = useCallback(
-    async (url: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    // REQ-024: 取込に成功したら true を返す(モーダルの画面は、成功した時だけ閉じる。今までの呼び出し側は戻り値を使っていない)
+    async (url: string, e: React.ChangeEvent<HTMLInputElement>): Promise<boolean> => {
       const file = e.target.files?.[0];
-      if (!file) return;
+      if (!file) return false;
 
       setImporting(true);
 
@@ -37,8 +38,10 @@ export function useCsvImport({ onSuccess, onMessage, onError }: UseCsvImportOpti
 
         onMessage?.(data.message || "インポートが完了しました");
         await onSuccess?.();
+        return true;
       } catch (err) {
         if (err instanceof Error) onError?.(err.message);
+        return false;
       } finally {
         e.target.value = "";
         setImporting(false);

@@ -10,6 +10,8 @@ export interface ScreenDefinition {
     | "business_master";
   icon?: string;
   path?: string;
+  // REQ-011(2): 画面の中のタブなど、メニューに出さない画面(権限・承認フローの対象にだけ使う)
+  hideFromMenu?: boolean;
 }
 
 export const SCREEN_MASTER: ScreenDefinition[] = [
@@ -58,18 +60,19 @@ export const SCREEN_MASTER: ScreenDefinition[] = [
     path: "/sales/orders",
   },
   {
-    resource: "sales_invoices",
-    name: "売上管理",
-    category: "daily_work",
-    icon: "📈",
-    path: "/sales/invoices",
-  },
-  {
     resource: "inventory_shipping",
     name: "出荷",
     category: "daily_work",
     icon: "📤",
     path: "/inventory/shipping",
+  },
+  // 2026-11-15: ユーザーの要望で、売上管理は出荷の後に並べる
+  {
+    resource: "sales_invoices",
+    name: "売上管理",
+    category: "daily_work",
+    icon: "📈",
+    path: "/sales/invoices",
   },
   {
     resource: "sales_billing",
@@ -119,6 +122,16 @@ export const SCREEN_MASTER: ScreenDefinition[] = [
     category: "daily_work",
     icon: "📋",
     path: "/inventory/audit",
+  },
+  // REQ-011(2): 一時保管(在庫・棚卸管理の「一時保管」タブ)。承認フローの対象(一時保管の受入・払出・調整)にするための画面で、メニューには出さない。
+  // BUG-111(2026-11-20): タブを使う権限は在庫・棚卸管理の権限で判定する(この画面の権限は使わない)
+  {
+    resource: "inventory_temporary_holdings",
+    name: "一時保管",
+    category: "daily_work",
+    icon: "📦",
+    path: "/inventory/audit",
+    hideFromMenu: true,
   },
 
   // 3. 経理・統制

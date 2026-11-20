@@ -54,3 +54,41 @@ export function computeNextStages(
   }
   return result;
 }
+
+// REQ-013: 「未起票」の工程。案件が通る流れ(販売・購買。購買は computeNextStages と同じ条件)のうち、起点より後で伝票が無い工程。
+// 入荷指示・出荷指示は任意の工程(自社倉庫では発行しないことがある)のため、未起票にしない。
+// 見積起点の案件(受注が無い)は受注だけを未起票にする。失注の見積(REQ-015)の案件は未起票を出さない
+const OPTIONAL_STAGES: ReadonlySet<ProgressStageKey> = new Set(["shipment_instruction", "receipt_instruction"]);
+
+function unissuedAfter(
+  chain: readonly ProgressStageKey[],
+  startIndex: number,
+  present: (key: ProgressStageKey) => boolean,
+): ProgressStageKey[] {
+  if (startIndex < 0) return [];
+  return chain.slice(startIndex + 1).filter((key) => !present(key) && !OPTIONAL_STAGES.has(key));
+}
+
+export function computeUnissuedStages(
+  rootKind: ProgressRootKind,
+  present: (key: ProgressStageKey) => boolean,
+  options: { quoteLost?: boolean } = {},
+): NextStage[] {
+  const result: NextStage[] = [];
+  const salesRooted = rootKind === "sales_order" || rootKind === "quote";
+  if (rootKind === "quote") {
+    if (!options.quoteLost && !present("sales_order")) result.push({ chain: "sales", stageKey: "sales_order" });
+  } else if (rootKind === "sales_order") {
+    for (const stageKey of unissuedAfter(SALES_CHAIN, SALES_CHAIN.indexOf("sales_order"), present)) {
+      result.push({ chain: "sales", stageKey });
+    }
+  }
+  if (!salesRooted || PURCHASE_CHAIN.some(present)) {
+    // 購買起点は起点の工程から、販売起点は購買側で最初に伝票がある工程から後ろを見る
+    const start = salesRooted ? PURCHASE_CHAIN.findIndex(present) : PURCHASE_CHAIN.indexOf(rootKind as ProgressStageKey);
+    for (const stageKey of unissuedAfter(PURCHASE_CHAIN, start, present)) {
+      result.push({ chain: "purchase", stageKey });
+    }
+  }
+  return result;
+}

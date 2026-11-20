@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { useSearchParams } from "next/navigation";
@@ -42,7 +42,6 @@ export default function AdminWarehousesPage() {
     isWarehouseWfEnabled ? "temporary" : "active",
   );
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [contactsModalTarget, setContactsModalTarget] =
@@ -88,6 +87,8 @@ export default function AdminWarehousesPage() {
     status: filterStatus,
     id: searchId,
     name: searchName,
+    // REQ-005: 倉庫マスタでは直送用の倉庫(区分「直送」)も出す(他の画面の倉庫の選択肢には出ない)
+    includeDirect: "true",
   });
 
   const {
@@ -270,25 +271,24 @@ export default function AdminWarehousesPage() {
           </span>
           <Button
             size="sm"
-            onClick={async () => {
-              if (showForm) {
-                if ((await guard.confirmDiscard())) form.handleCloseForm();
-              } else {
-                setShowForm(true);
-              }
-            }}
+            onClick={() => setShowForm(true)}
           >
-            {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </Button>
         </div>
       </div>
 
       {/* 5. フォーム ＆ CSVインポートパネル */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={form.editingId ? "倉庫の編集" : "倉庫の新規登録・CSVインポート"}
+          onClose={form.handleCloseForm}
+          error={error}
+          message={message}
         >
+          {() => (
+            <>
           <WarehouseForm
             form={form}
             canCreate={canCreate}
@@ -308,7 +308,9 @@ export default function AdminWarehousesPage() {
             isWarehouseWfEnabled={isWarehouseWfEnabled}
             onImport={handleImportCsvFile}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* 6. データ一覧テーブル */}

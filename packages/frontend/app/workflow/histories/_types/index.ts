@@ -56,6 +56,8 @@ export interface WorkflowHistoryTask {
   performedAt: string | null;
   approverName?: string | null;
   snapshotNew: HistorySnapshot;
+  // BUG-089: プレビューの中の番号の名前(「種類:番号」→名前)
+  displayNames?: Record<string, string>;
   snapshotOld: HistorySnapshot;
   parentStatus?: string;
   flowProgress?: FlowStepProgress[];

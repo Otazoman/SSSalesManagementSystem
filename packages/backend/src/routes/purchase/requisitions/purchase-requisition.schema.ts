@@ -105,6 +105,9 @@ export const PurchaseRequisitionPayloadSchema = v.looseObject({
   partnerInputType: v.optional(v.picklist(["MASTER", "DIRECT"]), "MASTER"),
   // J-2-e(2026-09-13ユーザー確認済み): 勘定科目欄を廃止しプロジェクトに置き換えた。ヘッダー1件につき1つ
   projectId: optionalString,
+  // REQ-005: 直送の指定(受注から作成した場合のみ)。発注に引き継ぐ
+  isDirectShipment: v.optional(v.boolean()),
+  directSalesOrderId: optionalString,
   // 見積のsalesPersonEmployeeNumber/inputPersonEmployeeNumberと同じ2担当者分離。
   // applicantIdは既存列(従来はログイン操作者固定)だが、見積と同様に明示指定できるようにする
   applicantId: optionalString,

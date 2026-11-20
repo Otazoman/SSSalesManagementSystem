@@ -56,6 +56,9 @@ export interface PurchaseOrderRecord {
   orderDate: string;
   status: PurchaseOrderStatus;
   projectId?: string | null;
+  // REQ-005: 直送の指定と、直送する受注
+  isDirectShipment?: boolean;
+  directSalesOrderId?: string | null;
   totalAmount: number;
   taxAmount?: number | null;
   memo: string | null;
@@ -66,6 +69,8 @@ export interface PurchaseOrderRecord {
   companyFax?: string | null;
   deliveryDate?: string | null;
   deliveryPlace?: string | null;
+  // REQ-009: 納品場所の所在地(deliveryPlace は納品場所名)
+  deliveryPlaceAddress?: string | null;
   // 新規要望(2026-09-23): 納品場所の「拠点用」「倉庫用」選択(いずれか一方、手入力deliveryPlaceと併用可)
   deliveryLocationId?: string | null;
   deliveryWarehouseId?: string | null;
@@ -162,6 +167,8 @@ export interface SourceRequisitionItem {
   unitCode: string | null;
   taxCategoryCode: string | null;
   memo?: string | null;
+  // BUG-116: 受注から作った購買申請の明細は受注明細につながる。発注へ引き継がないと直送完了できない
+  salesOrderItemId?: string | null;
 }
 
 export interface PurchaseOrderPrefillData {
@@ -174,4 +181,10 @@ export interface PurchaseOrderPrefillData {
   items: PurchaseOrderItemRecord[];
   // 追加要望対応: 引き継ぎ元(購買申請・過去の発注)のプロジェクトを新規発注へ引き継ぐ
   projectId?: string | null;
+  // REQ-005: 受注から作成した場合の直送の指定と、直送先(発注書の納品場所に入れる)
+  isDirectShipment?: boolean;
+  directSalesOrderId?: string | null;
+  deliveryPlace?: string | null;
+  // REQ-009: 納品場所の所在地(deliveryPlace は納品場所名)
+  deliveryPlaceAddress?: string | null;
 }

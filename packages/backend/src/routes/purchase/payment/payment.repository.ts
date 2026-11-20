@@ -34,6 +34,13 @@ export class PaymentRepository {
     this.db = drizzle(d1, { schema });
   }
 
+  // REQ-026: 承認のアダプター(workflow-engine)から、取得済みの drizzle を使って作る
+  static fromDb(db: ReturnType<typeof drizzle<typeof schema>>): PaymentRepository {
+    const repo: PaymentRepository = Object.create(PaymentRepository.prototype);
+    repo.db = db;
+    return repo;
+  }
+
   async getFallbackOperatorId(c: Context<{ Bindings: Env }>): Promise<string> {
     return resolveOperatorEmployeeNumber(c, this.db);
   }
@@ -275,12 +282,32 @@ export class PaymentRepository {
     await this.db.insert(schema.paymentDisbursements).values(data);
   }
 
+  // REQ-018: 消込額は承認済みの支払だけを合計する(承認機能が OFF の時は全て承認済み)
   async sumReconciledAmount(paymentHeaderId: string): Promise<number> {
+    return this.sumDisbursementAmount(paymentHeaderId, "APPROVED");
+  }
+
+  // REQ-018: 承認申請中の支払の合計(未消込額から引いて、二重に記録しないようにする)
+  async sumPendingAmount(paymentHeaderId: string): Promise<number> {
+    return this.sumDisbursementAmount(paymentHeaderId, "PENDING");
+  }
+
+  private async sumDisbursementAmount(paymentHeaderId: string, approvalStatus: string): Promise<number> {
     const rows = await this.db
       .select({ total: sum(schema.paymentDisbursements.amount) })
       .from(schema.paymentDisbursements)
-      .where(eq(schema.paymentDisbursements.paymentHeaderId, paymentHeaderId));
+      .where(
+        and(
+          eq(schema.paymentDisbursements.paymentHeaderId, paymentHeaderId),
+          eq(schema.paymentDisbursements.approvalStatus, approvalStatus),
+        ),
+      );
     return Number(rows[0]?.total || 0);
+  }
+
+  // REQ-018: 承認の申請を作れなかった時に、記録した支払を取り消す
+  async deleteDisbursement(id: string) {
+    await this.db.delete(schema.paymentDisbursements).where(eq(schema.paymentDisbursements.id, id));
   }
 
   // --- CSVエクスポート用 ---

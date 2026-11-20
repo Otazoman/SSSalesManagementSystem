@@ -62,6 +62,8 @@ export interface ProgressRow {
   stageStatuses: Record<ProgressStageKey, ProgressStageStatus>;
   caseState: "COMPLETED" | "IN_PROGRESS";
   nextSteps: ProgressNextStep[];
+  // REQ-013: 未起票の工程と担当予定(以前の応答に無い時のため任意)
+  unissuedSteps?: ProgressNextStep[];
   // この案件に設定済みの個別割当(工程キー→社員番号と氏名)
   assignments: Partial<Record<ProgressStageKey, { employeeNumber: string; name: string }>>;
 }

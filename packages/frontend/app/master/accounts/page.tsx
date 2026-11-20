@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { useSearchParams } from "next/navigation";
 import { usePagePermissions } from "../../hooks/use-page-permission";
@@ -84,10 +84,6 @@ export default function AdminAccountsPage() {
     setShowForm(false);
   };
 
-  const guard = useDiscardGuard(showForm);
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
 
   // 💡 差戻し履歴画面の「修正して再提出」からの遷移(?editId=xxx)を受けて自動的に編集フォームを開く
   // (以前は単位マスタ等に無く、差戻し修正が正しく該当レコードを開けない不具合があった。
@@ -180,28 +176,33 @@ export default function AdminAccountsPage() {
             件
           </span>
           <button
-            onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-            disabled={!canCreate && !showForm}
+            onClick={() => setShowForm(true)}
+            disabled={!canCreate}
             className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-              canCreate || showForm
+              canCreate
                 ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                 : "bg-slate-300 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </button>
         </div>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingAccount ? "勘定科目の編集" : "勘定科目の新規登録・CSVインポート"}
+          onClose={handleCloseForm}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <>
           <AccountForm
             editingAccount={editingAccount}
-            onCancelEdit={requestCloseForm}
+            onCancelEdit={() => void requestClose()}
             onSubmit={handleSubmit}
             canCreate={canCreate}
             canUpdate={canUpdate}
@@ -221,7 +222,9 @@ export default function AdminAccountsPage() {
             isSubmitting={isSubmitting}
             onImportCsv={handleImportCsv}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* 📋 データ一覧テーブル */}

@@ -4,6 +4,7 @@ import * as schema from "../db/schema";
 import { Env } from "../types/env";
 import { resolveEmployeeNumberByUserId } from "../platform/repository/fallback-operator";
 import { resolveConfiguredDocumentId } from "../platform/id/resolve-document-id";
+import { resolveFlowTarget } from "./target-adapters/registry";
 
 interface StartWorkflowParams {
   targetType: string;
@@ -35,6 +36,19 @@ interface StartWorkflowParams {
 
 export const WorkflowEngine = {
   /**
+   * REQ-011(2): この申請の種類に、有効な承認フローが1つでもあるか(金額は問わない)。
+   * 「承認フローが無ければ承認なしですぐ確定する」種類(一時保管)が、申請を作る前に確かめる。他の種類の動きは変えない
+   */
+  async hasActiveFlow(db: any, targetType: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: schema.approvalFlows.id })
+      .from(schema.approvalFlows)
+      .where(and(eq(schema.approvalFlows.requestType, targetType), eq(schema.approvalFlows.isActive, true)))
+      .limit(1);
+    return rows.length > 0;
+  },
+
+  /**
    * 💡 ワークフローの開始
    */
   async startWorkflow(
@@ -64,12 +78,18 @@ export const WorkflowEngine = {
         ),
       );
 
+    // BUG-103: 承認フローはメニュー単位。伝票を作るメニューのフローを探し、伝票の種類(documentKind)を分岐条件に渡す
+    const flowTarget = await resolveFlowTarget(db, params.targetType, params.targetId);
+    const matchPayload = {
+      ...(params.matchPayload ?? {}),
+      ...(flowTarget.documentKind ? { documentKind: flowTarget.documentKind } : {}),
+    };
     const amountMatchedFlows = await db
       .select()
       .from(schema.approvalFlows)
       .where(
         and(
-          eq(schema.approvalFlows.requestType, params.targetType),
+          eq(schema.approvalFlows.requestType, flowTarget.requestType),
           eq(schema.approvalFlows.isActive, true),
           lte(schema.approvalFlows.minAmount, checkAmount),
           gte(schema.approvalFlows.maxAmount, checkAmount),
@@ -78,12 +98,12 @@ export const WorkflowEngine = {
 
     const flow = this.pickBestMatchingFlow(
       amountMatchedFlows,
-      params.matchPayload,
+      matchPayload,
     );
     if (!flow) {
       return {
         success: false,
-        message: `条件(申請種別: ${params.targetType}, 金額: ${checkAmount})に合致する有効な承認フローが定義されていません`,
+        message: `条件(申請種別: ${flowTarget.requestType}, 金額: ${checkAmount})に合致する有効な承認フローが定義されていません`,
       };
     }
 

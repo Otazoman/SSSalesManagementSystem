@@ -1,0 +1,1 @@
+ALTER TABLE `item_shipment_headers` ADD `direct_receipt_header_id` text REFERENCES item_receipt_headers(id);

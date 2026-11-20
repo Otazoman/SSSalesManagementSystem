@@ -45,6 +45,7 @@ export class PurchaseOrderCsvService {
       "companyFax",
       "deliveryDate",
       "deliveryPlace",
+      "deliveryPlaceAddress",
       "paymentTerms",
       "purchasePersonEmployeeNumber",
       "inputPersonEmployeeNumber",
@@ -90,6 +91,7 @@ export class PurchaseOrderCsvService {
         csvField(`${o.companyFax || ""}`),
         csvField(`${o.deliveryDate || ""}`),
         csvField(o.deliveryPlace),
+        csvField(o.deliveryPlaceAddress),
         csvField(o.paymentTerms),
         csvField(`${o.purchasePersonEmployeeNumber || ""}`),
         csvField(`${o.inputPersonEmployeeNumber || ""}`),
@@ -143,6 +145,8 @@ export class PurchaseOrderCsvService {
     const idxCompanyFax = getIdx(["companyfax", "company_fax"]);
     const idxDeliveryDate = getIdx(["deliverydate", "delivery_date"]);
     const idxDeliveryPlace = getIdx(["deliveryplace", "delivery_place"]);
+    // REQ-009: 納品場所の所在地(列が無い CSV はそのまま取り込める)
+    const idxDeliveryPlaceAddress = getIdx(["deliveryplaceaddress", "delivery_place_address"]);
     const idxPaymentTerms = getIdx(["paymentterms", "payment_terms"]);
     const idxPurchasePerson = getIdx([
       "purchasepersonemployeenumber",
@@ -244,6 +248,7 @@ export class PurchaseOrderCsvService {
           companyFax: getCellVal(idxCompanyFax),
           deliveryDate: getCellVal(idxDeliveryDate),
           deliveryPlace: getCellVal(idxDeliveryPlace),
+          deliveryPlaceAddress: getCellVal(idxDeliveryPlaceAddress),
           paymentTerms: getCellVal(idxPaymentTerms),
           purchasePersonEmployeeNumber: getCellVal(idxPurchasePerson) || opId,
           inputPersonEmployeeNumber: getCellVal(idxInputPerson) || opId,
@@ -284,10 +289,12 @@ export class PurchaseOrderCsvService {
                 getCellVal(idxRequestedDeliveryDate),
                 "requestedDeliveryDate",
               ),
-              answeredDeliveryDate: normalizeCsvDate(
-                getCellVal(idxAnsweredDeliveryDate),
-                "answeredDeliveryDate",
-              ),
+              // REQ-020: 回答納期が空で、受注とつながらない明細は、希望納期を回答納期に入れる(画面と同じ規則)
+              answeredDeliveryDate:
+                normalizeCsvDate(getCellVal(idxAnsweredDeliveryDate), "answeredDeliveryDate") ??
+                (getCellVal(idxSalesOrderItemId)
+                  ? null
+                  : normalizeCsvDate(getCellVal(idxRequestedDeliveryDate), "requestedDeliveryDate")),
               salesOrderItemId: getCellVal(idxSalesOrderItemId),
               purchaseRequestItemId: getCellVal(idxPurchaseRequestItemId),
             },

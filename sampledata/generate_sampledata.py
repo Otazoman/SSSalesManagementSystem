@@ -187,8 +187,11 @@ user_rows = []
 for emp, name, dept, role in USERS:
     first = emp not in seen
     seen.add(emp)
-    user_rows.append((emp, name, f"{emp.lower()}@example.com", dept, role, PW if first else ""))
-write("users_import.csv", ["employeeNumber", "name", "email", "departmentId", "roleId", "passwordRaw"], user_rows)
+    # 通知方法はメール。ログイン時の OTP(REQ-004)は OFF(ON にするには会社設定のメール送信の設定が必要なため)
+    user_rows.append((emp, name, f"{emp.lower()}@example.com", dept, role, PW if first else "", "", "email", "false"))
+write("users_import.csv",
+      ["employeeNumber", "name", "email", "departmentId", "roleId", "passwordRaw",
+       "slackUserId", "notificationChannel", "loginOtpEnabled"], user_rows)
 
 # ---------------------------------------------------------------- 倉庫・ロケーション
 WAREHOUSES = [
@@ -357,40 +360,74 @@ def flow(name, rtype, steps, mn=0, mx=0, mf="", mv=""):
 
 
 REQ = ("users", "", "申請", "")
-flow("倉庫マスタ登録", "master_warehouses", [REQ, ("manager", "0004", "物流部確認", "物流部の課長による確認")])
-flow("勘定科目マスタ", "master_accounts", [REQ, ("finance_checker", "0005", "経理確認", "経理担当による確認"), ("generalmanager", "0005", "経理部承認", "経理部長による最終承認")])
-flow("取引先マスタ登録", "master_partners", [REQ, ("manager", "", "課長承認", "申請者の所属課の課長による確認"), ("manager", "0002", "営業部確認", "営業部の課長による確認")])
-flow("標準商品マスタ登録", "master_products", [REQ, ("approver", "", "担当承認", "承認担当による内容確認")])
-flow("商品単価マスタ登録", "master_prices", [REQ, ("manager", "", "課長承認", ""), ("generalmanager", "", "部長承認", "単価変更の最終承認")])
-flow("標準見積(100万円未満)", "sales_quotes", [("users", "", "作成・申請", ""), ("manager", "", "課長承認", "")], 0, 1000000)
-flow("標準見積(1000万円未満)", "sales_quotes", [("users", "", "作成・申請", ""), ("manager", "", "一次承認", ""), ("generalmanager", "", "二次承認", "")], 1000000, 10000000)
-flow("購買申請(通常)", "purchase_requisitions", [REQ, ("manager", "", "課長承認", "購買内容の確認")])
-flow("購買申請(前払)", "purchase_requisitions", [REQ, ("manager", "", "課長承認", ""), ("generalmanager", "0003", "購買部承認", "前払は購買部長の承認を必須にする")], 0, 0, "requestType", "PREPAYMENT")
-flow("発注申請", "purchase_orders", [REQ, ("generalmanager", "0003", "購買部承認", "発注内容の最終確認")])
-flow("単位マスタ登録", "master_units", [REQ, ("manager", "", "課長承認", "")])
-flow("ロケーションマスタ登録", "master_locations", [REQ, ("manager", "0041", "倉庫管理課承認", "")])
-flow("取引先担当者マスタ登録", "master_contacts", [REQ, ("manager", "", "課長承認", "")])
-flow("部品構成(BOM)マスタ登録", "master_structures", [REQ, ("approver", "", "技術承認", "")])
-flow("受注申請(高額)", "sales_orders", [("users", "", "作成・申請", ""), ("manager", "", "一次承認", ""), ("generalmanager", "", "二次承認", "")], 1000000, 0)
-flow("棚卸計上申請", "inventory_audit", [REQ, ("manager", "0041", "倉庫責任者承認", "")])
+# 2026-11-15: 取り込むサンプルのユーザー・ロール・部署(users_import.csv・roles_import.csv・departments_import.csv)で、
+# 全ての段の承認者が見つかるようにした(承認者は、段の部署が空なら申請者の部署、指定ならその部署で、ロールを持つ人)。
+#   部長(generalmanager): 営業部 0002 の 山田。課長(manager): 営業第一課 0021 の 佐藤、購買課 0031 の 田中。
+#   チーフ(teaf): 倉庫管理課 0041 の 渡辺。経理確認者(finance_checker): 経理部 0005 の 小林。承認者(approver): 総務部 0001 の 加藤。
+# 1段目の「申請」(一般社員 users)は、申請者が一般社員なら自動で通過する(申請は一般社員が行う想定)。
+# 上限金額は「その金額まで」(0 にすると 0円の申請にしか合わない)。伝票は 999,999,999 円までを対象にする
+MAX = 999999999
+SALES_MGR = ("manager", "0021", "営業課長承認", "営業第一課の課長による確認")
+SALES_GM = ("generalmanager", "0002", "営業部長承認", "営業部長による最終承認")
+PURCHASE_MGR = ("manager", "0031", "購買課長承認", "購買課の課長による確認")
+WAREHOUSE_CHIEF = ("teaf", "0041", "倉庫管理課承認", "倉庫管理課のチーフによる確認")
+FINANCE = ("finance_checker", "0005", "経理確認", "経理担当による確認")
+APPROVER = ("approver", "0001", "担当承認", "総務部の承認担当による内容確認")
+
+# マスタ
+flow("倉庫マスタ登録", "master_warehouses", [REQ, WAREHOUSE_CHIEF])
+flow("勘定科目マスタ", "master_accounts", [REQ, FINANCE])
+flow("取引先マスタ登録", "master_partners", [REQ, SALES_MGR, SALES_GM])
+flow("取引先担当者マスタ登録", "master_contacts", [REQ, SALES_MGR])
+flow("標準商品マスタ登録", "master_products", [REQ, APPROVER])
+flow("商品単価マスタ登録", "master_prices", [REQ, SALES_MGR, ("generalmanager", "0002", "営業部長承認", "単価変更の最終承認")])
+flow("部品構成(BOM)マスタ登録", "master_structures", [REQ, ("approver", "0001", "技術承認", "")])
+flow("単位マスタ登録", "master_units", [REQ, APPROVER])
+flow("ロケーションマスタ登録", "master_locations", [REQ, WAREHOUSE_CHIEF])
+flow("プロジェクトマスタ登録", "master_projects", [REQ, SALES_MGR])
+flow("発注点・安全在庫の登録", "master_item_reorder_settings", [REQ, WAREHOUSE_CHIEF])
+# 販売
+flow("標準見積(100万円未満)", "sales_quotes", [("users", "", "作成・申請", ""), SALES_MGR], 0, 999999)
+flow("標準見積(1000万円未満)", "sales_quotes", [("users", "", "作成・申請", ""), SALES_MGR, SALES_GM], 1000000, 9999999)
+flow("標準見積(1000万円以上)", "sales_quotes", [("users", "", "作成・申請", ""), SALES_MGR, SALES_GM], 10000000, MAX)
+flow("受注申請(通常)", "sales_orders", [("users", "", "作成・申請", ""), SALES_MGR], 0, 999999)
+flow("受注申請(高額)", "sales_orders", [("users", "", "作成・申請", ""), SALES_MGR, SALES_GM], 1000000, MAX)
+flow("売上計上申請", "sales_invoices", [REQ, SALES_MGR, FINANCE], 0, MAX)
+flow("請求申請", "sales_billing", [REQ, SALES_MGR, FINANCE], 0, MAX)
+# BUG-103: 承認フローはメニュー単位。入金は「請求管理」のフローで、分岐条件 documentKind で請求と分ける
+flow("入金(請求への入金)", "sales_billing", [REQ, FINANCE], 0, MAX, "documentKind", "PAYMENT_RECEIPT")
+flow("入金(単体入金)", "sales_billing", [REQ, FINANCE], 0, MAX, "documentKind", "CASH_RECEIPT")
+# 購買
+flow("購買申請(通常)", "purchase_requisitions", [REQ, PURCHASE_MGR], 0, MAX)
+flow("購買申請(前払)", "purchase_requisitions", [REQ, PURCHASE_MGR, ("finance_checker", "0005", "経理確認", "前払は経理の確認を必須にする")], 0, MAX, "requestType", "PREPAYMENT")
+flow("発注申請", "purchase_orders", [REQ, PURCHASE_MGR], 0, MAX)
+flow("仕入計上申請", "purchase_receipts", [REQ, PURCHASE_MGR, FINANCE], 0, MAX)
+flow("支払の消込", "purchase_payment", [REQ, FINANCE], 0, MAX)
+# 在庫(BUG-103: メニュー単位。分岐条件の無いフローは、そのメニューの全ての伝票に使う)
+flow("入荷(入庫・入荷実績・入荷指示)", "inventory_receiving", [REQ, WAREHOUSE_CHIEF], 0, MAX)
+flow("出荷(出庫・出荷実績・出荷指示)", "inventory_shipping", [REQ, WAREHOUSE_CHIEF], 0, MAX)
+flow("在庫・棚卸(棚卸・品質区分変更・廃棄・返品)", "inventory_audit", [REQ, WAREHOUSE_CHIEF], 0, MAX)
 write("approval_flows_import_sample.csv",
       ["name", "requestType", "minAmount", "maxAmount", "isActive", "matchField", "matchValue", "approverRoleId", "targetDepartmentId", "stepName", "stepMemo"], FLOWS)
 
 # ---------------------------------------------------------------- 在庫(入庫 → 出庫 → 棚卸 → 廃棄 → 返品)。数量は整合する範囲で
-RECEIPTS = [  # headerId, date, invoiceNo, memo, item, wh, loc, lot, qty
-    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "ITEM-1001", "WH-002", "LOC-C-01", "LOT-260803", 400),
-    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "ITEM-1002", "WH-002", "LOC-C-02", "LOT-260803", 150),
-    ("RCPT-0002", "2026-08-04", "INV-B-0802", "部品の入庫", "ITEM-1003", "WH-001", "LOC-A-01", "LOT-260804", 300),
-    ("RCPT-0002", "2026-08-04", "INV-B-0802", "部品の入庫", "ITEM-1004", "WH-002", "LOC-C-03", "LOT-260804", 600),
-    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "ITEM-3001", "WH-001", "LOC-A-02", "LOT-260805", 100),
-    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "ITEM-3002", "WH-001", "LOC-A-03", "LOT-260805", 60),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品X)", "ITEM-2001", "WH-001", "LOC-B-01", "LOT-260810", 120),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Y)", "ITEM-2002", "WH-001", "LOC-B-01", "LOT-260810", 60),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Z)", "ITEM-2003", "WH-001", "LOC-A-03", "LOT-260810", 80),
-    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(オプション)", "ITEM-2004", "WH-001", "LOC-A-03", "LOT-260810", 40),
+# 仕入先(partnerId)は伝票ごとに1つ(ヘッダーの項目。同じ headerId の行には同じ仕入先を入れる)。
+# 仕入先からの入荷は、仕入の「対象検収」・検収書の宛先に使うため、発注・仕入単価の見本と同じ仕入先を入れる。
+# 組立完成品(社内で作ったもの)は仕入先なし。仕入先が異なる品目は伝票を分ける(RCPT-0002 と RCPT-0005)
+RECEIPTS = [  # headerId, date, invoiceNo, memo, partner, item, wh, loc, lot, qty
+    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "SUPP-0001", "ITEM-1001", "WH-002", "LOC-C-01", "LOT-260803", 400),
+    ("RCPT-0001", "2026-08-03", "INV-A-0801", "原材料の定期入庫", "SUPP-0001", "ITEM-1002", "WH-002", "LOC-C-02", "LOT-260803", 150),
+    ("RCPT-0002", "2026-08-04", "INV-B-0802", "部品の入庫", "SUPP-0002", "ITEM-1003", "WH-001", "LOC-A-01", "LOT-260804", 300),
+    ("RCPT-0005", "2026-08-04", "INV-C-0802", "部品の入庫", "SUPP-0003", "ITEM-1004", "WH-002", "LOC-C-03", "LOT-260804", 600),
+    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "SUPP-0004", "ITEM-3001", "WH-001", "LOC-A-02", "LOT-260805", 100),
+    ("RCPT-0003", "2026-08-05", "INV-D-0803", "商品の入庫", "SUPP-0004", "ITEM-3002", "WH-001", "LOC-A-03", "LOT-260805", 60),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品X)", "", "ITEM-2001", "WH-001", "LOC-B-01", "LOT-260810", 120),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Y)", "", "ITEM-2002", "WH-001", "LOC-B-01", "LOT-260810", 60),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(製品Z)", "", "ITEM-2003", "WH-001", "LOC-A-03", "LOT-260810", 80),
+    ("RCPT-0004", "2026-08-10", "", "組立完成品の入庫(オプション)", "", "ITEM-2004", "WH-001", "LOC-A-03", "LOT-260810", 40),
 ]
 write("stock_receipts_import_sample.csv",
-      ["headerId", "receivedDate", "supplierInvoiceNumber", "memo", "itemId", "warehouseId", "locationId", "lotNumber", "quantity"], RECEIPTS)
+      ["headerId", "receivedDate", "supplierInvoiceNumber", "memo", "partnerId", "itemId", "warehouseId", "locationId", "lotNumber", "quantity"], RECEIPTS)
 
 SHIPMENTS = [  # headerId, date, memo, loc, item, qty, lot, quality, partner
     ("SHIP-0001", "2026-08-20", "得意先Aへの出荷", "LOC-B-01", "ITEM-2001", 30, "", "", "CUST-0001"),

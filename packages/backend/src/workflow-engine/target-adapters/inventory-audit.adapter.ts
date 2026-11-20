@@ -90,6 +90,10 @@ async function getHistoryPreview({
 }
 
 export const inventoryAuditAdapter: TargetAdapter = {
+  // BUG-103: 棚卸は「在庫・棚卸管理」の承認フロー(品質区分変更・廃棄・返品と同じメニュー。documentKind で分けられる)
+  async resolveFlowTarget() {
+    return { requestType: "inventory_audit", documentKind: "AUDIT" };
+  },
   // BUG-049: 書き込みの結果を使う処理(書き込み直後の再集計など)や R2 の後始末を含むため、承認の書き込みとはまとめず、先に実行する
   requiresImmediateWrites: true,
   applyApproved,

@@ -46,6 +46,10 @@ export function SalesOrderPickerModal({
   // Item9 Phase6: 欠品自動提案①(受注紐付け方式)。trueの場合、受注選択をスキップして
   // 全承認済み受注を横断した欠品明細をそのままステップ2へ流し込む
   const [isAggregateMode, setIsAggregateMode] = useState(false);
+  // REQ-005: 欠品の明細だけを出すか、受注のすべての明細を出すか(直送など、欠品でなくても受注から作れるように)
+  const [itemScope, setItemScope] = useState<"BACKORDER" | "ALL">("BACKORDER");
+  // REQ-005: 直送(仕入先から得意先へ直接納品)。受注を1件選んだ時だけ指定できる
+  const [isDirectShipment, setIsDirectShipment] = useState(false);
   const [aggregateLoading, setAggregateLoading] = useState(false);
 
   useEffect(() => {
@@ -54,7 +58,7 @@ export function SalesOrderPickerModal({
     apiFetch<
       SourceSalesOrderSummary[] | ApiListResponse<SourceSalesOrderSummary>
     >(
-      `/api/sales-orders?status=APPROVED&hasBackorder=true${debouncedSearch ? `&title=${encodeURIComponent(debouncedSearch)}` : ""}`,
+      `/api/sales-orders?status=APPROVED${itemScope === "BACKORDER" ? "&hasBackorder=true" : ""}${debouncedSearch ? `&title=${encodeURIComponent(debouncedSearch)}` : ""}`,
     )
       .then((data) => {
         if (cancelled) return;
@@ -70,28 +74,37 @@ export function SalesOrderPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch]);
+  }, [debouncedSearch, itemScope]);
 
   const handleSelectOrder = async (order: SourceSalesOrderSummary) => {
     setError("");
     setSelectedOrder(order);
     setIsAggregateMode(false);
+    setIsDirectShipment(false);
     try {
       const detail = await apiFetch<{ items: SourceSalesOrderItem[] }>(
         `/api/sales-orders/${order.id}`,
       );
       const items = (detail.items || []).filter(
-        (item) => (item.backorderedQuantity || 0) > 0,
+        (item) => itemScope === "ALL" || (item.backorderedQuantity || 0) > 0,
       );
       setBackorderedItems(items);
       if (items.length === 0) {
-        setError("この受注には欠品(引当不足)の明細がありません");
+        setError(
+          itemScope === "ALL"
+            ? "この受注には明細がありません"
+            : "この受注には欠品(引当不足)の明細がありません",
+        );
       }
       const initialSelections: Record<string, BackorderItemSelectionState> = {};
       items.forEach((item) => {
         initialSelections[item.id] = {
           checked: true,
-          quantity: item.backorderedQuantity,
+          // REQ-005: 欠品があれば欠品数量、無ければ受注数量を初期値にする
+          quantity:
+            (item.backorderedQuantity || 0) > 0
+              ? item.backorderedQuantity
+              : item.quantity,
         };
       });
       setSelections(initialSelections);
@@ -114,6 +127,7 @@ export function SalesOrderPickerModal({
       setBackorderedItems(items);
       setSelectedOrder(null);
       setIsAggregateMode(true);
+      setIsDirectShipment(false);
       if (items.length === 0) {
         setError("現在、欠品(引当不足)の明細はありません");
       }
@@ -194,8 +208,10 @@ export function SalesOrderPickerModal({
     }
 
     onPrefill({
-      title: `${selectedOrder!.title || selectedOrder!.id}の欠品調達`,
-      memo: `(受注 ${selectedOrder!.id} の欠品調達)`,
+      title: `${selectedOrder!.title || selectedOrder!.id}${itemScope === "ALL" ? "の調達" : "の欠品調達"}`,
+      memo: `(受注 ${selectedOrder!.id} ${itemScope === "ALL" ? "からの調達" : "の欠品調達"})`,
+      isDirectShipment,
+      directSalesOrderId: isDirectShipment ? selectedOrder!.id : null,
       items,
     });
     onClose();
@@ -207,7 +223,7 @@ export function SalesOrderPickerModal({
         <>
           {step === "PICK_ITEMS" && isAggregateMode
             ? "🚨 全受注の欠品から購買申請を作成"
-            : "🔗 受注の欠品から購買申請を作成"}{" "}
+            : "🔗 受注から購買申請を作成"}{" "}
           {step === "PICK_ITEMS" && selectedOrder
             ? `(${selectedOrder.id})`
             : ""}
@@ -224,6 +240,31 @@ export function SalesOrderPickerModal({
 
       {step === "PICK_ORDER" && (
         <div className="flex-1 overflow-y-auto space-y-3">
+          <div
+            role="radiogroup"
+            aria-label="明細の範囲"
+            className="flex gap-4 text-xs font-bold text-slate-800"
+          >
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name="itemScope"
+                checked={itemScope === "BACKORDER"}
+                onChange={() => setItemScope("BACKORDER")}
+              />
+              欠品のみ
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name="itemScope"
+                checked={itemScope === "ALL"}
+                onChange={() => setItemScope("ALL")}
+              />
+              すべての明細(直送など)
+            </label>
+          </div>
+          {itemScope === "BACKORDER" && (
           <button
             type="button"
             onClick={() => void handleLoadAggregate()}
@@ -235,12 +276,13 @@ export function SalesOrderPickerModal({
               ? "読み込み中..."
               : "受注を指定せず、欠品明細をすべてまとめて表示"}
           </button>
+          )}
           <input
             type="text"
             placeholder="件名で絞り込み検索..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50 text-slate-900 focus:bg-white focus:border-indigo-600 focus:outline-none"
+            className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900 placeholder-slate-500 focus:border-indigo-600 focus:outline-none"
           />
           {loading ? (
             <p className="text-xs text-slate-600 text-center py-6">
@@ -248,7 +290,9 @@ export function SalesOrderPickerModal({
             </p>
           ) : orders.length === 0 ? (
             <p className="text-xs text-slate-600 text-center py-6">
-              欠品(引当不足)のある承認済み受注が見つかりません。
+              {itemScope === "ALL"
+                ? "承認済みの受注が見つかりません。"
+                : "欠品(引当不足)のある承認済み受注が見つかりません。"}
             </p>
           ) : (
             <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
@@ -277,24 +321,25 @@ export function SalesOrderPickerModal({
       {step === "PICK_ITEMS" && (
         <div className="flex-1 overflow-y-auto space-y-3">
           <div className="flex justify-between items-center">
-            <p className="text-[11px] text-slate-500">
-              欠品数量分の明細(数量は変更可能)を購買申請フォームへコピーします。まだ保存はされません。内容を確認・調整してから画面下部の保存操作で確定してください。
+            <p className="text-[11px] text-slate-600">
+              選んだ明細(数量は変更可能)を購買申請フォームへコピーします。まだ保存はされません。内容を確認・調整してから画面下部の保存操作で確定してください。
             </p>
             <button
               type="button"
               onClick={() => setStep("PICK_ORDER")}
-              className="text-[11px] font-bold text-slate-500 hover:text-slate-700 shrink-0 ml-2"
+              className="text-[11px] font-bold text-slate-700 hover:text-slate-900 shrink-0 ml-2"
             >
               {isAggregateMode ? "← 選び直す" : "← 受注を選び直す"}
             </button>
           </div>
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 border-b font-bold text-slate-500">
+              <thead className="bg-slate-50 border-b font-bold text-slate-700">
                 <tr>
                   <th className="p-2 w-10 text-center">選択</th>
                   {isAggregateMode && <th className="p-2 w-32">受注</th>}
                   <th className="p-2">品目</th>
+                  <th className="p-2 w-28 text-right">受注数量(欠品)</th>
                   <th className="p-2 w-28">調達数量</th>
                   <th className="p-2 w-28 text-right">受注単価</th>
                 </tr>
@@ -317,7 +362,7 @@ export function SalesOrderPickerModal({
                       <td className="p-2 font-mono text-[11px] text-indigo-600">
                         {item.salesOrderId}
                         {item.salesOrderTitle ? (
-                          <span className="block text-slate-500 font-sans">
+                          <span className="block text-slate-700 font-sans">
                             {item.salesOrderTitle}
                           </span>
                         ) : null}
@@ -325,6 +370,14 @@ export function SalesOrderPickerModal({
                     )}
                     <td className="p-2 font-semibold text-slate-700">
                       {item.itemName || item.itemId}
+                    </td>
+                    <td className="p-2 text-right font-mono text-slate-700">
+                      {item.quantity}
+                      {(item.backorderedQuantity || 0) > 0 && (
+                        <span className="text-red-700">
+                          ({item.backorderedQuantity})
+                        </span>
+                      )}
                     </td>
                     <td className="p-2">
                       <input
@@ -351,6 +404,22 @@ export function SalesOrderPickerModal({
               </tbody>
             </table>
           </div>
+          {!isAggregateMode && (
+            <label className="flex items-start gap-2 p-2.5 border border-slate-200 rounded-lg text-xs text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isDirectShipment}
+                onChange={(e) => setIsDirectShipment(e.target.checked)}
+                className="mt-0.5 cursor-pointer"
+              />
+              <span>
+                <span className="font-bold">直送にする</span>
+                <span className="block text-slate-600">
+                  仕入先から得意先へ直接納品します。この購買申請から発注を作る時に、直送の指定と受注の得意先・納品先を引き継ぎます。
+                </span>
+              </span>
+            </label>
+          )}
         </div>
       )}
 
@@ -359,7 +428,7 @@ export function SalesOrderPickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 border border-slate-300 text-slate-600 font-bold text-xs rounded hover:bg-slate-50"
+            className="px-3 py-1.5 border border-slate-300 bg-white text-slate-800 font-bold text-xs rounded hover:bg-slate-50"
           >
             キャンセル
           </button>

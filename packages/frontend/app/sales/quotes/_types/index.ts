@@ -28,7 +28,10 @@ export interface QuoteRecord {
   customerId: string;
   quoteDate: string;
   validUntil: string | null;
-  status: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PENDING_DELETION";
+  // REQ-015: LOST(失注)を足した
+  status: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PENDING_DELETION" | "LOST";
+  lostDate?: string | null;
+  lostReason?: string | null;
   totalAmount: number;
   taxAmount: number;
   memo: string | null;

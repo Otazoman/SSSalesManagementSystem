@@ -78,6 +78,11 @@ export function WarehouseTable({
                     🚚 外部倉庫
                   </span>
                 )}
+                {w.warehouseType === "DIRECT" && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                    📦 直送(自動作成)
+                  </span>
+                )}
               </div>
             </td>
             <td className="px-4 py-3">

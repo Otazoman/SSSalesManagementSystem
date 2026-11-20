@@ -129,11 +129,12 @@ export function useUnitApi({
   });
 
   // CSVインポート
-  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!canCreate || isSubmitting || isUnitWfEnabled) return;
+  // REQ-024: 取込に成功したら true を返す
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>): Promise<boolean> => {
+    if (!canCreate || isSubmitting || isUnitWfEnabled) return false;
     setError("");
     setMessage("");
-    await importCsv("/api/units/bulk-register", e);
+    return importCsv("/api/units/bulk-register", e);
   };
 
   // 編集をキャンセルしてリセット
@@ -161,12 +162,13 @@ export function useUnitApi({
 
   // フォーム送信 (Create または Update)。取引先マスタ(useCustomerForm.ts)と同じ4パターンの
   // 分岐(新規/変更 × 承認機能ON/OFF)を踏襲する。
-  const handleSubmit = async (e: React.SyntheticEvent) => {
+  // REQ-024: 保存に成功したら true を返す(画面は成功した時だけモーダルを閉じる)
+  const handleSubmit = async (e: React.SyntheticEvent): Promise<boolean> => {
     e.preventDefault();
 
-    if (editingUnit && !canUpdate) return;
-    if (!editingUnit && !canCreate) return;
-    if (isSubmitting) return;
+    if (editingUnit && !canUpdate) return false;
+    if (!editingUnit && !canCreate) return false;
+    if (isSubmitting) return false;
 
     setError("");
     setMessage("");
@@ -245,8 +247,10 @@ export function useUnitApi({
 
       handleCancelEdit();
       await syncUnits();
+      return true;
     } catch (err) {
       if (err instanceof Error) setError(err.message);
+      return false;
     } finally {
       setIsSubmitting(false);
     }

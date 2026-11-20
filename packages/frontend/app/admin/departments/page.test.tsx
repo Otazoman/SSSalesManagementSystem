@@ -87,7 +87,7 @@ describe("AdminDepartmentsPage", () => {
     expect(screen.getByText("🏢 組織・部署マスタ")).toBeInTheDocument();
   });
 
-  it("「新規部署登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規部署登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(fullPermissions());
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
     const Page = await importPage();
@@ -100,7 +100,7 @@ describe("AdminDepartmentsPage", () => {
     );
     expect(screen.getByText("新規部署・組織階層定義")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規部署・組織階層定義")).not.toBeInTheDocument();
   });
 

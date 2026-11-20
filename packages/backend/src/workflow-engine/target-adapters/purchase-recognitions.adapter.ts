@@ -118,6 +118,8 @@ async function applyApproved({ db, reqParent, userId, now, c }: ApplyApprovedPar
     companyTel: header.companyTel ?? null,
     companyFax: header.companyFax ?? null,
     paymentTerms: header.paymentTerms ?? null,
+    // BUG-074: 変更申請でプロジェクトを変えられるようにする(projectId を含まない以前の申請では変えない)
+    ...(header.projectId !== undefined ? { projectId: header.projectId || null } : {}),
     updatedBy: approverEmployeeNumber,
     updatedAt: now,
   };
@@ -222,6 +224,10 @@ async function getHistoryPreview({
 }
 
 export const purchaseRecognitionsAdapter: TargetAdapter = {
+  // BUG-103: 仕入は「仕入管理」(purchase_receipts)の承認フローを使う
+  async resolveFlowTarget() {
+    return { requestType: "purchase_receipts", documentKind: "PURCHASE_RECOGNITION" };
+  },
   resolveAmount,
   applyApproved,
   applyRemanded,

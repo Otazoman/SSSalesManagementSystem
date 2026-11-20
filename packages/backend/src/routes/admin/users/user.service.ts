@@ -6,6 +6,7 @@ import { LoginStateRepository } from "../../../platform/auth/login-state.reposit
 import { generateInitialPassword, getPasswordPolicy } from "../../../platform/auth/password-policy";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
+import { canSendLoginOtpByEmail } from "../../../platform/auth/login-otp";
 import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
 import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
@@ -111,6 +112,16 @@ export class UserService {
   }
 
   // 💡 操作を行っているユーザーがシステム管理者(admin)であるか判定するヘルパー
+  // REQ-004: ログイン時の OTP を ON にできるか(メールで送れること。Slack に送れない時もメールに切り替えるため)
+  private async assertCanSendLoginOtp(email: string, rowLabel = "") {
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS)) ?? {};
+    if (!canSendLoginOtpByEmail(config, email)) {
+      throw new BadRequestError(
+        `${rowLabel}ログイン時のOTPを有効にするには、メールアドレスと、会社設定のメール送信(SMTPのユーザー名・パスワード)の設定が必要です`,
+      );
+    }
+  }
+
   private async checkIsSystemAdmin(operatorUserId: string): Promise<boolean> {
     const now = new Date();
     const matrixRels = await this.repo.fetchUserMatrixRelations(now);
@@ -176,6 +187,7 @@ export class UserService {
           isActive: u.isActive,
           slackUserId: u.slackUserId ?? null,
           notificationChannel: u.notificationChannel ?? "email",
+          loginOtpEnabled: Boolean(u.loginOtpEnabled),
           relations: mappedRelations,
         };
       })
@@ -216,6 +228,8 @@ export class UserService {
     if (notificationChannel === "slack" && !slackUserId) {
       throw new BadRequestError("通知方法を「Slack」にする場合はSlackメンバーIDの入力が必要です");
     }
+    const loginOtpEnabled = input.loginOtpEnabled === true;
+    if (loginOtpEnabled) await this.assertCanSendLoginOtp(input.email);
     const now = new Date();
     const newUserId = crypto.randomUUID();
     // BUG-046: 管理者が入力したパスワードは、会社設定のルールを確かめずにそのまま使う。
@@ -235,6 +249,7 @@ export class UserService {
         isActive: true,
         slackUserId,
         notificationChannel,
+        loginOtpEnabled,
         createdAt: now,
         updatedAt: now,
       },
@@ -305,6 +320,8 @@ export class UserService {
       "passwordRaw",
       "slackUserId",
       "notificationChannel",
+      // REQ-004: ログイン時の OTP(true / false)
+      "loginOtpEnabled",
     ];
     const rows: string[] = [];
 
@@ -315,14 +332,15 @@ export class UserService {
       const pass = `""`;
       const slackUserId = csvField(u.slackUserId || "");
       const channel = csvField(u.notificationChannel || "email");
+      const loginOtp = csvField(u.loginOtpEnabled ? "true" : "false");
 
       if (u.relations.length === 0) {
-        rows.push([emp, name, email, `""`, `""`, pass, slackUserId, channel].join(","));
+        rows.push([emp, name, email, `""`, `""`, pass, slackUserId, channel, loginOtp].join(","));
       } else {
         u.relations.forEach((rel) => {
           const deptId = csvField(rel.departmentId || "");
           const roleId = csvField(rel.roleId || "");
-          rows.push([emp, name, email, deptId, roleId, pass, slackUserId, channel].join(","));
+          rows.push([emp, name, email, deptId, roleId, pass, slackUserId, channel, loginOtp].join(","));
         });
       }
     });
@@ -339,11 +357,34 @@ export class UserService {
 
     // 追加要望B: 出力形式は末尾にSlack列(slackUserId,notificationChannel)を持つ。
     // 従来の6列形式のCSVも受け付け、その場合はSlack設定を変更しない(後方互換)
+    // REQ-004: さらに末尾にログイン時のOTPの列(loginOtpEnabled)を持つ形式も受け付ける(無い形式では OTP の設定を変更しない)
     const LEGACY_HEADER = "employeeNumber,name,email,departmentId,roleId,passwordRaw";
+    const SLACK_HEADER = `${LEGACY_HEADER},slackUserId,notificationChannel`;
     const headerLine = allRows[0]?.join(",");
-    const hasSlackColumns = headerLine === `${LEGACY_HEADER},slackUserId,notificationChannel`;
+    const hasOtpColumn = headerLine === `${SLACK_HEADER},loginOtpEnabled`;
+    const hasSlackColumns = headerLine === SLACK_HEADER || hasOtpColumn;
     if (allRows.length <= 1 || (headerLine !== LEGACY_HEADER && !hasSlackColumns)) {
       throw new BadRequestError("CSVヘッダー書式が正しくありません");
+    }
+
+    // REQ-004: OTP の列の値(true/false・1/0・ON/OFF。空欄は OFF)。全行を書き込む前に検証する
+    const parseLoginOtp = (raw: string | undefined, index: number): boolean => {
+      const value = (raw || "").trim().toLowerCase();
+      if (["true", "1", "on"].includes(value)) return true;
+      if (["", "false", "0", "off"].includes(value)) return false;
+      throw new BadRequestError(`${index + 2}行目: loginOtpEnabledは true または false を指定してください`);
+    };
+    if (hasOtpColumn) {
+      const config = (await getCompanySettings(this.env.COMPANY_SETTINGS)) ?? {};
+      allRows.slice(1).forEach((columns, index) => {
+        const [employeeNumber, , email, , , , , , loginOtpRaw] = columns;
+        if (!employeeNumber || employeeNumber === "admin") return;
+        if (parseLoginOtp(loginOtpRaw, index) && !canSendLoginOtpByEmail(config, email)) {
+          throw new BadRequestError(
+            `${index + 2}行目: ログイン時のOTPを有効にするには、メールアドレスと、会社設定のメール送信(SMTPのユーザー名・パスワード)の設定が必要です`,
+          );
+        }
+      });
     }
 
     // Slack列がある場合は、書き込み前に全行を検証する(途中で失敗して一部だけ反映されるのを防ぐ)
@@ -379,6 +420,7 @@ export class UserService {
         passwordRaw,
         slackUserIdRaw,
         channelRaw,
+        loginOtpRaw,
       ] = columns;
 
       if (!employeeNumber || !email || !name || employeeNumber === "admin")
@@ -398,6 +440,7 @@ export class UserService {
           ? {
               slackUserId: (slackUserIdRaw || "").trim() || null,
               notificationChannel: ((channelRaw || "").trim() || "email") as "email" | "slack",
+              ...(hasOtpColumn ? { loginOtpEnabled: parseLoginOtp(loginOtpRaw, 0) } : {}),
             }
           : undefined,
       );
@@ -451,6 +494,12 @@ export class UserService {
     if (nextChannel === "slack" && !nextSlackUserId) {
       throw new BadRequestError("通知方法を「Slack」にする場合はSlackメンバーIDの入力が必要です");
     }
+    // REQ-004: OTP を使う状態で保存する場合は、メールで送れることを確かめる(Slack に送れない時の切り替え先のため)
+    const nextLoginOtpEnabled =
+      input.loginOtpEnabled !== undefined ? input.loginOtpEnabled : Boolean(current.loginOtpEnabled);
+    if (nextLoginOtpEnabled && (input.loginOtpEnabled === true || input.email !== current.email)) {
+      await this.assertCanSendLoginOtp(input.email);
+    }
 
     const now = new Date();
     const oldSnapshot = { ...current, passwordHash: "[REDACTED]" };
@@ -462,6 +511,7 @@ export class UserService {
     };
     if (input.slackUserId !== undefined) updateData.slackUserId = nextSlackUserId;
     if (input.notificationChannel !== undefined) updateData.notificationChannel = nextChannel;
+    if (input.loginOtpEnabled !== undefined) updateData.loginOtpEnabled = nextLoginOtpEnabled;
     if (input.password)
       updateData.passwordHash = await hashPassword(input.password);
 
@@ -483,6 +533,7 @@ export class UserService {
       isActive: input.isActive,
       slackUserId: nextSlackUserId,
       notificationChannel: nextChannel,
+      loginOtpEnabled: nextLoginOtpEnabled,
       relations: input.relations,
     });
   }

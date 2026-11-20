@@ -28,12 +28,12 @@ const optionalNumber = v.optional(
 
 // Item9 Phase5: OTPダウンロードリクエスト(外部公開エンドポイント用、quotes/sales_ordersと同型)
 export const RequestDownloadOtpSchema = v.object({
-  email: v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください")),
+  email: v.optional(v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください"))),
 });
 export type RequestDownloadOtpInput = v.InferOutput<typeof RequestDownloadOtpSchema>;
 
 export const VerifyDownloadOtpSchema = v.object({
-  email: v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください")),
+  email: v.optional(v.pipe(v.string(), v.email("有効なメールアドレス形式で入力してください"))),
   otp: v.pipe(v.string(), v.regex(/^\d{4,8}$/, "確認コードは4〜8桁の数字で入力してください")),
 });
 export type VerifyDownloadOtpInput = v.InferOutput<typeof VerifyDownloadOtpSchema>;
@@ -105,6 +105,20 @@ export const UpdateDeliveryDatesSchema = v.object({
 });
 export type UpdateDeliveryDatesInput = v.InferOutput<typeof UpdateDeliveryDatesSchema>;
 
+// REQ-005 第2段階: 直送の発注の「直送完了」(直送用の倉庫への入庫と、得意先への出庫を同時に確定する)
+export const DirectShipmentCompletionSchema = v.object({
+  completedDate: v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/, "完了日はYYYY-MM-DD形式で入力してください")),
+  items: v.array(
+    v.object({
+      orderItemId: v.string(),
+      quantity: v.pipe(v.number(), v.minValue(0, "数量は0以上で入力してください")),
+    }),
+  ),
+  memo: optionalString,
+  applicantDepartmentSurrogateId: optionalString,
+});
+export type DirectShipmentCompletionInput = v.InferOutput<typeof DirectShipmentCompletionSchema>;
+
 // 添付ファイルの型。quote_attachments/purchase_request_attachmentsと同じR2/外部URL(共有リンク)両対応
 export const PurchaseOrderAttachmentInputSchema = v.looseObject({
   // 2026-10-18: 既存の添付のID(保存時に行を保ったまま更新するため。新しい添付は無し)
@@ -126,6 +140,9 @@ export const PurchaseOrderPayloadSchema = v.looseObject({
   orderDate: v.string(),
   status: optionalString,
   projectId: optionalString,
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の指定と、直送する受注
+  isDirectShipment: v.optional(v.boolean()),
+  directSalesOrderId: optionalString,
   totalAmount: optionalNumber,
   taxAmount: optionalNumber,
   memo: optionalString,
@@ -136,6 +153,8 @@ export const PurchaseOrderPayloadSchema = v.looseObject({
   companyFax: optionalString,
   deliveryDate: optionalString,
   deliveryPlace: optionalString,
+  // REQ-009: 納品場所の所在地(任意)
+  deliveryPlaceAddress: optionalString,
   // 新規要望(2026-09-23): 納品場所の「拠点用」「倉庫用」選択(いずれか一方、両方null=手入力のみも可)
   deliveryLocationId: optionalString,
   deliveryWarehouseId: optionalString,

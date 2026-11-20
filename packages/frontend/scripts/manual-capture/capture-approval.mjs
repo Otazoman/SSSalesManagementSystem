@@ -182,6 +182,20 @@ async function open(page, path) {
   await settle(page);
 }
 
+/**
+ * BUG-045 以降、確認はブラウザの confirm ではなく画面の確認ダイアログ(タイトル「確認」)で出る。
+ * 出た時は OK を押す(出ない操作もあるため、少し待って出なければ何もしない)
+ */
+async function acceptAppConfirm(page) {
+  const dialog = page.getByRole("dialog").filter({ hasText: "確認" }).last();
+  const ok = dialog.getByRole("button", { name: "OK", exact: true });
+  // isVisible は待たないため、waitFor で出るのを少し待つ
+  if (await ok.waitFor({ state: "visible", timeout: 3000 }).then(() => true).catch(() => false)) {
+    await ok.click();
+    await settle(page);
+  }
+}
+
 const shot = (page, name, options) => takeShot(page, resolve(SHOT_DIR, `approval-${name}.png`), options);
 
 /** 見積の一覧の「下書き」から見積を開き、承認を申請する(一覧に件名の列は無いため、見積コードで探す) */
@@ -196,6 +210,7 @@ async function submitQuote(page, quoteId, shots = {}) {
   await settle(page);
   if (shots.form) await shot(page, shots.form);
   await page.getByRole("button", { name: /承認を申請する/ }).first().click();
+  await acceptAppConfirm(page);
   await page.getByText("承認を申請しました").first().waitFor({ timeout: 15000 });
   await settle(page);
   await page.waitForTimeout(1500); // 一覧の再読み込みを待つ
@@ -207,6 +222,7 @@ async function decide(page, quoteId, action, comment) {
   const row = page.locator("main table tbody tr", { hasText: quoteId }).first();
   await row.locator("input[type=text]").fill(comment);
   await row.getByRole("button", { name: action === "approve" ? "承認" : "差戻し", exact: true }).click();
+  await acceptAppConfirm(page);
   await settle(page);
 }
 
@@ -227,7 +243,9 @@ async function main() {
     step = "前回の見本の片付け";
     const users = asList(await api(adminToken, "GET", "/api/users"));
     const userIdOf = (prefix) => {
-      const user = users.find((u) => u.email === readCredentials(prefix).user);
+      // ログイン(loginForCookie)と同じく、メールアドレスと従業員番号のどちらでも探す
+      const id = readCredentials(prefix).user;
+      const user = users.find((u) => u.email === id || u.employeeNumber === id);
       if (!user) throw new Error(`${prefix}_USER のユーザーが見つかりません`);
       return user.id;
     };

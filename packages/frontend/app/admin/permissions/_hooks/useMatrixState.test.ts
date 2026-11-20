@@ -102,7 +102,8 @@ describe("useMatrixState", () => {
     expect(result.current.checkedPermissionIds).toEqual(["master_units:create"]);
   });
 
-  it("handleToggleColumnCheckboxes: 列が一部のみONの場合は全ONにする", async () => {
+  // BUG-082: 一括操作は「すべてON」「すべてOFF」を明示して指定する(現在の状態で切り替えない)
+  it("handleSetColumnPermissions: ONを指定すると列をすべてONにする", async () => {
     const fetchSpy = vi.fn();
     mockBaseFetches(fetchSpy);
     vi.stubGlobal("fetch", fetchSpy);
@@ -110,15 +111,13 @@ describe("useMatrixState", () => {
     const { result } = renderHook(() =>
       useMatrixState({ canRead: true, canCreate: true, canUpdate: true, loading: false }),
     );
-    // "read"列はmockBaseFetchesの/api/permissions/role/応答で最初からON済みのため、
-    // まだONでない"create"列を使って「一部(0件)ONから全ONへ」を検証する
     await waitFor(() => expect(result.current.checkedPermissionIds).toEqual(["master_units:read"]));
 
-    act(() => result.current.handleToggleColumnCheckboxes("create"));
+    act(() => result.current.handleSetColumnPermissions("create", true));
     expect(result.current.checkedPermissionIds).toContain("master_units:create");
   });
 
-  it("handleToggleColumnCheckboxes: 列が全ONの場合は全OFFにする", async () => {
+  it("handleSetColumnPermissions: 列が全ONでもONを指定するとONのまま(切り替えない)", async () => {
     const fetchSpy = vi.fn();
     mockBaseFetches(fetchSpy);
     vi.stubGlobal("fetch", fetchSpy);
@@ -128,11 +127,25 @@ describe("useMatrixState", () => {
     );
     await waitFor(() => expect(result.current.checkedPermissionIds).toContain("master_units:read"));
 
-    act(() => result.current.handleToggleColumnCheckboxes("read"));
+    act(() => result.current.handleSetColumnPermissions("read", true));
+    expect(result.current.checkedPermissionIds).toEqual(["master_units:read"]);
+  });
+
+  it("handleSetColumnPermissions: OFFを指定すると列をすべてOFFにする", async () => {
+    const fetchSpy = vi.fn();
+    mockBaseFetches(fetchSpy);
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { result } = renderHook(() =>
+      useMatrixState({ canRead: true, canCreate: true, canUpdate: true, loading: false }),
+    );
+    await waitFor(() => expect(result.current.checkedPermissionIds).toContain("master_units:read"));
+
+    act(() => result.current.handleSetColumnPermissions("read", false));
     expect(result.current.checkedPermissionIds).not.toContain("master_units:read");
   });
 
-  it("handleToggleRowCheckboxes: 行が一部のみONの場合は全ONにする", async () => {
+  it("handleSetRowPermissions: ONを指定すると行をすべてONにする", async () => {
     const fetchSpy = vi.fn();
     mockBaseFetches(fetchSpy);
     vi.stubGlobal("fetch", fetchSpy);
@@ -142,7 +155,7 @@ describe("useMatrixState", () => {
     );
     await waitFor(() => expect(result.current.checkedPermissionIds).toEqual(["master_units:read"]));
 
-    act(() => result.current.handleToggleRowCheckboxes("master_units"));
+    act(() => result.current.handleSetRowPermissions("master_units", true));
     expect(result.current.checkedPermissionIds).toEqual(
       expect.arrayContaining([
         "master_units:menu",
@@ -152,9 +165,13 @@ describe("useMatrixState", () => {
         "master_units:delete",
       ]),
     );
+
+    // もう一度ONを指定しても、ONのまま(切り替えない)
+    act(() => result.current.handleSetRowPermissions("master_units", true));
+    expect(result.current.checkedPermissionIds.length).toBe(5);
   });
 
-  it("handleToggleRowCheckboxes: 行が全ONの場合は全OFFにする", async () => {
+  it("handleSetRowPermissions: OFFを指定すると行をすべてOFFにする", async () => {
     const fetchSpy = vi.fn();
     mockBaseFetches(fetchSpy);
     vi.stubGlobal("fetch", fetchSpy);
@@ -164,14 +181,11 @@ describe("useMatrixState", () => {
     );
     await waitFor(() => expect(result.current.checkedPermissionIds).toEqual(["master_units:read"]));
 
-    act(() => result.current.handleToggleRowCheckboxes("master_units"));
-    expect(result.current.checkedPermissionIds.length).toBe(5);
-
-    act(() => result.current.handleToggleRowCheckboxes("master_units"));
+    act(() => result.current.handleSetRowPermissions("master_units", false));
     expect(result.current.checkedPermissionIds).toEqual([]);
   });
 
-  it("handleToggleRowCheckboxes: canUpdate:falseの場合は無視する", async () => {
+  it("handleSetRowPermissions: canUpdate:falseの場合は無視する", async () => {
     const fetchSpy = vi.fn();
     mockBaseFetches(fetchSpy);
     vi.stubGlobal("fetch", fetchSpy);
@@ -181,7 +195,7 @@ describe("useMatrixState", () => {
     );
     await waitFor(() => expect(result.current.checkedPermissionIds).toEqual(["master_units:read"]));
 
-    act(() => result.current.handleToggleRowCheckboxes("master_units"));
+    act(() => result.current.handleSetRowPermissions("master_units", true));
     expect(result.current.checkedPermissionIds).toEqual(["master_units:read"]);
   });
 

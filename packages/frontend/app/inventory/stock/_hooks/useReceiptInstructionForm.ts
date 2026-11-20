@@ -18,11 +18,15 @@ export interface ReceiptInstructionLineDraft {
   lotNumber: string;
   instructedQuantity: number;
   memo: string;
+  // BUG-071: 発注から作った明細の元の発注明細
+  orderItemId?: string | null;
 }
 
 export interface ReceiptInstructionEditTarget {
   headerId: string;
   partnerId: string;
+  // BUG-071: 発注から作った入荷指示の元の発注
+  orderId?: string | null;
   warehouseId: string;
   instructedReceiveDate: string;
   memo: string | null;
@@ -34,11 +38,16 @@ export interface ReceiptInstructionEditTarget {
 // 倉庫引当(reservation)が無いため、warehouseIdは含めずユーザーに選択させる
 export interface ReceiptInstructionCreatePrefill {
   partnerId: string;
+  // BUG-071: 元の発注・発注明細(入庫へ引き継ぎ、発注の入荷済数量に数えるため)
+  orderId: string;
   lines: Array<{
     itemId: string;
     itemName: string;
     instructedQuantity: number;
+    orderItemId: string;
   }>;
+  // BUG-091: 発注の納品場所に指定した倉庫(deliveryWarehouseId)。選択肢にある時だけ初期値にする
+  warehouseId?: string | null;
 }
 
 export function useReceiptInstructionForm(
@@ -67,6 +76,8 @@ export function useReceiptInstructionForm(
   // Item6 Phase6-4: 見積書と同様、管理番号を任意入力できるようにする(空欄なら自動採番)
   const [customId, setCustomId] = useState("");
   const [partnerId, setPartnerId] = useState("");
+  // BUG-071: 発注から作った場合の元の発注(発注から選ぶ・修正して再申請で入る。画面からは変更しない)
+  const [orderId, setOrderId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [instructedReceiveDate, setInstructedReceiveDate] = useState(
     todayJst(),
@@ -88,8 +99,8 @@ export function useReceiptInstructionForm(
           apiFetch<PartnerRecord[]>("/api/partners?status=active"),
           apiFetch<ProductRecord[]>("/api/products?status=active"),
         ]);
-        // 入荷指示は外部倉庫のみ、仕入先(SUPPLIER/BOTH)のみを選択肢にする
-        setWarehouses(whs.filter((w) => w.warehouseType === "EXTERNAL"));
+        // REQ-010: 入荷指示は自社倉庫・外部倉庫のどちらにも作れる(出荷指示と同じ)。直送用の倉庫だけ除く。仕入先(SUPPLIER/BOTH)のみを選択肢にする
+        setWarehouses(whs.filter((w) => w.warehouseType !== "DIRECT"));
         setPartners(partnerList.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH"));
         setProducts(prods);
       } catch (err: unknown) {
@@ -103,6 +114,7 @@ export function useReceiptInstructionForm(
     if (products.length === 0) return;
     void (async () => {
       setPartnerId(editTarget.partnerId);
+      setOrderId(editTarget.orderId || "");
       setWarehouseId(editTarget.warehouseId);
       setInstructedReceiveDate(editTarget.instructedReceiveDate.slice(0, 10));
       setMemo(editTarget.memo || "");
@@ -116,6 +128,7 @@ export function useReceiptInstructionForm(
             lotNumber: item.lotNumber,
             instructedQuantity: item.instructedQuantity,
             memo: item.memo || "",
+            orderItemId: item.orderItemId || null,
           };
         }),
       );
@@ -128,6 +141,7 @@ export function useReceiptInstructionForm(
     if (editTarget || !createPrefill) return;
     void (async () => {
       setPartnerId(createPrefill.partnerId);
+      setOrderId(createPrefill.orderId);
       setLines(
         createPrefill.lines.map((line) => ({
           key: crypto.randomUUID(),
@@ -136,10 +150,20 @@ export function useReceiptInstructionForm(
           lotNumber: "NONE",
           instructedQuantity: line.instructedQuantity,
           memo: "",
+          orderItemId: line.orderItemId,
         })),
       );
     })();
   }, [editTarget, createPrefill]);
+
+  // BUG-091: 発注の納品先倉庫を初期値にする(倉庫の選択肢を読み込んだ後、選択肢にある時だけ。直送用の倉庫などは入れない)
+  useEffect(() => {
+    const prefillWarehouseId = createPrefill?.warehouseId;
+    if (editTarget || !prefillWarehouseId || !warehouses.some((w) => w.id === prefillWarehouseId)) return;
+    void (async () => {
+      setWarehouseId(prefillWarehouseId);
+    })();
+  }, [editTarget, createPrefill, warehouses]);
 
   const addLine = () => {
     setError("");
@@ -184,6 +208,7 @@ export function useReceiptInstructionForm(
   const resetForm = () => {
     setCustomId("");
     setPartnerId("");
+    setOrderId("");
     setWarehouseId("");
     setInstructedReceiveDate(todayJst());
     setMemo("");
@@ -197,7 +222,7 @@ export function useReceiptInstructionForm(
       return;
     }
     if (!warehouseId) {
-      setError("外部倉庫を選択してください");
+      setError("倉庫を選択してください");
       return;
     }
     if (lines.length === 0) {
@@ -217,6 +242,8 @@ export function useReceiptInstructionForm(
         json: {
           ...(!editTarget && customId ? { id: customId } : {}),
           partnerId,
+          // BUG-071: 発注から作った場合は、発注・発注明細とのつながりを送る
+          orderId: orderId || null,
           warehouseId,
           instructedReceiveDate,
           memo: memo || undefined,
@@ -225,6 +252,7 @@ export function useReceiptInstructionForm(
             lotNumber: l.lotNumber,
             instructedQuantity: l.instructedQuantity,
             memo: l.memo || undefined,
+            orderItemId: l.orderItemId || null,
           })),
           applicantDepartmentSurrogateId,
         },
@@ -252,6 +280,7 @@ export function useReceiptInstructionForm(
     setCustomId,
     partnerId,
     setPartnerId,
+    orderId,
     warehouseId,
     setWarehouseId,
     instructedReceiveDate,

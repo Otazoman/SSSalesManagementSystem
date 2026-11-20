@@ -92,3 +92,130 @@ describe("PaymentDetailModal: BUG-051 支払額を超える支払", () => {
     expect(screen.getByRole("button", { name: "支払を記録する" })).toBeEnabled();
   });
 });
+
+describe("PaymentDetailModal: BUG-087 記録した後の✕", () => {
+  function renderWith(saved: boolean) {
+    const onClose = vi.fn();
+    render(
+      <PaymentDetailModal detail={DETAIL} onClose={onClose} onRecordDisbursement={vi.fn(async () => saved)} />,
+    );
+    return onClose;
+  }
+
+  it("支払の記録に成功した後は、✕で確認を出さずに閉じる", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const onClose = renderWith(true);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "支払を記録する" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("記録に失敗した時は、入力が残るため✕で確認する", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onClose = renderWith(false);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "支払を記録する" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+
+    expect(confirmSpy).toHaveBeenCalledWith("保存していない編集を破棄しますか？");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("PaymentDetailModal: BUG-094 0円の支払", () => {
+  it("支払額が0円で未完了なら「0円で消込を完了する」を出し、0円で記録する", async () => {
+    const onRecordDisbursement = vi.fn(async () => true);
+    render(
+      <PaymentDetailModal
+        detail={{ ...DETAIL, totalAmount: 0, taxAmount: 0 }}
+        onClose={vi.fn()}
+        onRecordDisbursement={onRecordDisbursement}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "0円で消込を完了する" }));
+    await flush();
+    expect(onRecordDisbursement).toHaveBeenCalledWith("PAY-1", expect.objectContaining({ amount: 0 }));
+  });
+
+  it("未消込額がある時・消込済みの時は出さない", () => {
+    const { unmount } = render(
+      <PaymentDetailModal detail={DETAIL} onClose={vi.fn()} onRecordDisbursement={vi.fn(async () => true)} />,
+    );
+    expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
+    unmount();
+    render(
+      <PaymentDetailModal
+        detail={{ ...DETAIL, totalAmount: 0, taxAmount: 0, reconciliationStatus: "RECONCILED" }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PaymentDetailModal: REQ-018 支払の消込の承認", () => {
+  it("承認待ちの支払は「承認待ち ¥…」で出し、記録できる金額から引く", () => {
+    render(
+      <PaymentDetailModal
+        detail={{
+          ...DETAIL,
+          disbursements: [
+            { id: "D-1", paymentHeaderId: "PAY-1", paidDate: "2026-11-15", amount: 6000, method: "BANK_TRANSFER", reconciledById: "E", reconciledAt: "2026-11-15", approvalStatus: "PENDING" },
+          ],
+        }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+      />,
+    );
+    expect(screen.getByText("承認待ち ¥6,000")).toBeInTheDocument();
+    expect(screen.getByText("🟡 承認待ち")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "6000" } });
+    expect(screen.getByText(/承認待ちを除く/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeDisabled();
+  });
+});
+
+// REQ-026: 支払の承認が ON の時は、承認済みになるまで支払を記録できず、下書きなら承認申請のボタンを出す
+describe("PaymentDetailModal(支払の承認)", () => {
+  it("承認が ON で下書きの時は、申請のボタンを出し、支払の記録はできない", () => {
+    const onSubmit = vi.fn();
+    render(
+      <PaymentDetailModal
+        detail={DETAIL}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+        approvalEnabled
+        onSubmitForApproval={onSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1000" } });
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /承認を申請する/ }));
+    expect(onSubmit).toHaveBeenCalledWith("PAY-1");
+  });
+
+  it("承認済みなら、申請の案内を出さずに支払を記録できる", () => {
+    render(
+      <PaymentDetailModal
+        detail={{ ...DETAIL, status: "APPROVED" }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+        approvalEnabled
+        onSubmitForApproval={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1000" } });
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
+  });
+});

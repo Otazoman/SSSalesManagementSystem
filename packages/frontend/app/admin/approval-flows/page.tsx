@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { usePagePermissions } from "../../hooks/use-page-permission";
 import { useApprovalFlow } from "./_hooks/useApprovalFlow";
@@ -25,7 +25,6 @@ export default function MasterApprovalFlowsPage() {
   } = usePagePermissions();
 
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
   const [showRoutePreview, setShowRoutePreview] = useState(false);
 
   const {
@@ -103,9 +102,6 @@ export default function MasterApprovalFlowsPage() {
     setError("");
   };
 
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
 
   return (
     <div className="w-full space-y-6">
@@ -168,25 +164,30 @@ export default function MasterApprovalFlowsPage() {
           </span>
           <button
             type="button"
-            onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-            disabled={!canCreate && !showForm}
+            onClick={() => setShowForm(true)}
+            disabled={!canCreate}
             className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-              canCreate || showForm
+              canCreate
                 ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
                 : "bg-slate-300 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </button>
         </div>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingFlowId ? "承認フローの編集" : "承認フローの新規登録・CSVインポート"}
+          onClose={handleCloseForm}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <>
           <FlowForm
             canCreate={canCreate}
             canUpdate={canUpdate}
@@ -218,7 +219,7 @@ export default function MasterApprovalFlowsPage() {
             addStepToBuilder={addStepToBuilder}
             removeStepFromBuilder={removeStepFromBuilder}
             handleSubmitFlow={handleSubmitFlow}
-            handleCancelEdit={requestCloseForm}
+            handleCancelEdit={() => void requestClose()}
             screens={screens}
           />
           <CsvImportPanel
@@ -227,7 +228,9 @@ export default function MasterApprovalFlowsPage() {
             isSubmitting={isSubmitting}
             onImportCsv={handleCsvImport}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* 一覧テーブル */}

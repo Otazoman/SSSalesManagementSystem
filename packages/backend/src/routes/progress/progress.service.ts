@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../../types/env";
 import { ProgressRepository, ProgressRoot } from "./progress.repository";
-import { computeNextStages } from "./progress-next-step";
+import { computeNextStages, computeUnissuedStages } from "./progress-next-step";
 import { logAuditEvent } from "../../platform/audit/log-audit-event";
 import { BadRequestError } from "../../platform/http/http-error";
 import { buildCsvContent, csvField, withBom } from "../../platform/csv/csv-writer";
@@ -57,6 +57,19 @@ interface RawDoc {
   assigneeEmployeeNumber: string | null;
   // 追加要望M-2-a: この伝票自体の完了判定(自動)
   completed: boolean;
+}
+
+// PERF-11: 完了の判定まで組み立てた案件(名前・承認の状況・担当はまだ付けていない)
+interface ProgressCase {
+  root: ProgressRoot;
+  partnerId: string | null;
+  title: string | null;
+  projectId: string | null;
+  stages: Record<ProgressStageKey, RawDoc[]>;
+  // 伝票ごとの完了の状態(手動設定を反映済み)。stages と同じ並び
+  completion: Record<ProgressStageKey, { completed: boolean; manual: boolean }[]>;
+  stageStatuses: Record<ProgressStageKey, ProgressStageStatus>;
+  caseState: "COMPLETED" | "IN_PROGRESS";
 }
 
 // 部門+ロールの担当は assigneeRef="部門surrogateId:ロールID"
@@ -135,27 +148,38 @@ export class ProgressService {
     limit: number,
     maxScan: number,
   ): Promise<{ items: ProgressRow[]; nextOffset: number | null }> {
-    const items: ProgressRow[] = [];
+    // PERF-11: 走査の各回では、完了の判定に必要な分(案件の伝票と完了の状態)だけを組み立てる。
+    // 名前・承認の状況・担当の解決は、最後に返す行にだけ1回行う(以前は走査の回ごとに全ての行で行っていた)
+    const selected: ProgressCase[] = [];
+    const finish = async (nextOffset: number | null) => ({
+      items: await this.decorateCases(selected),
+      nextOffset,
+    });
     let offset = startOffset;
     while (offset - startOffset < maxScan) {
       const batchSize = Math.min(SCAN_BATCH_SIZE, startOffset + maxScan - offset);
       const roots = await this.repo.findRoots(query, batchSize, offset);
-      if (roots.length === 0) return { items, nextOffset: null };
-      const rows = await this.buildRows(roots);
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        if (state !== "all" && (state === "completed") !== (row.caseState === "COMPLETED")) continue;
-        items.push(row);
-        if (items.length >= limit) {
+      if (roots.length === 0) return finish(null);
+      const cases = await this.buildCases(roots);
+      for (let i = 0; i < cases.length; i++) {
+        const progressCase = cases[i];
+        if (state !== "all" && (state === "completed") !== (progressCase.caseState === "COMPLETED")) continue;
+        selected.push(progressCase);
+        if (selected.length >= limit) {
           const consumed = offset + i + 1;
-          const isEnd = i === rows.length - 1 && roots.length < batchSize;
-          return { items, nextOffset: isEnd ? null : consumed };
+          const isEnd = i === cases.length - 1 && roots.length < batchSize;
+          return finish(isEnd ? null : consumed);
         }
       }
       offset += roots.length;
-      if (roots.length < batchSize) return { items, nextOffset: null };
+      if (roots.length < batchSize) return finish(null);
     }
-    return { items, nextOffset: offset };
+    return finish(offset);
+  }
+
+  // 1ページ分の起点を、完了の判定まで組み立ててから表示用に仕上げる(state=all のページング用)
+  private async buildRows(roots: ProgressRoot[]): Promise<ProgressRow[]> {
+    return this.decorateCases(await this.buildCases(roots));
   }
 
   // 追加要望M-2-c: 検索結果のCSVエクスポート(インポートは提供しない)
@@ -186,7 +210,14 @@ export class ProgressService {
         csvField(row.caseState === "COMPLETED" ? "完了" : "進行中"),
         ...PROGRESS_STAGE_KEYS.flatMap((k) => {
           const status = row.stageStatuses[k];
-          const label = STATE_LABELS[status.state] + (status.manual && status.state !== "NONE" ? "(手動)" : "");
+          // REQ-013: 伝票が無い工程は、未起票なら「未起票」、案件の流れの対象外なら「―」
+          const unissued = row.unissuedSteps.some((u) => u.stageKey === k);
+          const label =
+            status.state === "NONE"
+              ? unissued
+                ? "未起票"
+                : "―"
+              : STATE_LABELS[status.state] + (status.manual ? "(手動)" : "");
           return [csvField(row.stages[k].map((d) => d.id).join(" ")), csvField(label)];
         }),
         csvField(row.nextSteps.map((n) => STAGE_LABELS[n.stageKey]).join(" / ")),
@@ -196,7 +227,9 @@ export class ProgressService {
     return withBom(buildCsvContent(headers, lines));
   }
 
-  private async buildRows(roots: ProgressRoot[]): Promise<ProgressRow[]> {
+  // PERF-11: 案件(起点)ごとに、各工程の伝票と完了の状態(伝票の画面での手動設定を反映)・案件全体の状態を求める。
+  // 走査で「進行中/完了」を絞り込むのに必要な分だけで、名前・承認の状況・担当はまだ付けない
+  private async buildCases(roots: ProgressRoot[]): Promise<ProgressCase[]> {
     const rootIdsOf = (kind: ProgressRoot["kind"]) => roots.filter((r) => r.kind === kind).map((r) => r.id);
     const salesOrderRootIds = rootIdsOf("sales_order");
     const quoteRootIds = rootIdsOf("quote");
@@ -217,6 +250,8 @@ export class ProgressService {
     const invoicedQtyByItem = await this.repo.findInvoicedQuantities(soItems.map((i) => i.id));
     const soItemsBySo = groupBy(soItems, (i) => i.salesOrderId);
     const prLinks = await this.repo.findPurchaseRequestLinksBySalesOrderItem(soItems.map((i) => i.id));
+    // BUG-110: 受注から直接作った発注(直送・受注の欠品から。購買申請を通らない)
+    const directOrderLinks = await this.repo.findDirectOrderLinksBySalesOrderItem(soItems.map((i) => i.id));
 
     const shipmentInstructionsBySo = groupBy(
       await this.repo.findShipmentInstructionsBySalesOrder(salesOrderRootIds),
@@ -238,12 +273,21 @@ export class ProgressService {
       if (!requestIdsBySo.has(soId)) requestIdsBySo.set(soId, new Set());
       requestIdsBySo.get(soId)!.add(link.requestId);
     }
+    const directOrderIdsBySo = new Map<string, Set<string>>();
+    for (const link of directOrderLinks) {
+      const soId = link.salesOrderItemId ? salesOrderIdByItemId.get(link.salesOrderItemId) : undefined;
+      if (!soId || !link.orderId) continue;
+      if (!directOrderIdsBySo.has(soId)) directOrderIdsBySo.set(soId, new Set());
+      directOrderIdsBySo.get(soId)!.add(link.orderId);
+    }
     const allRequestIds = [...new Set([...prLinks.map((l) => l.requestId), ...requestRootIds])];
     const purchaseRequests = await this.repo.findPurchaseRequests(allRequestIds);
     const requestById = new Map(purchaseRequests.map((r) => [r.id, r]));
 
     const ordersByRequest = await this.repo.findOrdersByRequest(allRequestIds);
-    const rootOrders = await this.repo.findOrdersByIds(orderRootIds);
+    const rootOrders = await this.repo.findOrdersByIds([
+      ...new Set([...orderRootIds, ...[...directOrderIdsBySo.values()].flatMap((ids) => [...ids])]),
+    ]);
     const orderById = new Map([...ordersByRequest, ...rootOrders].map((o) => [o.id, o]));
     const allOrderIds = [...orderById.keys()];
     const ordersByRequestId = groupBy(ordersByRequest, (o) => o.requestId);
@@ -255,6 +299,11 @@ export class ProgressService {
     const allReceipts = [...receiptsByOrder.values()].flat();
     const receiptInstructions = await this.repo.findReceiptInstructions(
       allReceipts.map((r) => r.receiptInstructionId).filter((id): id is string => !!id),
+    );
+    // BUG-090: 入庫経由に加え、発注番号でも入荷指示を探す(入庫がまだ無い入荷指示も入荷指示の欄に出す。同じ番号は最後に1つにまとめる)
+    const receiptInstructionsByOrder = groupBy(
+      await this.repo.findReceiptInstructionsByOrder(allOrderIds),
+      (i) => i.orderId,
     );
     const receiptInstructionById = new Map(receiptInstructions.map((i) => [i.id, i]));
     const recognitionsByOrder = groupBy(await this.repo.findRecognitionsByOrder(allOrderIds), (r) => r.orderId);
@@ -301,6 +350,14 @@ export class ProgressService {
             order.status === "APPROVED" &&
             isFullyFulfilled(orderItemsByOrder.get(orderId) ?? [], recognizedQtyByItem),
         });
+        for (const instruction of receiptInstructionsByOrder.get(orderId) ?? []) {
+          stages.receipt_instruction.push({
+            id: instruction.id,
+            status: instruction.status,
+            assigneeEmployeeNumber: null,
+            completed: instruction.status === "FULFILLED",
+          });
+        }
         for (const receipt of receiptsByOrder.get(orderId) ?? []) {
           stages.item_receipt.push({
             id: receipt.id,
@@ -377,7 +434,8 @@ export class ProgressService {
             id: quote.id,
             status: quote.status,
             assigneeEmployeeNumber: quote.salesPersonEmployeeNumber ?? quote.inputPersonEmployeeNumber,
-            completed: false, // 受注化されていない(受注化済みの見積は受注起点の行に載る)
+            // 受注化されていない(受注化済みの見積は受注起点の行に載る)。REQ-015: 失注(LOST)の見積は、案件を完了として扱う
+            completed: quote.status === "LOST",
           });
         }
       } else if (root.kind === "sales_order") {
@@ -438,7 +496,7 @@ export class ProgressService {
             }
           }
         }
-        addPurchaseSide(stages, [...(requestIdsBySo.get(root.id) ?? [])], []);
+        addPurchaseSide(stages, [...(requestIdsBySo.get(root.id) ?? [])], [...(directOrderIdsBySo.get(root.id) ?? [])]);
       } else if (root.kind === "purchase_request") {
         const req = requestById.get(root.id);
         partnerId = req?.partnerId ?? null;
@@ -457,12 +515,42 @@ export class ProgressService {
       rawRows.push({ root, partnerId, title, projectId, stages });
     }
 
-    // ---- 担当者名・取引先名・承認進捗・担当設定の解決(1ページ分をまとめて) ----
+    // 伝票の画面で手動設定された完了/進行中(工程キー+伝票ID)。進捗確認は表示のみで、設定は各伝票の画面から行う
+    const allRawDocs = rawRows.flatMap((r) => PROGRESS_STAGE_KEYS.flatMap((k) => r.stages[k]));
+    const overrides = await this.repo.findDocumentOverrides(allRawDocs.map((d) => d.id));
+    const docOverride = new Map(overrides.map((o) => [`${o.stageKey}::${o.documentId}`, o.forcedState]));
+
+    return rawRows.map(({ root, partnerId, title, projectId, stages }): ProgressCase => {
+      const completion = Object.fromEntries(
+        PROGRESS_STAGE_KEYS.map((key) => [
+          key,
+          stages[key].map((d) => applyCompletionOverride(docOverride.get(`${key}::${d.id}`), d.completed)),
+        ]),
+      ) as ProgressCase["completion"];
+      const stageStatuses = Object.fromEntries(
+        PROGRESS_STAGE_KEYS.map((key) => [key, computeStageStatus(completion[key])]),
+      ) as Record<ProgressStageKey, ProgressStageStatus>;
+      return {
+        root,
+        partnerId,
+        title,
+        projectId,
+        stages,
+        completion,
+        stageStatuses,
+        caseState: computeCaseState(stageStatuses),
+      };
+    });
+  }
+
+  // PERF-11: 返す行にだけ、担当者名・取引先名・プロジェクト名・承認の進み具合・担当設定・次工程を付ける(まとめて1回)
+  private async decorateCases(cases: ProgressCase[]): Promise<ProgressRow[]> {
+    if (cases.length === 0) return [];
+    const rawRows = cases;
     const allDocs = rawRows.flatMap((r) => PROGRESS_STAGE_KEYS.flatMap((k) => r.stages[k]));
-    const [owners, caseAssignments, overrides] = await Promise.all([
+    const [owners, caseAssignments] = await Promise.all([
       this.repo.findStageOwners(),
       this.repo.findCaseAssignments(rawRows.map((r) => r.root.id)),
-      this.repo.findDocumentOverrides(allDocs.map((d) => d.id)),
     ]);
     const deptRoleOwners = owners.filter((o) => o.assigneeType === "DEPT_ROLE").map((o) => splitDeptRole(o.assigneeRef));
     const [partnerNames, userNames, approvalById, roleNames, projectNames, deptNames] = await Promise.all([
@@ -480,9 +568,6 @@ export class ProgressService {
       this.repo.findProjectNames(rawRows.map((r) => r.projectId).filter((id): id is string => !!id)),
       this.repo.findDepartmentNames(deptRoleOwners.map((d) => d.deptId)),
     ]);
-    // 伝票の画面で手動設定された完了/進行中(工程キー+伝票ID)。進捗確認は表示のみで、設定は各伝票の画面から行う
-    const docOverride = new Map(overrides.map((o) => [`${o.stageKey}::${o.documentId}`, o.forcedState]));
-
     // 担当の解決順: 案件×工程の個別割当 > 工程の既定担当(個人 or ロール)
     const ownerByStage = new Map(owners.map((o) => [o.stageKey, o]));
     const caseKey = (kind: string, id: string, stage: string) => `${kind}::${id}::${stage}`;
@@ -511,12 +596,12 @@ export class ProgressService {
       return { name, source: "stage" };
     };
 
-    return rawRows.map(({ root, partnerId, title, projectId, stages }): ProgressRow => {
+    return rawRows.map(({ root, partnerId, title, projectId, stages, completion, stageStatuses, caseState }): ProgressRow => {
       const resolved = Object.fromEntries(
         PROGRESS_STAGE_KEYS.map((key) => [
           key,
           stages[key].map(
-            (d): ProgressStageDoc => ({
+            (d, index): ProgressStageDoc => ({
               id: d.id,
               status: d.status,
               // 伝票自身の担当者列がある工程はそれを優先し、無い工程は個別割当/工程の既定担当で補う
@@ -524,23 +609,22 @@ export class ProgressService {
                 ? nameOf(d.assigneeEmployeeNumber)
                 : (resolveAssignee(root.kind, root.id, key)?.name ?? null),
               approval: approvalById.get(d.id) ?? null,
-              ...applyCompletionOverride(docOverride.get(`${key}::${d.id}`), d.completed),
+              ...completion[key][index],
             }),
           ),
         ]),
       ) as Record<ProgressStageKey, ProgressStageDoc[]>;
 
-      const stageStatuses = Object.fromEntries(
-        PROGRESS_STAGE_KEYS.map((key) => [
-          key,
-          computeStageStatus(resolved[key]),
-        ]),
-      ) as Record<ProgressStageKey, ProgressStageStatus>;
-
-      const nextSteps = computeNextStages(root.kind, (key) => stages[key].length > 0).map((next) => {
+      const withAssignee = (next: { chain: "sales" | "purchase"; stageKey: ProgressStageKey }) => {
         const assignee = resolveAssignee(root.kind, root.id, next.stageKey);
         return { ...next, assigneeName: assignee?.name ?? null, source: assignee?.source ?? null };
-      });
+      };
+      const present = (key: ProgressStageKey) => stages[key].length > 0;
+      const nextSteps = computeNextStages(root.kind, present).map(withAssignee);
+      // REQ-013: 未起票の工程(失注の見積の案件は出さない)
+      const unissuedSteps = computeUnissuedStages(root.kind, present, {
+        quoteLost: root.kind === "quote" && stages.quote.some((d) => d.status === "LOST"),
+      }).map(withAssignee);
 
       const assignments: ProgressRow["assignments"] = {};
       for (const a of caseAssignments) {
@@ -557,8 +641,9 @@ export class ProgressService {
         projectName: projectId ? (projectNames.get(projectId) ?? null) : null,
         stages: resolved,
         stageStatuses,
-        caseState: computeCaseState(stageStatuses),
+        caseState,
         nextSteps,
+        unissuedSteps,
         assignments,
       };
     });

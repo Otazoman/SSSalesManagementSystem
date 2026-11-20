@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SourceDocumentLink } from "./SourceDocumentLink";
 import { Button } from "../../../_shared/ui/Button";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
 import { useCsvDownload } from "../../../_shared/hooks/use-csv-download";
@@ -17,6 +18,7 @@ import {
   DeliveryNoteContactOption,
 } from "./DeliveryNoteMailModal";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -34,6 +36,8 @@ const COLUMNS: DataTableColumn[] = [
   { key: "id", label: "出庫伝票番号", sortable: true },
   { key: "shippedDate", label: "出荷日", sortable: true },
   { key: "partnerId", label: "得意先", sortable: true },
+  // REQ-022: 元の受注
+  { key: "salesOrderId", label: "受注番号" },
   { key: "status", label: "ステータス", sortable: true },
   { key: "actions", label: "帳票・メール", align: "right" },
 ];
@@ -100,13 +104,7 @@ export function DeliveryNotePanel() {
     setMessage("");
     setGeneratingId(header.id);
     try {
-      const result = await apiFetch<{ message?: string }>(
-        `/api/stock-shipments/${header.id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "納品書PDFの作成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message?: string }>("/api/stock-shipments", header.id, { defaultErrorMessage: "納品書PDFの作成に失敗しました" });
       setMessage(result.message || "納品書PDFを作成しました");
       await history.refetch();
     } catch (err) {
@@ -140,13 +138,15 @@ export function DeliveryNotePanel() {
     setIsMailSending(true);
     setMailError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await sendWithIssuedPdf("/api/stock-shipments", mailModalTarget.id, () =>
+        apiFetch<{ message?: string }>(
         `/api/stock-shipments/${mailModalTarget.id}/send-email`,
         {
           method: "POST",
           json: { recipientEmail },
           defaultErrorMessage: "メール送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの送信を予約しました");
       setMailModalTarget(null);
@@ -173,13 +173,15 @@ export function DeliveryNotePanel() {
     setIsMailSending(true);
     setMailError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await bulkSendWithIssuedPdf("/api/stock-shipments", selectedIds, (targetIds) =>
+        apiFetch<{ message?: string }>(
         "/api/stock-shipments/bulk-send-email",
         {
           method: "POST",
-          json: { shipmentHeaderIds: selectedIds },
+          json: { shipmentHeaderIds: targetIds },
           defaultErrorMessage: "メール一括送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの一括送信を予約しました");
       setSelectedIds([]);
@@ -202,10 +204,16 @@ export function DeliveryNotePanel() {
         error={mailError || csvError || history.detailError}
       />
 
+      {/* BUG-076: 単価・金額が出るのは、受注とつながった出庫だけ(仕様) */}
+      <p className="text-xs text-slate-700 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+        納品書の単価・金額は、受注から作った出庫(受注の明細とつながった明細)だけに印字します。
+        受注を使わずに登録した出庫・CSV で取り込んだ出庫の明細は、単価・金額が空欄になります。
+      </p>
+
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               出荷日(From)
             </label>
             <input
@@ -216,7 +224,7 @@ export function DeliveryNotePanel() {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               出荷日(To)
             </label>
             <input
@@ -227,7 +235,7 @@ export function DeliveryNotePanel() {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">得意先</label>
+            <label className="text-sm text-slate-700 block mb-1">得意先</label>
             <select
               value={history.partnerId}
               onChange={(e) => history.setPartnerId(e.target.value)}
@@ -242,7 +250,7 @@ export function DeliveryNotePanel() {
             </select>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               ステータス
             </label>
             <select
@@ -316,6 +324,9 @@ export function DeliveryNotePanel() {
               <td className="px-4 py-3 font-mono text-slate-700">{h.id}</td>
               <td className="px-4 py-3">{h.shippedDate?.slice(0, 10)}</td>
               <td className="px-4 py-3">{partner?.name || "-"}</td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                {h.salesOrderId ? <SourceDocumentLink kind="sales_order" id={h.salesOrderId} /> : <span className="text-slate-500">-</span>}
+              </td>
               <td className="px-4 py-3">
                 <StatusBadge {...getApprovalResultStatus(h.status)} />
               </td>
@@ -324,6 +335,12 @@ export function DeliveryNotePanel() {
                   <span className="text-slate-500">-</span>
                 ) : (
                   <div className="flex flex-wrap justify-end gap-2">
+                    {/* PERF-07 B-6: 納品書は出庫の確定の時に自動では作らないため、未発行を分かるようにする */}
+                    {!h.deliveryNoteR2Path && (
+                      <span className="self-center rounded bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-900">
+                        未発行
+                      </span>
+                    )}
                     <Button
                       size="sm"
                       variant="secondary"

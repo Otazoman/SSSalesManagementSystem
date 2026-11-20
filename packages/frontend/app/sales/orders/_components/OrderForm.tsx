@@ -319,7 +319,12 @@ export function OrderForm({
         />
 
         {editingId && status === "APPROVED" && (
-          <OrderShipmentProgress orderId={orderId} />
+          <OrderShipmentProgress
+            orderId={orderId}
+            outsideInventoryLines={items
+              .filter((item) => item.inputType === "DIRECT")
+              .map((item, idx) => ({ key: item.id ?? `direct-${idx}`, name: item.itemName || item.itemId, quantity: item.quantity }))}
+          />
         )}
       </div>
 

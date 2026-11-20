@@ -1,0 +1,1 @@
+ALTER TABLE `item_reorder_settings` ADD `status` text DEFAULT 'active' NOT NULL;

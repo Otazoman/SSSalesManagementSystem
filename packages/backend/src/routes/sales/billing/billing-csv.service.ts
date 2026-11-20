@@ -5,6 +5,8 @@ import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-wr
 import { parseCsv } from "../../../platform/csv/csv-parser";
 import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconLimit, type ReconRow } from "../../../platform/csv/reconciliation-rows";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { isCashReceiptWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
 
 // Item8 Phase4: quote-csv.service.tsと同じ方針。billing_headers+billing_items(1行1明細の
 // フラット形式)、および payment_receipts(手動消込結果の一括登録用)の別CSVを担当する
@@ -218,6 +220,10 @@ export class BillingCsvService {
   }
 
   async bulkImportPaymentReceiptsCsv(c: Context, file: File) {
+    // REQ-018: 承認機能が ON の時は、CSV からは取り込まない(1行ごとに申請を作ると、DB の問い合わせ回数の上限に当たるため)
+    if (await isCashReceiptWorkflowGloballyEnabled(c.env.COMPANY_SETTINGS)) {
+      throw new BadRequestError("入金の承認機能が有効なため、CSV からは取り込めません。画面から1件ずつ記録して承認を申請してください");
+    }
     const opId = await this.repo.getFallbackOperatorId(c);
     const text = await file.text();
 
@@ -271,11 +277,12 @@ export class BillingCsvService {
       const header = await this.repo.findHeaderById(id);
       if (!header) continue;
       existingHeaderIds.add(id);
-      const existing = await this.repo.findPaymentReceiptsByHeaderId(id);
+      // REQ-018: 差し戻された行は数えない(消込額・重複の確認とも)
+      const existing = (await this.repo.findPaymentReceiptsByHeaderId(id)).filter((r) => r.approvalStatus !== "REMANDED");
       limits.set(id, {
         totalAmount: header.totalAmount,
         reconciledAmount: existing.reduce((sum, r) => sum + r.amount, 0),
-        blockedReason: header.status === "DRAFT" ? "未発行(下書き)のため入金を記録できません。請求書を発行してから取り込んでください" : undefined,
+        blockedReason: ["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(header.status) ? "未発行(下書き・承認前)のため入金を記録できません。請求書を発行してから取り込んでください" : undefined,
       });
       for (const r of existing) {
         existingKeys.add(

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { ProjectRecord } from "../_types";
 import { FormField, formFieldInputClass } from "../../../_shared/ui/FormField";
+import { ApplicantDepartmentSelect } from "../../../_shared/ui/ApplicantDepartmentSelect";
+import type { ApplicantDepartmentOption } from "../../../types";
 
 interface ProjectFormProps {
   editingProject: ProjectRecord | null;
@@ -13,10 +15,16 @@ interface ProjectFormProps {
     memo: string;
     startDate: string;
     endDate: string;
-  }) => Promise<void>;
+  }) => Promise<unknown>;
   canCreate: boolean;
   canUpdate: boolean;
   isSubmitting?: boolean;
+  // BUG-097: 承認 ON の時は「申請」になり、承認待ちの間は編集できない
+  isProjectWfEnabled?: boolean;
+  isProjectCurrentlyLocked?: boolean;
+  departments?: ApplicantDepartmentOption[];
+  applicantDepartmentSurrogateId?: string | null;
+  setApplicantDepartmentSurrogateId?: (id: string) => void;
 }
 
 export function ProjectForm({
@@ -26,6 +34,11 @@ export function ProjectForm({
   canCreate,
   canUpdate,
   isSubmitting = false,
+  isProjectWfEnabled = false,
+  isProjectCurrentlyLocked = false,
+  departments = [],
+  applicantDepartmentSurrogateId = null,
+  setApplicantDepartmentSurrogateId = () => {},
 }: ProjectFormProps) {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
@@ -74,7 +87,7 @@ export function ProjectForm({
       className="bg-white p-5 rounded-lg space-y-4 border border-slate-200 shadow-sm relative"
     >
       <fieldset
-        disabled={!hasFormPermission || isSubmitting}
+        disabled={!hasFormPermission || isSubmitting || isProjectCurrentlyLocked}
         className="space-y-4 w-full"
       >
         <div className="flex items-center justify-between border-b pb-1">
@@ -132,6 +145,12 @@ export function ProjectForm({
           </FormField>
         </div>
 
+        {isProjectCurrentlyLocked && (
+          <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            🔒 承認待ちのため、承認されるか差し戻されるまで変更できません
+          </p>
+        )}
+
         <FormField label="メモ">
           <textarea
             className={`${inputClass} h-16 resize-none`}
@@ -140,6 +159,13 @@ export function ProjectForm({
             onChange={(e) => setMemo(e.target.value)}
           />
         </FormField>
+        {isProjectWfEnabled && (
+          <ApplicantDepartmentSelect
+            departments={departments}
+            value={applicantDepartmentSurrogateId}
+            onChange={setApplicantDepartmentSurrogateId}
+          />
+        )}
       </fieldset>
 
       <div className="flex gap-2 pt-2">
@@ -154,14 +180,22 @@ export function ProjectForm({
         )}
         <button
           type="submit"
-          disabled={!hasFormPermission || isSubmitting}
+          disabled={!hasFormPermission || isSubmitting || isProjectCurrentlyLocked}
           className={`py-2 rounded text-xs font-bold text-white transition-colors shadow-sm ${
-            hasFormPermission && !isSubmitting
+            hasFormPermission && !isSubmitting && !isProjectCurrentlyLocked
               ? "bg-indigo-600 hover:bg-indigo-700 cursor-pointer"
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           } ${editingProject ? "w-2/3" : "w-full"}`}
         >
-          {isSubmitting ? "処理中..." : editingProject ? "保存" : "登録"}
+          {isSubmitting
+            ? "処理中..."
+            : isProjectWfEnabled
+              ? editingProject
+                ? "変更を申請"
+                : "仮登録して申請"
+              : editingProject
+                ? "保存"
+                : "登録"}
         </button>
       </div>
     </form>

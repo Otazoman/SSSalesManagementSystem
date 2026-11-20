@@ -18,7 +18,7 @@ import { PaymentDetailModal } from "./_components/PaymentDetailModal";
 import { FirmBankingExportModal } from "./_components/FirmBankingExportModal";
 
 export default function PurchasePaymentPage() {
-  const { canCreate, canRead, loading: permsLoading } = usePagePermissions();
+  const { canCreate, canRead, canUpdate, isPaymentWfEnabled, loading: permsLoading } = usePagePermissions();
 
   const {
     payments,
@@ -71,6 +71,7 @@ export default function PurchasePaymentPage() {
     setCreateForm,
     handleSubmitCreatePayment,
     handleRecordDisbursement,
+    handleSubmitForApproval,
     handleCSVImportChange,
     handleDisbursementsCSVImportChange,
     selectedPaymentIds,
@@ -272,6 +273,8 @@ export default function PurchasePaymentPage() {
         detail={detail}
         onClose={handleCloseDetail}
         onRecordDisbursement={handleRecordDisbursement}
+        approvalEnabled={isPaymentWfEnabled}
+        onSubmitForApproval={canUpdate ? handleSubmitForApproval : undefined}
       />
 
       <FirmBankingExportModal
@@ -284,6 +287,7 @@ export default function PurchasePaymentPage() {
         onPreview={handlePreviewFirmBanking}
         onDownload={handleDownloadFirmBanking}
         onClose={handleCloseFirmBankingModal}
+        error={error}
       />
     </div>
   );

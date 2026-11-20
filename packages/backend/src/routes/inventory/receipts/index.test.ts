@@ -17,6 +17,10 @@ beforeEach(async () => {
   await db.delete(schema.stocks);
   await db.delete(schema.itemReceiptItems);
   await db.delete(schema.itemReceiptHeaders);
+  await db.delete(schema.itemReceiptInstructionItems);
+  await db.delete(schema.itemReceiptInstructions);
+  await db.delete(schema.orderItems);
+  await db.delete(schema.orders);
   await db.delete(schema.locations);
   await db.delete(schema.warehouses);
   await db.delete(schema.items);
@@ -320,6 +324,119 @@ describe("POST / (入庫確定)", () => {
         sourceWarehouseId: "WH1",
       });
       expect(res.status).toBe(400);
+    });
+  });
+
+  // BUG-070: 「発注から選ぶ」で入庫した場合、仕入先は発注の仕入先になる
+  describe("発注の指定(orderId)と仕入先", () => {
+    beforeEach(async () => {
+      const now = new Date();
+      await db.insert(schema.partners).values({
+        id: "PARTNER2",
+        name: "別の仕入先",
+        createdBy: "EMP001",
+        createdAt: now,
+        updatedBy: "EMP001",
+        updatedAt: now,
+      });
+      await db.insert(schema.orders).values({
+        id: "PO-TEST",
+        title: "テスト発注",
+        partnerId: "PARTNER1",
+        orderDate: now,
+        status: "APPROVED",
+        totalAmount: 10000,
+        taxAmount: 0,
+        createdBy: "EMP001",
+        createdAt: now,
+        updatedBy: "EMP001",
+        updatedAt: now,
+      });
+    });
+
+    it("仕入先を指定しなくても、発注の仕入先が入庫ヘッダーに記録される", async () => {
+      const res = await postReceipt({
+        receivedDate: "2026-08-20",
+        items: [{ itemId: "ITEM1", warehouseId: "WH1", locationId: "LOC1", quantity: 1 }],
+        orderId: "PO-TEST",
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { headerId: string };
+
+      const header = await db
+        .select()
+        .from(schema.itemReceiptHeaders)
+        .where(eq(schema.itemReceiptHeaders.id, body.headerId));
+      expect(header[0].orderId).toBe("PO-TEST");
+      expect(header[0].partnerId).toBe("PARTNER1");
+    });
+
+    it("発注と同じ仕入先を指定した場合はそのまま記録される", async () => {
+      const res = await postReceipt({
+        receivedDate: "2026-08-20",
+        items: [{ itemId: "ITEM1", warehouseId: "WH1", locationId: "LOC1", quantity: 1 }],
+        orderId: "PO-TEST",
+        partnerId: "PARTNER1",
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("発注と異なる仕入先を指定すると400を返す", async () => {
+      const res = await postReceipt({
+        receivedDate: "2026-08-20",
+        items: [{ itemId: "ITEM1", warehouseId: "WH1", locationId: "LOC1", quantity: 1 }],
+        orderId: "PO-TEST",
+        partnerId: "PARTNER2",
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("発注と移動元倉庫を同時に指定すると400を返す", async () => {
+      const res = await postReceipt({
+        receivedDate: "2026-08-20",
+        items: [{ itemId: "ITEM1", warehouseId: "WH1", locationId: "LOC1", quantity: 1 }],
+        orderId: "PO-TEST",
+        sourceWarehouseId: "WH2",
+      });
+      expect(res.status).toBe(400);
+    });
+
+    // BUG-071: 発注から作った入荷指示から入庫すると、入庫の発注・仕入先は入荷指示の発注から決まる
+    it("発注から作った入荷指示から入庫すると、入庫の発注に入荷指示の発注が入る", async () => {
+      const now = new Date();
+      await db.insert(schema.itemReceiptInstructions).values({
+        id: "RI-TEST",
+        partnerId: "PARTNER1",
+        orderId: "PO-TEST",
+        warehouseId: "WH1",
+        instructedReceiveDate: now,
+        status: "APPROVED",
+        createdBy: "EMP001",
+        createdAt: now,
+      });
+      const res = await postReceipt({
+        receivedDate: "2026-08-20",
+        items: [{ itemId: "ITEM1", warehouseId: "WH1", locationId: "LOC1", quantity: 1 }],
+        receiptInstructionId: "RI-TEST",
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { headerId: string };
+
+      const header = await db
+        .select()
+        .from(schema.itemReceiptHeaders)
+        .where(eq(schema.itemReceiptHeaders.id, body.headerId));
+      expect(header[0].orderId).toBe("PO-TEST");
+      expect(header[0].partnerId).toBe("PARTNER1");
+    });
+
+    it("存在しない発注を指定すると404を返す", async () => {
+      const res = await postReceipt({
+        receivedDate: "2026-08-20",
+        items: [{ itemId: "ITEM1", warehouseId: "WH1", locationId: "LOC1", quantity: 1 }],
+        orderId: "PO-NOPE",
+      });
+      expect(res.status).toBe(404);
     });
   });
 });

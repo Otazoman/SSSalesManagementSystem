@@ -261,3 +261,34 @@ describe("GET /csv-download と POST /bulk-register", () => {
     expect(list.some((l) => l.id === "BL-CSV-1" && l.name === "CSVインポート拠点")).toBe(true);
   });
 });
+
+// REQ-003: 営業拠点の FAX(見積・受注・売上に展開する)
+describe("FAX番号(REQ-003)", () => {
+  const post = (path: string, body: unknown) =>
+    businessLocationsRouter.request(
+      path,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      env,
+    );
+  const findFax = async (id: string) => {
+    const list = (await (await businessLocationsRouter.request("/", {}, env)).json()) as Array<{ id: string; faxNumber: string | null }>;
+    return list.find((l) => l.id === id)?.faxNumber;
+  };
+  const importCsv = (csvData: string) => post("/bulk-register", { csvData });
+
+  it("登録・CSV で FAX を保存し、CSV に出力する。faxNumber の列が無い CSV では FAX を変えない", async () => {
+    expect((await post("/register", { id: "BLF", name: "大阪営業所", faxNumber: "06-0000-0000" })).status).toBe(200);
+    expect(await findFax("BLF")).toBe("06-0000-0000");
+
+    const csv = await (await businessLocationsRouter.request("/csv-download", {}, env)).text();
+    expect(csv).toContain("faxNumber");
+    expect(csv).toContain("06-0000-0000");
+
+    // 以前の形式(faxNumber 列なし)の CSV を取り込んでも、FAX は消えない
+    expect((await importCsv("id,name,postalCode,address,phoneNumber,status,memo\nBLF,大阪営業所,,,,active,")).status).toBe(200);
+    expect(await findFax("BLF")).toBe("06-0000-0000");
+
+    expect((await importCsv("id,name,phoneNumber,faxNumber,status\nBLF,大阪営業所,,06-1111-1111,active")).status).toBe(200);
+    expect(await findFax("BLF")).toBe("06-1111-1111");
+  });
+});

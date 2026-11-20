@@ -10,13 +10,14 @@
  * + stocks/stock_transactionsへの反映」として扱う。
  */
 import { ReceiptsRepository } from "../../routes/inventory/receipts/receipts.repository";
+import { cancelMoveToStockOfReceipt, confirmMoveToStockOfReceipt } from "../../routes/inventory/temporary-holdings/temporary-holdings.ledger";
+import { recalculateTransfersOfReceipt, recalculateTransfersOfShipment } from "../../routes/inventory/transfers/transfers.ledger";
 import { ShipmentsRepository } from "../../routes/inventory/shipments/shipments.repository";
 import { ReclassificationsRepository } from "../../routes/inventory/reclassifications/reclassifications.repository";
 import { DisposalsRepository } from "../../routes/inventory/disposals/disposals.repository";
 import { ReturnsRepository } from "../../routes/inventory/returns/returns.repository";
 import { ShipmentInstructionsRepository } from "../../routes/inventory/shipment-instructions/shipment-instructions.repository";
 import { ReceiptInstructionsRepository } from "../../routes/inventory/receipt-instructions/receipt-instructions.repository";
-import { DeliveryNotePdfService } from "../../routes/inventory/shipments/delivery-note-pdf.service";
 import { StocksService } from "../../routes/inventory/stocks/stocks.service";
 import { SalesOrderRepository } from "../../routes/sales/orders/sales-order.repository";
 import { SalesOrderShipmentService } from "../../routes/sales/orders/sales-order-shipment.service";
@@ -25,6 +26,10 @@ import {
   releaseReservationForShippedQuantity,
 } from "../../platform/inventory/warehouse-stock-reservation.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import {
+  confirmDirectShipmentOfReceipt,
+  syncDirectShipmentStatusOfReceipt,
+} from "../../routes/purchase/orders/purchase-order-direct-shipment-confirm";
 import { SCREEN_MASTER } from "../../constants/screens";
 import type {
   TargetAdapter,
@@ -87,6 +92,12 @@ async function applyApproved({
       const receiptInstructionsRepo = ReceiptInstructionsRepository.fromDb(db);
       await receiptInstructionsRepo.recalculateFulfillment(receiptHeader.receiptInstructionId);
     }
+    // REQ-005: 直送完了の入庫なら、対になる出庫(直送用の倉庫から得意先へ)も確定する
+    await confirmDirectShipmentOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now, c as any);
+    // REQ-011(3): 一時保管から在庫へ移す入庫なら、台帳を「在庫へ移行済」にする
+    await confirmMoveToStockOfReceipt(db, reqParent.targetId, approverEmployeeNumber, now);
+    // REQ-006: 倉庫間移動の入庫なら、移動の入庫済み数・状態を計算し直す
+    await recalculateTransfersOfReceipt(db, reqParent.targetId, now);
     return;
   }
 
@@ -110,6 +121,8 @@ async function applyApproved({
       now,
     );
     await shipmentsRepo.updateHeaderStatus(reqParent.targetId, "APPROVED");
+    // REQ-006: 倉庫間移動の出庫なら、移動を「輸送中」にする
+    await recalculateTransfersOfShipment(db, reqParent.targetId, now);
     // Item6 Phase6-4: 消込。この出庫実績が出荷指示に紐づく場合、指示側の充足状況を更新する
     if (shipmentHeader.shipmentInstructionId) {
       const shipmentInstructionsRepo = ShipmentInstructionsRepository.fromDb(db);
@@ -140,12 +153,7 @@ async function applyApproved({
         await salesOrderShipmentService.recalculateShipmentStatus(orderId);
       }
     }
-    // Item6 Phase6-4: 得意先が設定されていれば納品書PDFを自動生成する(承認確定=実際に
-    // 在庫が減算されたタイミング)。cはR2バインディングアクセスに必要
-    if (shipmentHeader.partnerId && c) {
-      const deliveryNotePdfService = new DeliveryNotePdfService(shipmentsRepo);
-      c.executionCtx.waitUntil(deliveryNotePdfService.generateAndStore(c as any, reqParent.targetId));
-    }
+    // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
     return;
   }
 
@@ -253,6 +261,12 @@ async function applyRemanded({
   const receiptHeader = await receiptsRepo.findHeaderById(reqParent.targetId);
   if (receiptHeader) {
     await receiptsRepo.updateHeaderStatus(reqParent.targetId, status);
+    // REQ-005: 直送完了の入庫なら、対になる出庫も同じ状態にする
+    await syncDirectShipmentStatusOfReceipt(db, reqParent.targetId, status);
+    // REQ-011(3): 一時保管から在庫へ移す入庫が取り下げられたら、在庫へ移す動きを差戻しにする(差戻しは再申請できるため残す)
+    if (status === "CANCELED") await cancelMoveToStockOfReceipt(db, reqParent.targetId, new Date());
+    // REQ-006: 倉庫間移動の入庫なら、承認待ちの入庫が減るため計算し直す
+    await recalculateTransfersOfReceipt(db, reqParent.targetId);
     return;
   }
 
@@ -260,6 +274,8 @@ async function applyRemanded({
   const shipmentHeader = await shipmentsRepo.findHeaderById(reqParent.targetId);
   if (shipmentHeader) {
     await shipmentsRepo.updateHeaderStatus(reqParent.targetId, status);
+    // REQ-006: 倉庫間移動の出庫が取り下げられたら、移動を「取消」にする
+    await recalculateTransfersOfShipment(db, reqParent.targetId);
     return;
   }
 
@@ -409,7 +425,28 @@ async function resolveEditPath({
   return null;
 }
 
+// BUG-103: 承認フローはメニュー単位。入庫・入荷実績・入荷指示は「入荷」、出庫・出荷実績・出荷指示は「出荷」、
+// 品質区分変更・廃棄・返品は「在庫・棚卸管理」のフローを使う。documentKind で伝票の種類ごとに分けられる
+async function resolveFlowTarget({ db, targetType, targetId }: { db: any; targetType: string; targetId: string }) {
+  if (targetType === "inventory_instructions") {
+    if (await ShipmentInstructionsRepository.fromDb(db).findHeaderById(targetId)) {
+      return { requestType: "inventory_shipping", documentKind: "SHIPMENT_INSTRUCTION" };
+    }
+    if (await ReceiptInstructionsRepository.fromDb(db).findHeaderById(targetId)) {
+      return { requestType: "inventory_receiving", documentKind: "RECEIPT_INSTRUCTION" };
+    }
+    return null;
+  }
+  if (await ReceiptsRepository.fromDb(db).findHeaderById(targetId)) return { requestType: "inventory_receiving", documentKind: "RECEIPT" };
+  if (await ShipmentsRepository.fromDb(db).findHeaderById(targetId)) return { requestType: "inventory_shipping", documentKind: "SHIPMENT" };
+  if (await ReclassificationsRepository.fromDb(db).findById(targetId)) return { requestType: "inventory_audit", documentKind: "RECLASSIFICATION" };
+  if (await DisposalsRepository.fromDb(db).findById(targetId)) return { requestType: "inventory_audit", documentKind: "DISPOSAL" };
+  if (await ReturnsRepository.fromDb(db).findById(targetId)) return { requestType: "inventory_audit", documentKind: "RETURN" };
+  return null;
+}
+
 export const inventoryStockAdapter: TargetAdapter = {
+  resolveFlowTarget,
   // BUG-049: 書き込みの結果を使う処理(書き込み直後の再集計など)や R2 の後始末を含むため、承認の書き込みとはまとめず、先に実行する
   requiresImmediateWrites: true,
   applyApproved,

@@ -7,8 +7,9 @@ import { SalesOrderMailService } from "./sales/orders/sales-order-mail.service";
 import { PurchaseOrderMailService } from "./purchase/orders/purchase-order-mail.service";
 import { SalesInvoiceMailService } from "./sales/invoices/sales-invoice-mail.service";
 
-// BUG-029: 1件のメール送信でも、帳票の PDF が無ければその場で作ってから送る(一括送信・検収書・請求書と同じ動き)。
-// PDF の作成そのもの(テンプレート・フォント)は各 pdf.service のテストで確かめるため、ここでは作成の呼び出しだけを偽物にする。
+// BUG-029 → PERF-07 B-6: 帳票の PDF はブラウザで作るため、メール送信の時にサーバーでは作らない。
+// PDF が無ければ「先に PDF を発行してください」(400)を返す(画面は、送る前に未発行なら発行してから送る)。
+// サーバーで作る処理を呼んでいないことを確かめるため、作成の呼び出しを数える偽物を渡す。
 
 type AnyService = { singleSendEmail: (c: any, id: string, payload: { recipientEmail: string }) => Promise<unknown> };
 
@@ -58,33 +59,25 @@ beforeEach(async () => {
   await env.COMPANY_SETTINGS.put("config", JSON.stringify({ site_url: "https://example.com" }));
 });
 
-describe("1件のメール送信での PDF の自動作成(BUG-029)", () => {
+describe("1件のメール送信と PDF(PERF-07 B-6)", () => {
   for (const { label, Service, findApproved } of cases) {
-    it(`${label}: PDF が無ければ作ってから送信を予約する`, async () => {
+    it(`${label}: PDF が無ければ、サーバーでは作らずに「先に PDF を発行してください」(400)を返す`, async () => {
       const { repo, pdfService, state } = makeFakes(findApproved, { pdfCreatable: true });
       const service = new (Service as any)(repo, pdfService) as AnyService;
       const res = await send(service);
-      expect(state.generateCalls).toBe(1);
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      expect(state.generateCalls).toBe(0);
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("先に PDF を発行してください");
     });
 
-    it(`${label}: PDF が既にあれば作らずに送る`, async () => {
+    it(`${label}: PDF が既にあれば送る`, async () => {
       const { repo, pdfService, state } = makeFakes(findApproved, { pdfCreatable: true });
       state.pdfCreated = true;
       const service = new (Service as any)(repo, pdfService) as AnyService;
       const res = await send(service);
       expect(state.generateCalls).toBe(0);
       expect(res.status).toBe(200);
-    });
-
-    it(`${label}: PDF を作れなかった場合は、作成に失敗したことを伝える`, async () => {
-      const { repo, pdfService } = makeFakes(findApproved, { pdfCreatable: false });
-      const service = new (Service as any)(repo, pdfService) as AnyService;
-      const res = await send(service);
-      // 業務エラー(400)として理由を返す(500 だと共通のエラー処理で「問い合わせ番号」だけになり、理由が画面に出ない)
-      expect(res.status).toBe(400);
-      expect(res.body.message).toBe(`${label}PDFの作成に失敗しました。帳票テンプレートの設定をご確認ください。`);
+      expect(res.body.success).toBe(true);
     });
   }
 });

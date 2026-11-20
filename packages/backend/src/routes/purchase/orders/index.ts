@@ -4,6 +4,7 @@ import { Env } from "../../../types/env";
 import { PurchaseOrderRepository } from "./purchase-order.repository";
 import { PurchaseOrderService } from "./purchase-order.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
+import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
   describeApiRoute,
@@ -18,7 +19,9 @@ import {
   RequestDownloadOtpSchema,
   VerifyDownloadOtpSchema,
   UpdateDeliveryDatesSchema,
+  DirectShipmentCompletionSchema,
 } from "./purchase-order.schema";
+import { PurchaseOrderDirectShipmentService } from "./purchase-order-direct-shipment.service";
 import { todayJst } from "../../../platform/date/format-jst-date";
 
 type Variables = {
@@ -235,6 +238,32 @@ purchaseOrdersRouter.put(
 );
 
 // ==========================================
+// REQ-005 第2段階: 直送完了(直送用の倉庫への入庫と、得意先への出庫を同時に確定。承認機能が有効なら入出庫の承認を申請)
+// ==========================================
+purchaseOrdersRouter.post(
+  "/:id/direct-shipment-completion",
+  describeApiRoute({
+    summary: "直送の発注の直送完了(入庫・出庫の同時確定、または承認申請)",
+    tags: ["purchase-orders"],
+    responses: {
+      200: { description: "確定または承認申請の成功" },
+      400: { description: "バリデーションエラー、直送の発注ではない、確定前、残数量の超過、承認待ちの直送完了がある" },
+      404: { description: "発注・受注・品目が見つからない" },
+    },
+  }),
+  async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => null);
+    const parsed = v.safeParse(DirectShipmentCompletionSchema, body);
+    if (!parsed.success) {
+      return respondValidationError(c, parsed.issues);
+    }
+    const result = await new PurchaseOrderDirectShipmentService().completeDirectShipment(c as any, id, parsed.output);
+    return c.json(result);
+  },
+);
+
+// ==========================================
 // 削除
 // ==========================================
 purchaseOrdersRouter.delete(
@@ -325,25 +354,15 @@ purchaseOrdersRouter.get(
 // ==========================================
 // PDF生成
 // ==========================================
-purchaseOrdersRouter.post(
-  "/:id/generate-pdf",
-  describeApiRoute({
-    summary: "発注書PDF生成",
-    tags: ["purchase-orders"],
-    responses: {
-      200: { description: "生成成功" },
-      404: { description: "対象データがない" },
-    },
-  }),
-  async (c) => {
-    const id = c.req.param("id");
-    const result = await getService(c).generatePdf(c, id);
-    if (!result) {
-      return c.json({ success: false, message: "対象データがありません" }, 404);
-    }
-    return c.json(result);
-  },
-);
+
+// PERF-07 B-3・B-4: ブラウザで PDF を作るためのデータ(GET /:id/pdf-source)と、ブラウザが作った PDF の受け取り(POST /:id/pdf)
+registerBrowserPdfRoutes(purchaseOrdersRouter, {
+  tag: "purchase-orders",
+  label: "発注書",
+  resource: "purchase_orders",
+  build: (c, id, withLayout) => getService(c).buildPdfSource(c, id, withLayout),
+  store: (c, id, pdf, built, uploadedBy) => getService(c).storePdf(c, id, pdf, built, uploadedBy),
+});
 
 // ==========================================
 // 添付ファイルのストリーミング配信・ダウンロード(社内向け、OTP認証なし)

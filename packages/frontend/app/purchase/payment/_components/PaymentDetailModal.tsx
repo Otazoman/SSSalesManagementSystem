@@ -5,6 +5,7 @@ import { PaymentDetail } from "../_types";
 import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletionControl";
 import { METHOD_LABELS } from "../../../_shared/payment-method-labels";
 import { todayJst } from "../../../_shared/jst-date";
+import { ReconciliationApprovalBadge, pendingApprovalAmount } from "../../../_shared/ui/ReconciliationApprovalBadge";
 
 interface PaymentDetailModalProps {
   detail: PaymentDetail | null;
@@ -18,6 +19,9 @@ interface PaymentDetailModalProps {
       memo?: string;
     },
   ) => Promise<boolean>;
+  // REQ-026: 支払の承認が ON の時は、承認済みになるまで支払の記録をできなくし、承認申請のボタンを出す
+  approvalEnabled?: boolean;
+  onSubmitForApproval?: (id: string) => void;
 }
 
 // Item10 Phase5: 支払内容の確認・手動消込入力を行う詳細モーダル(PDF発行は仕入側に無いため対象外)
@@ -25,6 +29,8 @@ export function PaymentDetailModal({
   detail,
   onClose,
   onRecordDisbursement,
+  approvalEnabled = false,
+  onSubmitForApproval,
 }: PaymentDetailModalProps) {
   const [paidDate, setPaidDate] = useState(
     todayJst(),
@@ -32,12 +38,22 @@ export function PaymentDetailModal({
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("BANK_TRANSFER");
   const [memo, setMemo] = useState("");
+  // BUG-087: 記録に成功するたびに増やし、Modal の「未保存の編集」の印を消す(商談の BUG-081 と同じ形)
+  const [savedVersion, setSavedVersion] = useState(0);
 
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
+  // REQ-018: 承認待ちの支払(消込額にはまだ入っていない)。記録できるのは、承認待ちの分も引いた残り
+  const pendingAmount = pendingApprovalAmount(detail.disbursements);
+  const recordable = Math.max(remaining - pendingAmount, 0);
   // BUG-051: 未消込額を超える支払は記録できない(仕入側には単体の前渡金の仕組みが無いため)
-  const isOverRemaining = Number(amount) > remaining;
+  const isOverRemaining = Number(amount) > recordable;
+  // BUG-094: 支払額が0円(相殺・赤伝など)で未完了の支払は、金額を入力せずに0円で完了にできる
+  // REQ-026: 承認が ON の時、承認済みになるまで支払の記録はできない
+  const awaitingApproval = approvalEnabled && detail.status !== "APPROVED";
+  const canCompleteWithZero =
+    !awaitingApproval && remaining === 0 && pendingAmount === 0 && detail.reconciliationStatus !== "RECONCILED";
 
   const handleSubmitDisbursement = async () => {
     const amountNumber = Number(amount);
@@ -51,6 +67,20 @@ export function PaymentDetailModal({
     if (success) {
       setAmount("");
       setMemo("");
+      setSavedVersion((v) => v + 1);
+    }
+  };
+
+  const handleCompleteWithZero = async () => {
+    const success = await onRecordDisbursement(detail.id, {
+      paidDate,
+      amount: 0,
+      method,
+      memo: memo || undefined,
+    });
+    if (success) {
+      setMemo("");
+      setSavedVersion((v) => v + 1);
     }
   };
 
@@ -67,6 +97,7 @@ export function PaymentDetailModal({
       size="2xl"
       onClose={onClose}
       warnOnDiscard
+      discardResetKey={savedVersion}
     >
       {/* 進捗確認(閲覧専用)に表示される完了/進行中の手動設定。この画面の更新権限がある場合のみ変更できる */}
       <DocumentCompletionControl stageKey="payment" documentId={detail.id} />
@@ -96,6 +127,9 @@ export function PaymentDetailModal({
             ¥{detail.reconciledAmount.toLocaleString()} / ¥
             {remaining.toLocaleString()}
           </span>
+          {pendingAmount > 0 && (
+            <span className="block font-mono font-bold text-amber-800">承認待ち ¥{pendingAmount.toLocaleString()}</span>
+          )}
         </div>
       </div>
 
@@ -154,6 +188,21 @@ export function PaymentDetailModal({
         </div>
       </div>
 
+      {awaitingApproval && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <span className="font-bold">
+            {detail.status === "PENDING_APPROVAL"
+              ? "🟡 承認申請中です。承認されると支払を記録でき、総合振込データの対象になります"
+              : "承認機能が有効なため、支払を記録する前(総合振込データを作る前)に承認の申請が必要です"}
+          </span>
+          {detail.status === "DRAFT" && onSubmitForApproval && (
+            <Button variant="primary" onClick={() => onSubmitForApproval(detail.id)}>
+              📨 承認を申請する
+            </Button>
+          )}
+        </div>
+      )}
+
       <div className="border border-slate-200 rounded-lg p-3.5 space-y-3">
         <h4 className="text-xs font-bold text-slate-700">
           💰 支払消込を記録する
@@ -210,14 +259,19 @@ export function PaymentDetailModal({
         </div>
         {isOverRemaining && (
           <p className="text-[11px] font-bold text-red-700">
-            ⚠️ 未消込額(¥{remaining.toLocaleString()})を超える金額は記録できません。
+            ⚠️ 未消込額(¥{recordable.toLocaleString()}{pendingAmount > 0 ? "、承認待ちを除く" : ""})を超える金額は記録できません。
           </p>
         )}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {canCompleteWithZero && (
+            <Button variant="secondary" onClick={handleCompleteWithZero}>
+              0円で消込を完了する
+            </Button>
+          )}
           <Button
             variant="success"
             onClick={handleSubmitDisbursement}
-            disabled={!amount || Number(amount) <= 0 || isOverRemaining}
+            disabled={awaitingApproval || !amount || Number(amount) <= 0 || isOverRemaining}
           >
             支払を記録する
           </Button>
@@ -241,7 +295,8 @@ export function PaymentDetailModal({
                 <span className="text-slate-600">
                   {METHOD_LABELS[d.method] || d.method}
                 </span>
-                <span className="font-mono font-bold text-slate-800">
+                <span className="flex items-center gap-1.5 font-mono font-bold text-slate-800">
+                  <ReconciliationApprovalBadge status={d.approvalStatus} />
                   ¥{d.amount.toLocaleString()}
                 </span>
               </div>

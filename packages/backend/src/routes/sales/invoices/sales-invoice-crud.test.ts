@@ -499,6 +499,21 @@ describe("SalesInvoiceCrudService: BUG-065 サービス品目は「出荷済み�
     expect(created.success).toBe(true);
   });
 
+  // REQ-011(1): 品目マスタに無い明細(直接入力)も、出荷しないため受注数量まで計上できる
+  it("出荷済み数量が0でも、品目マスタに無い明細(直接入力)は受注数量まで計上できる", async () => {
+    const lineId = await seedSalesOrder("SO-SVC", 10);
+    await db
+      .update(schema.salesOrderItems)
+      .set({ itemId: "FREE-1", inputType: "DIRECT", itemName: "マスタ外" })
+      .where(eq(schema.salesOrderItems.id, lineId));
+    const b = { ...body(lineId, "FREE-1"), items: [{ ...body(lineId, "FREE-1").items[0], inputType: "DIRECT" }] };
+    const formData = new FormData();
+    formData.append("invoiceData", JSON.stringify(b));
+
+    const created = await withContext((c) => getService(c).createInvoice(c, formData, b as any));
+    expect(created.success).toBe(true);
+  });
+
   it("在庫品目の明細は、これまでどおり出荷済み数量を超えると計上できない", async () => {
     const stockLineId = await seedSalesOrder("SO-SVC", 10);
     const b = body(stockLineId, "ITEM-1");

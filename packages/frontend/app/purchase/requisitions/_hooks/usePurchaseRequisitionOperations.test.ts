@@ -106,6 +106,8 @@ describe("usePurchaseRequisitionOperations", () => {
 
     expect(result.current.message).toBe("購買申請を新規登録しました");
     expect(result.current.editingId).toBe("PR-NEW-1");
+    // REQ-008: 保存した後の確認(仕入と同じダイアログ)に、番号・件名を出す
+    expect(result.current.savedSummary).toMatchObject({ id: "PR-NEW-1", title: "事務用品購入" });
   });
 
   it("品目未入力の明細行があるとエラーになりAPIを呼ばない", async () => {
@@ -714,5 +716,45 @@ describe("usePurchaseRequisitionOperations: BUG-061 CSV取込の上書きの確�
 
     expect(bulkCalls(fetchSpy)).toHaveLength(1);
     confirmSpy.mockRestore();
+  });
+});
+
+// REQ-019: 仕入先はマスタからの選択だけ
+describe("usePurchaseRequisitionOperations: REQ-019 仕入先はマスタから選ぶ", () => {
+  it("マスタの仕入先を選ぶと、保存する仕入先名はマスタの名称・種類は MASTER になる(以前の自由入力も選び直すとマスタになる)", async () => {
+    const fetchSpy = vi.fn();
+    mockInitialFetches(fetchSpy, { suppliers: [{ id: "SUP-1", name: "文具商事", type: "SUPPLIER" }] });
+    vi.stubGlobal("fetch", fetchSpy);
+    const { result } = renderHook(() => usePurchaseRequisitionOperations(defaultProps()));
+    await waitFor(() => expect(result.current.suppliers.length).toBe(1));
+
+    act(() => {
+      result.current.setPartnerName("自由入力商店");
+    });
+    await act(async () => {
+      await result.current.onSupplierMasterSelect("SUP-1");
+    });
+    expect(result.current.partnerId).toBe("SUP-1");
+    expect(result.current.partnerName).toBe("文具商事");
+    expect(result.current.partnerInputType).toBe("MASTER");
+  });
+
+  it("仕入先を選んでいないと保存しない(自由入力の名前だけでは保存できない)", async () => {
+    const fetchSpy = vi.fn();
+    mockInitialFetches(fetchSpy);
+    vi.stubGlobal("fetch", fetchSpy);
+    const { result } = renderHook(() => usePurchaseRequisitionOperations(defaultProps()));
+    await waitFor(() => expect(result.current.requisitions).toEqual([]));
+    act(() => {
+      result.current.setTitle("申請");
+      result.current.setDepartmentSurrogateId("D001");
+      result.current.setPartnerName("自由入力商店");
+      result.current.setProjectId("PJ-1");
+    });
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+    });
+    expect(result.current.error).toBe("仕入先をマスタから選択してください");
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes("/register"))).toBe(false);
   });
 });

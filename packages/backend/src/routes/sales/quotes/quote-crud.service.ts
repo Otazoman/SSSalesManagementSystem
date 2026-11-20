@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { QuoteRepository } from "./quote.repository";
+import { assertQuoteNotLost } from "./quote-lost.service";
 import { QuotePayload } from "./quote.schema";
 import { RESOURCE_KEY } from "./quote-constants";
 import { buildQuoteItemInsertRow, QuoteItemInput } from "./quote-item-mapper";
@@ -254,6 +255,9 @@ export class QuoteCrudService {
     body = await recalculateDocumentTotals(c.env.COMPANY_SETTINGS, body, await this.repo.findTaxCategoryRates());
     const opId = await this.repo.getFallbackOperatorId(c);
     const oldSnapshot = await this.repo.findQuoteById(id);
+
+    // REQ-015: 失注の見積は、承認の有無にかかわらず編集できない
+    assertQuoteNotLost(oldSnapshot, "編集");
 
     if (oldSnapshot) {
       // 承認機能が無効な場合はpartners(取引先マスタ)と同様、ステータスに関わらず直接編集できる

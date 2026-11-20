@@ -85,8 +85,14 @@ export class QuoteService {
   }
 
   // --- PDF生成 (quote-pdf.service.ts) ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(c: Context, id: string, options: { includeOrderForm?: boolean; withLayout?: boolean } = {}) {
+    return this.pdf.buildPdfSource(c, id, options);
+  }
+
+  storePdf(...args: Parameters<QuotePdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- ダウンロード/OTP (quote-download.service.ts) ---
@@ -94,7 +100,7 @@ export class QuoteService {
     return this.download.getDownloadStream(id, attachmentId);
   }
 
-  requestDownloadOtp(c: Context, quoteId: string, attachmentId: string, email: string) {
+  requestDownloadOtp(c: Context, quoteId: string, attachmentId: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, quoteId, attachmentId, email);
   }
 
@@ -102,7 +108,7 @@ export class QuoteService {
     c: Context,
     quoteId: string,
     attachmentId: string,
-    email: string,
+    email: string | undefined,
     otp: string,
   ) {
     return this.download.verifyDownloadOtp(c, quoteId, attachmentId, email, otp);

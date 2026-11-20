@@ -107,7 +107,7 @@ describe("AdminProductPricesPage", () => {
     expect(screen.getByText("💰 品目単価マスタ")).toBeInTheDocument();
   });
 
-  it("「新規個別登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規個別登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(basePermissions());
     const fetchSpy = vi.fn();
     mockAllFetches(fetchSpy);
@@ -122,7 +122,7 @@ describe("AdminProductPricesPage", () => {
     );
     expect(screen.getByText("🔏 特値・個別価格の個別登録")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("🔏 特値・個別価格の個別登録")).not.toBeInTheDocument();
   });
 });

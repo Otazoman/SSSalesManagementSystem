@@ -3,23 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next build && wrangler dev",
-    "build": "next build",
+    "dev": "npm run build && wrangler dev",
+    "build": "next build && node scripts/csp/generate-csp-headers.mjs",
     "start": "next start",
     "lint": "eslint",
-    "preview": "next build && wrangler dev",
-    "deploy:prod": "next build && wrangler deploy",
+    "preview": "npm run build && wrangler dev",
+    "deploy:prod": "npm run build && wrangler deploy",
     "test": "vitest run --config vitest.config.mts && vitest run --config vitest.config.react.mts",
     "test:watch": "vitest --config vitest.config.react.mts",
     "test:browser": "vitest run --config vitest.config.browser.mts"
   },
   "dependencies": {
     "@zxing/browser": "^0.2.1",
+    "dompurify": "^3.4.17",
     "jsbarcode": "^3.12.3",
-    "next": "16.2.6",
+    "next": "16.4.5",
     "qrcode-generator": "^2.0.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "report-renderer": "file:../report-renderer"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.21.0",
@@ -33,7 +35,7 @@
     "@types/react-dom": "^19",
     "@vitest/browser-playwright": "^4.1.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.4.5",
     "jsdom": "^30.0.1",
     "playwright": "^1.63.0",
     "prettier": "^3.9.8",

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   PurchaseRecognitionRecord,
   PartnerMaster,
@@ -113,7 +113,7 @@ export function usePurchaseRecognitionForm({
   useEffect(() => {
     async function loadCompanySettings() {
       try {
-        const data = await apiFetch<CompanySettingsResponse>("/api/company-settings");
+        const data = await apiFetchShared<CompanySettingsResponse>("/api/company-settings");
         setCompanyName(data.company_name || "");
         setCompanyAddress(data.company_address || "");
         setCompanyTel(data.company_tel || "");
@@ -157,7 +157,7 @@ export function usePurchaseRecognitionForm({
       setPaymentTerms(initialData.payment_terms || initialData.paymentTerms || "貴社お支払基準に準拠");
 
       if (dbCompName.trim() === "" && dbCompAddr.trim() === "" && dbCompTel.trim() === "") {
-        apiFetch<CompanySettingsResponse>("/api/company-settings")
+        apiFetchShared<CompanySettingsResponse>("/api/company-settings")
           .then((compData) => {
             setCompanyName(compData.company_name || "");
             setCompanyAddress(compData.company_address || "");
@@ -373,6 +373,7 @@ export function usePurchaseRecognitionForm({
     selections: Array<{ progress: OrderItemProgress; quantity: number }>,
     orderProjectId?: string | null,
     orderPartnerId?: string | null,
+    orderTitle?: string | null,
   ): string | undefined => {
     if (orderPartnerId && orderPartnerId !== partnerId && items.some((item) => !!item.sourceOrderItemId)) {
       return "別の仕入先の発注明細が既に入っているため、この発注は追加できません(1つの仕入には同じ仕入先の発注だけをまとめられます)";
@@ -395,6 +396,8 @@ export function usePurchaseRecognitionForm({
     // 対象検収は仕入先ごとの記録のため、仕入先が変わる場合は選択をクリアする(handlePartnerChangeと同じ)
     if (orderPartnerId) handlePartnerChange(orderPartnerId);
     if (orderProjectId) setProjectId(orderProjectId);
+    // BUG-117: 件名が空なら、発注の件名を引き継ぐ(入力済みの件名は変えない)
+    if (orderTitle && !recognitionTitle.trim()) setRecognitionTitle(orderTitle);
     setItems((prev) => {
       const withoutEmptyFirstRow = prev.length === 1 && !prev[0].itemId ? [] : prev;
       return [...withoutEmptyFirstRow, ...newItems];

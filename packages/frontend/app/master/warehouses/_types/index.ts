@@ -13,7 +13,8 @@ export interface WarehouseRecord {
   id: string;
   name: string;
   // Item6 Phase6-4: 自社倉庫("INTERNAL")/外部倉庫("EXTERNAL")の区分。既存倉庫は全てINTERNAL扱い
-  warehouseType: "INTERNAL" | "EXTERNAL";
+  // REQ-005: "DIRECT"(直送)は直送完了の記録用に、システムが自動で作る倉庫
+  warehouseType: "INTERNAL" | "EXTERNAL" | "DIRECT";
   postalCode: string | null;
   address: string | null;
   phoneNumber: string | null;

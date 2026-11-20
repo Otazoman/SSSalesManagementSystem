@@ -9,9 +9,9 @@
 
 | バインディング | 本番の DB 名 | 内容 | テーブル数 | 最新の migration |
 |---|---|---|---:|---|
-| `DB` | `my-erp-db` | 業務データ | 96 | `0095_true_black_tarantula` |
+| `DB` | `my-erp-db` | 業務データ | 100 | `0107_warehouse_partners` |
 | `DB_LOG` | `my-erp-log-db` | 監査ログ・メール送信ログ | 2 | `0002_wealthy_smasher` |
-| `DB_OTP` | `my-erp-otp-db` | OTP | 1 | `0000_complex_plazm` |
+| `DB_OTP` | `my-erp-otp-db` | OTP | 2 | `0001_red_santa_claus` |
 | `DB_JOURNAL` | `my-erp-journal-db` | 仕訳データ | 2 | `0002_lame_piledriver` |
 | `DB_DEALS` | `my-erp-deals-db` | 商談 | 6 | `0000_greedy_dust` |
 | `DB_UI` | `my-erp-ui-db` | お知らせ・画面説明・表示設定 | 3 | `0000_flashy_nebula` |
@@ -29,11 +29,11 @@
 | [業務マスタ](master.md) | 取引先・商品・単位・勘定科目・倉庫・ロケーションなどのマスタ | 23 |
 | [販売](sales.md) | 見積・受注・売上・請求・入金 | 18 |
 | [購買](purchase.md) | 購買申請・発注・仕入・支払 | 14 |
-| [在庫](inventory.md) | 在庫・入出庫・入出荷指示・棚卸・品質区分の変更・廃棄・返品・引当 | 19 |
+| [在庫](inventory.md) | 在庫・入出庫・入出荷指示・棚卸・品質区分の変更・廃棄・返品・引当 | 23 |
 | [会計(仕訳)](accounting.md) | 仕訳ルール・仕訳の起票イベントと、仕訳データ(DB_JOURNAL) | 6 |
 | [進捗管理](progress.md) | 進捗確認の工程の担当と、完了/進行中の手動設定 | 4 |
 | [商談](deals.md) | 商談・面談者・タスク・見込み客の担当者(DB_DEALS) | 6 |
-| [ログ・OTP・画面表示](logs-otp-ui.md) | 監査ログ・メール送信ログ(DB_LOG)、OTP(DB_OTP)、お知らせ・画面説明・表示設定(DB_UI) | 6 |
+| [ログ・OTP・画面表示](logs-otp-ui.md) | 監査ログ・メール送信ログ(DB_LOG)、OTP(DB_OTP)、お知らせ・画面説明・表示設定(DB_UI) | 7 |
 
 ## テーブルの索引
 
@@ -79,6 +79,7 @@
 | [journal_posting_patterns](accounting.md#journal_posting_patterns) | 仕訳パターン | 会計(仕訳) | `DB` |
 | [journal_posting_rules](accounting.md#journal_posting_rules) | 仕訳ルール | 会計(仕訳) | `DB` |
 | [locations](master.md#locations) | ロケーション | 業務マスタ | `DB` |
+| [login_otp_challenges](logs-otp-ui.md#login_otp_challenges) | ログインのOTP | ログ・OTP・画面表示 | `DB_OTP` |
 | [mail_delivery_logs](logs-otp-ui.md#mail_delivery_logs) | メール送信ログ・送信待ち | ログ・OTP・画面表示 | `DB_LOG` |
 | [mail_template_settings](system.md#mail_template_settings) | メール送信・帳票の設定 | システム管理 | `DB` |
 | [master_approval_contexts](workflow.md#master_approval_contexts) | 承認申請の審査情報 | 承認ワークフロー | `DB` |
@@ -134,8 +135,12 @@
 | [stock_reclassifications](inventory.md#stock_reclassifications) | 品質区分の変更 | 在庫 | `DB` |
 | [stock_returns](inventory.md#stock_returns) | 返品 | 在庫 | `DB` |
 | [stock_transactions](inventory.md#stock_transactions) | 在庫の増減履歴 | 在庫 | `DB` |
+| [stock_transfer_items](inventory.md#stock_transfer_items) | 倉庫間移動の明細 | 在庫 | `DB` |
+| [stock_transfers](inventory.md#stock_transfers) | 倉庫間移動 | 在庫 | `DB` |
 | [stocks](inventory.md#stocks) | 在庫 | 在庫 | `DB` |
 | [tax_categories](master.md#tax_categories) | 消費税区分 | 業務マスタ | `DB` |
+| [temporary_holding_movements](inventory.md#temporary_holding_movements) | 一時保管の動き | 在庫 | `DB` |
+| [temporary_holdings](inventory.md#temporary_holdings) | 一時保管 | 在庫 | `DB` |
 | [unit_conversions](master.md#unit_conversions) | 単位の換算 | 業務マスタ | `DB` |
 | [units](master.md#units) | 単位 | 業務マスタ | `DB` |
 | [user_login_states](system.md#user_login_states) | ログインの状態 | システム管理 | `DB` |

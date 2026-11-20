@@ -58,6 +58,9 @@ export interface PurchaseRequisitionRecord {
   partnerInputType?: "MASTER" | "DIRECT";
   // Phase3フォローアップ: 見積との項目整合。勘定科目はヘッダー1件につき1つ
   projectId?: string | null;
+  // REQ-005: 直送の指定と、直送する受注(発注を作る時に引き継ぐ)
+  isDirectShipment?: boolean;
+  directSalesOrderId?: string | null;
   totalAmount: number;
   taxAmount?: number | null;
   memo: string | null;
@@ -183,4 +186,7 @@ export interface PurchaseRequisitionPrefillData {
   projectId?: string | null;
   memo?: string | null;
   items: PurchaseRequisitionItemRecord[];
+  // REQ-005: 受注から作成した場合の直送の指定(発注を作る時に引き継ぐ)
+  isDirectShipment?: boolean;
+  directSalesOrderId?: string | null;
 }

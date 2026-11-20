@@ -1,9 +1,10 @@
 "use client";
 
 import { DataTable } from "../../../_shared/ui/DataTable";
-import { PurchaseRequisitionRecord } from "../_types";
+import { PurchaseRequisitionRecord, UserOption } from "../_types";
 import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
+import { formatJstDate } from "../../../_shared/jst-date";
 
 const CATEGORY_LABEL: Record<string, string> = {
   ONE_TIME: "都度",
@@ -12,6 +13,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 interface PurchaseRequisitionTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   requisitions: PurchaseRequisitionRecord[];
   canCreate: boolean;
   canUpdate: boolean;
@@ -21,6 +24,10 @@ interface PurchaseRequisitionTableProps {
   onDeleteLink: (r: PurchaseRequisitionRecord) => void;
   // Phase4: 「コピーして下書き作成」。ステータス問わず、別レコードとして新規複製する
   onCopyToNewDraft: (r: PurchaseRequisitionRecord) => void;
+  // BUG-099: 「内容確認」(見積の一覧と同じ参照用パネル)
+  onPreview?: (r: PurchaseRequisitionRecord) => void;
+  // BUG-102: 申請者・入力者を名前で出すためのユーザー一覧
+  userMaster?: UserOption[];
   sortBy?: string | null;
   sortDirection?: "asc" | "desc";
   sortKeys?: { key: string; direction: "asc" | "desc" }[];
@@ -28,6 +35,7 @@ interface PurchaseRequisitionTableProps {
 }
 
 export function PurchaseRequisitionTable({
+  approvalEnabled,
   requisitions,
   canCreate,
   canUpdate,
@@ -36,19 +44,31 @@ export function PurchaseRequisitionTable({
   onSelectEdit,
   onDeleteLink,
   onCopyToNewDraft,
+  onPreview,
+  userMaster = [],
   sortBy,
   sortDirection,
   sortKeys,
   onSortChange,
 }: PurchaseRequisitionTableProps) {
+  const userName = (employeeNumber?: string | null) =>
+    (employeeNumber && userMaster.find((u) => u.employeeNumber === employeeNumber)?.name) || employeeNumber || "-";
   return (
     <DataTable
       columns={[
         { key: "id", label: "申請番号", sortable: true },
         { key: "title", label: "件名", sortable: true },
+        // BUG-102: 申請者・入力者(見積の一覧の「自社担当者」「入力担当者」と同じ)
+        { key: "applicantId", label: "申請者", sortable: true },
+        { key: "inputPersonEmployeeNumber", label: "入力者", sortable: true },
+        // BUG-099: 申請日は作成日(created_at)。BUG-104: 見積の一覧と同じく、入力者の後に並べる
+        { key: "createdAt", label: "申請日", sortable: true },
         { key: "requestType", label: "購買区分", sortable: true },
-        { key: "status", label: "ステータス", sortable: true },
+        { key: "attachments", label: "添付" },
+        // 見積の一覧と同じく、合計金額の後にステータス
         { key: "totalAmount", label: "合計金額", align: "right", sortable: true },
+        { key: "status", label: "ステータス", sortable: true },
+        { key: "preview", label: "内容確認", align: "center" },
         { key: "actions", label: "操作", align: "center" },
       ]}
       data={requisitions}
@@ -65,14 +85,40 @@ export function PurchaseRequisitionTable({
         >
           <td className="px-4 py-3 font-mono text-xs font-bold text-slate-900">{r.id}</td>
           <td className="px-4 py-3 font-semibold text-slate-900">{r.title}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.applicantId)}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{userName(r.inputPersonEmployeeNumber)}</td>
+          <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+            {r.createdAt ? formatJstDate(new Date(r.createdAt)) : "-"}
+          </td>
           <td className="px-4 py-3 text-xs text-slate-600">
             {CATEGORY_LABEL[r.requestType] || r.requestType}
           </td>
-          <td className="px-4 py-3">
-            <StatusBadge {...getDocumentLifecycleStatus(r.status)} />
+          <td className="px-4 py-3 text-xs whitespace-nowrap">
+            {r.attachments && r.attachments.length > 0 ? (
+              <span className="inline-flex items-center gap-1 font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[11px] border border-indigo-100">
+                📎 あり
+              </span>
+            ) : (
+              <span className="text-slate-500 italic">なし</span>
+            )}
           </td>
+          {/* 見積の一覧と同じく、合計金額の後にステータス */}
           <td className="px-4 py-3 text-right text-xs font-mono text-slate-700">
             ¥{Number(r.totalAmount || 0).toLocaleString()}
+          </td>
+          <td className="px-4 py-3">
+            <StatusBadge {...getDocumentLifecycleStatus(r.status, { approvalEnabled })} />
+          </td>
+          <td className="px-4 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+            {/* BUG-105: 見積・受注・売上・仕入の一覧と同じ「確認」の文字のボタン */}
+            <button
+              type="button"
+              onClick={() => onPreview?.(r)}
+              disabled={!onPreview}
+              className="font-bold text-indigo-600 hover:text-indigo-900 hover:underline cursor-pointer transition-colors text-xs disabled:opacity-50"
+            >
+              確認
+            </button>
           </td>
           <td
             className="px-4 py-3 text-center space-x-4 whitespace-nowrap"

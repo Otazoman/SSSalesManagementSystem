@@ -1,5 +1,6 @@
 import React from "react";
 import { PartnerDeliveryDestinationLookup } from "../_types";
+import { BusinessLocationSelect } from "../../../_shared/ui/BusinessLocationSelect";
 
 interface OrderCompanyAndTermsFieldsProps {
   companyName: string;
@@ -53,6 +54,16 @@ export function OrderCompanyAndTermsFields({
         <h4 className="text-xs font-black text-slate-700 border-b pb-1">
           🏢 発行元・自社情報の変更
         </h4>
+        {/* REQ-003: 営業拠点を選ぶと、会社名・住所などを拠点の値に置き換える(選ばなければ会社マスタの値) */}
+        <BusinessLocationSelect
+          onApply={(v) => {
+              setCompanyName(v.companyName);
+              setCompanyZip(v.companyZip);
+              setCompanyAddress(v.companyAddress);
+              setCompanyTel(v.companyTel);
+              setCompanyFax(v.companyFax);
+          }}
+        />
         <div>
           <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
             会社名
@@ -119,7 +130,7 @@ export function OrderCompanyAndTermsFields({
           📋 帳票印字・取引条件の変更
         </h4>
         <div>
-          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+          <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
             納期期限設定
           </label>
           <input
@@ -128,6 +139,10 @@ export function OrderCompanyAndTermsFields({
             value={deliveryDate}
             onChange={(e) => setDeliveryDate(e.target.value)}
           />
+          {/* BUG-075 */}
+          <p className="text-[10px] text-slate-600 mt-0.5">
+            日付(例: 2026/11/20・11/20)を入れると、納期が空欄の明細と、これから追加する明細にも同じ日付が入ります(明細で入力した日付は変わりません。年を省くと今年、過ぎた日付なら来年)
+          </p>
         </div>
         <div>
           <label className="block text-[10px] font-bold text-slate-700 mb-0.5">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SourceDocumentLink } from "./SourceDocumentLink";
 import { Button } from "../../../_shared/ui/Button";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
@@ -16,6 +17,7 @@ import {
   AcceptanceInspectionContactOption,
 } from "./AcceptanceInspectionMailModal";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -33,6 +35,8 @@ const COLUMNS: DataTableColumn[] = [
   { key: "id", label: "入庫伝票番号", sortable: true },
   { key: "receivedDate", label: "入荷日", sortable: true },
   { key: "partnerId", label: "仕入先", sortable: true },
+  // REQ-021: 元の発注
+  { key: "orderId", label: "発注番号" },
   { key: "status", label: "ステータス", sortable: true },
   { key: "actions", label: "検収書・メール", align: "right" },
 ];
@@ -76,13 +80,7 @@ export function AcceptanceInspectionPanel() {
     setError("");
     setMessage("");
     try {
-      const result = await apiFetch<{ message?: string }>(
-        `/api/stock-receipts/${h.id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "検収書PDFの生成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message?: string }>("/api/stock-receipts", h.id, { defaultErrorMessage: "検収書PDFの生成に失敗しました" });
       setMessage(result.message || "検収書PDFを生成しました");
     } catch (err) {
       setError(
@@ -171,13 +169,15 @@ export function AcceptanceInspectionPanel() {
     setIsMailSending(true);
     setError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await sendWithIssuedPdf("/api/stock-receipts", mailModalTarget.id, () =>
+        apiFetch<{ message?: string }>(
         `/api/stock-receipts/${mailModalTarget.id}/send-email`,
         {
           method: "POST",
           json: { recipientEmail },
           defaultErrorMessage: "メール送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの送信を予約しました");
       setMailModalTarget(null);
@@ -200,13 +200,15 @@ export function AcceptanceInspectionPanel() {
     setIsMailSending(true);
     setError("");
     try {
-      const result = await apiFetch<{ message?: string }>(
+      const result = await bulkSendWithIssuedPdf("/api/stock-receipts", selectedIds, (targetIds) =>
+        apiFetch<{ message?: string }>(
         "/api/stock-receipts/bulk-send-email",
         {
           method: "POST",
-          json: { receiptIds: selectedIds },
+          json: { receiptIds: targetIds },
           defaultErrorMessage: "メール一括送信に失敗しました",
         },
+      ),
       );
       setMessage(result.message || "メールの一括送信を予約しました");
       setSelectedIds([]);
@@ -335,6 +337,9 @@ export function AcceptanceInspectionPanel() {
               <td className="px-4 py-3 font-mono text-slate-700">{h.id}</td>
               <td className="px-4 py-3">{h.receivedDate?.slice(0, 10)}</td>
               <td className="px-4 py-3">{partner?.name || "-"}</td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                {h.orderId ? <SourceDocumentLink kind="purchase_order" id={h.orderId} /> : <span className="text-slate-500">-</span>}
+              </td>
               <td className="px-4 py-3">
                 <StatusBadge {...getApprovalResultStatus(h.status)} />
               </td>

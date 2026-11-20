@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import { BillingDetail, UnbilledSalesInvoice } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface UseBillingActionsProps {
   syncBillings: (filters: Record<string, string>) => Promise<void>;
@@ -98,7 +99,7 @@ export function useBillingActions({
   const [selectedBillingIds, setSelectedBillingIds] = useState<string[]>([]);
 
   useEffect(() => {
-    apiFetch<{ is_otp_download_restricted_to_contacts?: boolean }>("/api/company-settings")
+    apiFetchShared<{ is_otp_download_restricted_to_contacts?: boolean }>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(data.is_otp_download_restricted_to_contacts === true);
       })
@@ -154,6 +155,9 @@ export function useBillingActions({
   };
 
   const handleCloseDetail = () => {
+    // BUG-120: 結果は詳細画面の中に出したため、閉じる時に消す(次に開いた詳細に前の結果を出さない)
+    setMessage("");
+    setError("");
     setDetail(null);
     setShowMailModal(false);
     setRecipientEmail("");
@@ -186,11 +190,13 @@ export function useBillingActions({
     setMessage("");
     setError("");
     try {
-      await apiFetch(`/api/sales-billing/${detail.id}/send-email`, {
+      await sendWithIssuedPdf("/api/sales-billing", detail.id, () =>
+        apiFetch(`/api/sales-billing/${detail.id}/send-email`, {
         method: "POST",
         json: { recipientEmail },
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
       setMessage("📧 メールの送信を予約しました");
       setShowMailModal(false);
     } catch (err) {
@@ -220,14 +226,15 @@ export function useBillingActions({
     setMessage("");
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>("/api/sales-billing/bulk-send-email", {
+      const data = await bulkSendWithIssuedPdf("/api/sales-billing", selectedBillingIds, (targetIds) =>
+        apiFetch<{ message?: string }>("/api/sales-billing/bulk-send-email", {
         method: "POST",
-        json: {
-          billingHeaderIds: selectedBillingIds,
+        json: { billingHeaderIds: targetIds,
           fallbackOperatorId: "CURRENT_USER",
         },
         defaultErrorMessage: "一括送信リレーに失敗しました",
-      });
+      }),
+      );
       setMessage(data.message || "一括送信を予約しました");
       setSelectedBillingIds([]);
     } catch (err) {
@@ -356,10 +363,7 @@ export function useBillingActions({
     setMessage("⌛ PDFファイルを生成中...");
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>(`/api/sales-billing/${id}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      const data = await issueReportPdf<{ message?: string }>("/api/sales-billing", id, { defaultErrorMessage: "PDF生成に失敗しました" });
       setMessage(data.message || "請求書PDFの生成に成功しました");
       void handleOpenDetail(id);
       void syncBillings({
@@ -370,6 +374,29 @@ export function useBillingActions({
     } catch (err) {
       setError(err instanceof Error ? err.message : "PDF生成に失敗しました");
       setMessage("");
+    }
+  };
+
+  // REQ-017: 請求の承認申請(会社設定で請求の承認が ON の時だけ使う)。承認されると PDF を発行できる
+  const handleSubmitForApproval = async (id: string) => {
+    if (!(await confirm(`請求 [ ${id} ] の承認を申請しますか？`))) return;
+    setError("");
+    setMessage("");
+    try {
+      const data = await apiFetch<{ message?: string }>(`/api/sales-billing/${id}/submit-for-approval`, {
+        method: "POST",
+        json: { applicantDepartmentSurrogateId: null },
+        defaultErrorMessage: "承認申請に失敗しました",
+      });
+      setMessage(data.message || "請求の承認を申請しました");
+      void handleOpenDetail(id);
+      void syncBillings({
+        ...filters,
+        mode: filterMode === "all" ? "" : filterMode,
+        reconciliationStatus: filterReconciliationStatus === "all" ? "" : filterReconciliationStatus,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "承認申請に失敗しました");
     }
   };
 
@@ -477,6 +504,7 @@ export function useBillingActions({
     setCreateForm,
     handleSubmitCreateBilling,
     handleGeneratePDF,
+    handleSubmitForApproval,
     handleRecordPaymentReceipt,
     handleCSVImportChange,
     showMailModal,

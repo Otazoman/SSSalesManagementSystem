@@ -9,6 +9,7 @@
 import { UnitsRepository } from "../../routes/master/units/units.repository";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import { resolveMasterPreview } from "./master-pending-change";
 import type {
   TargetAdapter,
   ApplyApprovedParams,
@@ -71,23 +72,28 @@ async function applyApproved({
 
 async function getTaskPreview({
   db,
+  requestId,
   targetId,
 }: TaskPreviewParams): Promise<TaskPreviewResult> {
   const repo = UnitsRepository.fromDb(db);
   const unit = await repo.findUnitByCode(targetId);
-  return { targetName: unit ? unit.name : "不明な単位", previewData: unit };
+  return { targetName: unit ? unit.name : "不明な単位", previewData: (await resolveMasterPreview(db, requestId, unit)).newData };
 }
 
 async function getHistoryPreview({
   db,
+  requestId,
   targetId,
+  requestType,
 }: HistoryPreviewParams): Promise<HistoryPreviewResult> {
   const repo = UnitsRepository.fromDb(db);
   const unit = await repo.findUnitByCode(targetId);
+  // BUG-089: 変更申請は、退避した変更後の内容を新しい内容、今の行を変更前の内容として出す
+  const pending = await resolveMasterPreview(db, requestId, unit);
   return {
     targetName: unit ? unit.name : "不明な単位",
-    snapshotNew: unit,
-    snapshotOld: null,
+    snapshotNew: pending.newData,
+    snapshotOld: requestType === "UPDATE" ? pending.oldData : null,
   };
 }
 

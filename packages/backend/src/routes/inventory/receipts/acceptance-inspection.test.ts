@@ -6,6 +6,10 @@ import * as schema from "../../../db/schema";
 import * as otpSchema from "../../../db/otp-schema";
 import * as auditSchema from "../../../db/audit-schema";
 import { stockReceiptsRouter } from "./index";
+import { Hono } from "hono";
+import type { Env } from "../../../types/env";
+import { AcceptanceInspectionPdfService } from "./acceptance-inspection-pdf.service";
+import { ReceiptsRepository } from "./receipts.repository";
 import { grantAllDocumentTypesToEmailTargets } from "../../../../test/support/contact-document-types";
 
 /**
@@ -225,7 +229,8 @@ describe("検収書OTPダウンロード(発注書と同じメールアドレス
     expect(text).toBe("dummy-acceptance-inspection-pdf");
   });
 
-  it("登録済み連絡先制限が有効な場合、未登録メールアドレスへはOTPを送信しない(200は返すが記録は無い)", async () => {
+  // REQ-007: 入力したメールアドレスは使わない。登録済みの宛先にだけ送り、入力したアドレスには送らない
+  it("入力したメールアドレスに関わらず、登録済みの宛先にだけ確認コードを送る", async () => {
     const res = await postJson(`/download-request/${HEADER_APPROVED_ID}/${ATTACHMENT_APPROVED_ID}`, {
       email: "unknown@example.com",
     });
@@ -236,7 +241,13 @@ describe("検収書OTPダウンロード(発注書と同じメールアドレス
       .select()
       .from(otpSchema.otpChallenges)
       .where(eq(otpSchema.otpChallenges.documentId, HEADER_APPROVED_ID));
-    expect(rows).toHaveLength(0);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r.email === "unknown@example.com")).toBe(false);
+  });
+
+  it("登録済みの宛先が無い帳票は、確認コードを発行できない(400)", async () => {
+    const res = await postJson(`/download-request/${HEADER_NO_CONTACT_ID}/${ATTACHMENT_NO_CONTACT_ID}`, {});
+    expect(res.status).toBe(400);
   });
 
   it("存在しない入庫IDへのOTP発行要求は404を返す", async () => {
@@ -302,5 +313,61 @@ describe("検収書メール送信(方式A): 一括送信", () => {
   it("対象が1件も承認済みでない場合は404を返す", async () => {
     const res = await postJson("/bulk-send-email", { receiptIds: [HEADER_UNAPPROVED_ID] });
     expect(res.status).toBe(404);
+  });
+});
+
+// BUG-092: 帳票の担当者名は、作成者の氏名(従業員番号ではない)
+async function buildSourceInContext<T>(fn: (c: any) => Promise<T>): Promise<T> {
+  const app = new Hono<{ Bindings: Env }>();
+  let result!: T;
+  let caught: unknown;
+  app.get("/run", async (c) => {
+    try {
+      result = await fn(c);
+    } catch (err) {
+      caught = err;
+    }
+    return c.json({});
+  });
+  const ctx = createExecutionContext();
+  await app.request("/run", {}, env, ctx);
+  await waitOnExecutionContext(ctx);
+  if (caught) throw caught;
+  return result;
+}
+
+async function seedStaffUser() {
+  await db.delete(schema.users).where(eq(schema.users.employeeNumber, "EMP001"));
+  await db.insert(schema.users).values({
+    id: "user-staff-001",
+    employeeNumber: "EMP001",
+    email: "staff@example.com",
+    name: "倉庫花子",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+describe("BUG-092: 検収書の検収担当者", () => {
+  it("検収担当者に入庫の作成者の氏名を渡す(以前は従業員番号)", async () => {
+    await seedStaffUser();
+    const audit = { createdBy: "EMP001", createdAt: now, updatedBy: "EMP001", updatedAt: now };
+    await db.insert(schema.units).values({ code: "PCS", name: "個", ...audit }).onConflictDoNothing();
+    await db.insert(schema.accounts).values({ code: "ACC1", name: "品目", ...audit }).onConflictDoNothing();
+    await db.insert(schema.items).values({ id: "ITEM-AI", name: "検収品目", baseUnitCode: "PCS", accountCode: "ACC1", ...audit }).onConflictDoNothing();
+    await db.insert(schema.itemReceiptItems).values({
+      id: "SRI-AI-STAFF",
+      receiptHeaderId: HEADER_APPROVED_ID,
+      itemId: "ITEM-AI",
+      warehouseId: "WH-AI",
+      locationId: "LOC-AI",
+      receivedQuantity: 1,
+      accountCode: "ACC1",
+    });
+    const built = await buildSourceInContext((c) =>
+      new AcceptanceInspectionPdfService(new ReceiptsRepository(c.env.DB)).buildPdfSource(c, HEADER_APPROVED_ID, false),
+    );
+    expect(built!.staffName).toBe("倉庫花子");
+    expect(built!.source.fallback).toMatchObject({ kind: "document", data: { salesPersonName: "倉庫花子" } });
   });
 });

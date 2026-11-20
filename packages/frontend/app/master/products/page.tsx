@@ -1,8 +1,8 @@
 // app/products/page.tsx
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { useSearchParams } from "next/navigation";
@@ -74,7 +74,6 @@ export default function AdminProductsPage() {
 
   // フォームUI制御State
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeFormData, setActiveFormData] = useState<ItemRecord | null>(null);
 
@@ -340,26 +339,27 @@ export default function AdminProductsPage() {
           </span>
           <Button
             size="sm"
-            onClick={async () => {
-              if (showForm) {
-                if (!(await guard.confirmDiscard())) return;
-                handleFormClear();
-              }
-              setShowForm(!showForm);
-            }}
+            onClick={() => setShowForm(true)}
             disabled={!canCreate}
           >
-            {showForm ? "キャンセル" : "➕ 新規品目個別登録・CSVインポート"}
+            ➕ 新規品目個別登録・CSVインポート
           </Button>
         </div>
       </div>
 
-      {/* 登録・一括管理フォーム */}
+{/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingId ? "品目の編集" : "品目の新規登録・CSVインポート"}
+          onClose={() => {
+            handleFormClear();
+            setShowForm(false);
+          }}
+          error={error}
+          message={message}
         >
+          {() => (
+            <>
           <ProductForm
             editingId={editingId}
             onClear={handleFormClear}
@@ -394,7 +394,9 @@ export default function AdminProductsPage() {
               </p>
             </div>
           )}
-        </div>
+</>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

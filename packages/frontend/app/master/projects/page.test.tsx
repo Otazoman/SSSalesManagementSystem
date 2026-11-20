@@ -7,6 +7,11 @@ vi.mock("../../hooks/use-page-permission", () => ({
   usePagePermissions: () => mockUsePagePermissions(),
 }));
 
+const mockSearchParamsGet = vi.fn<(key: string) => string | null>(() => null);
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => ({ get: mockSearchParamsGet }),
+}));
+
 async function importPage() {
   const mod = await import("./page");
   return mod.default;
@@ -68,7 +73,7 @@ describe("MasterProjectsPage", () => {
     expect(screen.getByText("🗂️ プロジェクトマスタ")).toBeInTheDocument();
   });
 
-  it("「新規個別登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規個別登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(fullPermissions());
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
     const Page = await importPage();
@@ -81,9 +86,9 @@ describe("MasterProjectsPage", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "➕ 新規個別登録・CSVインポート" }),
     );
-    expect(screen.getByText("新規個別プロジェクト登録")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("新規個別プロジェクト登録");
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規個別プロジェクト登録")).not.toBeInTheDocument();
   });
 
@@ -118,5 +123,25 @@ describe("MasterProjectsPage", () => {
 
     await userEvent.click(screen.getByText("PJ-001"));
     expect(screen.getByText("プロジェクト情報の編集")).toBeInTheDocument();
+  });
+
+  it("?editId=xxx で、状態を問わずそのプロジェクトの編集フォームを開く(BUG-097: 修正して再申請・伝票を開く)", async () => {
+    mockSearchParamsGet.mockReturnValue("PJ-TMP");
+    mockUsePagePermissions.mockReturnValue(fullPermissions({ isProjectWfEnabled: true, departments: [] }));
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.toString().includes("/api/projects")) {
+        return jsonResponse([{ id: "PJ-TMP", name: "差戻しPJ", memo: null, startDate: null, endDate: null, status: "temporary" }]);
+      }
+      if (url.toString().includes("request-status")) return jsonResponse({ status: "REMANDED" });
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const Page = await importPage();
+
+    render(<Page />);
+    await waitFor(() => expect(screen.getByText("プロジェクト情報の編集")).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("id=PJ-TMP") && String(u).includes("status=all"))).toBe(true);
+    expect(screen.getByRole("button", { name: "変更を申請" })).toBeEnabled();
+    mockSearchParamsGet.mockReturnValue(null);
   });
 });

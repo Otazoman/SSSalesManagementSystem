@@ -311,6 +311,22 @@ describe("POST /register", () => {
     expect(order?.deliveryWarehouseId).toBeNull();
   });
 
+  it("REQ-009: 納品場所名と納品場所の所在地を分けて保存できる。所在地は省略できる", async () => {
+    const res = await callCreateOrder("buyer-1", {
+      title: "所在地つき発注",
+      orderDate: now.toISOString(),
+      deliveryPlace: "本社倉庫",
+      deliveryPlaceAddress: "東京都千代田区1-1",
+      items: [],
+    });
+    expect(res.status).toBe(200);
+    const order = await findOrder(((await res.json()) as { id: string }).id);
+    expect(order).toMatchObject({ deliveryPlace: "本社倉庫", deliveryPlaceAddress: "東京都千代田区1-1" });
+
+    const noAddress = await callCreateOrder("buyer-1", { title: "所在地なし", orderDate: now.toISOString(), deliveryPlace: "現場", items: [] });
+    expect((await findOrder(((await noAddress.json()) as { id: string }).id))?.deliveryPlaceAddress).toBeNull();
+  });
+
   it("承認機能ON時、requestId未指定では作成できない(400)", async () => {
     await enablePurchaseOrderApprovalWorkflow();
     const res = await callCreateOrder("buyer-1", {
@@ -604,6 +620,29 @@ async function seedOrderItem(
     ...overrides,
   });
 }
+
+describe("BUG-095: 発注一覧を発注日で並べ替えられる", () => {
+  it("sortBy=orderDate の昇順・降順で並ぶ", async () => {
+    await seedOrder("PO-B", { orderDate: new Date("2026-11-10T00:00:00Z") });
+    await seedOrder("PO-A", { orderDate: new Date("2026-11-20T00:00:00Z") });
+    await seedOrder("PO-C", { orderDate: new Date("2026-11-01T00:00:00Z") });
+
+    const asc = (await (await callSearchOrders("buyer-1", "sortBy=orderDate&sortOrder=asc")).json()) as Array<{ id: string }>;
+    expect(asc.map((o) => o.id)).toEqual(["PO-C", "PO-B", "PO-A"]);
+    const desc = (await (await callSearchOrders("buyer-1", "sortBy=orderDate&sortOrder=desc")).json()) as Array<{ id: string }>;
+    expect(desc.map((o) => o.id)).toEqual(["PO-A", "PO-B", "PO-C"]);
+  });
+});
+
+describe("BUG-102: 発注一覧を発注担当者で並べ替えられる", () => {
+  it("sortBy=purchasePersonEmployeeNumber の昇順で並ぶ", async () => {
+    await seedOrder("PO-X", { purchasePersonEmployeeNumber: "E003" });
+    await seedOrder("PO-Y", { purchasePersonEmployeeNumber: "E001" });
+    await seedOrder("PO-Z", { purchasePersonEmployeeNumber: "E002" });
+    const res = (await (await callSearchOrders("buyer-1", "sortBy=purchasePersonEmployeeNumber&sortOrder=asc")).json()) as Array<{ id: string }>;
+    expect(res.map((o) => o.id)).toEqual(["PO-Y", "PO-Z", "PO-X"]);
+  });
+});
 
 describe("追加要望: 発注一覧の検索で注残(仕入計上が未済)の有無で絞り込める", () => {
   async function seedApprovedRecognition(

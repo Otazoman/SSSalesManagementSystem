@@ -50,6 +50,8 @@ export interface MyTaskItem {
   applicantDepartmentId: string | null;
   createdAt: Date | string | null;
   previewData: unknown;
+  // BUG-089: プレビューの中の番号(取引先・倉庫・品目など)の名前。「種類:番号」→名前
+  displayNames: Record<string, string>;
   flowProgress: FlowProgressStep[];
 }
 
@@ -81,6 +83,8 @@ export interface HistoryItem {
   approverName: string | null;
   snapshotNew: unknown;
   snapshotOld: unknown;
+  // BUG-089: プレビューの中の番号(取引先・倉庫・品目など)の名前。「種類:番号」→名前
+  displayNames: Record<string, string>;
   parentStatus: string;
   flowProgress: FlowProgressStep[];
 }

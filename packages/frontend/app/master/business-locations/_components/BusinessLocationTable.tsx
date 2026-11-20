@@ -71,7 +71,7 @@ export function BusinessLocationTable({
             <td className="px-4 py-3 font-semibold text-slate-900">{loc.name}</td>
             <td className="px-4 py-3">
               <div className="text-slate-700 font-medium">
-                TEL: {loc.phoneNumber || "-"}
+                TEL: {loc.phoneNumber || "-"} / FAX: {loc.faxNumber || "-"}
               </div>
               <div className="text-slate-600 text-[11px] mt-0.5">
                 <span>

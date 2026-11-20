@@ -26,6 +26,9 @@ const PURCHASE_REQUISITIONS_SORT_COLUMNS = {
   requestType: schema.purchaseRequests.requestType,
   totalAmount: schema.purchaseRequests.totalAmount,
   createdAt: schema.purchaseRequests.createdAt,
+  // BUG-102: 一覧の「申請者」「入力者」で並べ替える
+  applicantId: schema.purchaseRequests.applicantId,
+  inputPersonEmployeeNumber: schema.purchaseRequests.inputPersonEmployeeNumber,
 };
 
 // quote.repository.tsと同じ方針。purchase_requests/purchase_request_items/purchase_request_attachmentsを扱う

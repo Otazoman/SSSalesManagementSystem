@@ -8,6 +8,8 @@ interface PurchaseOrderFormHeaderProps {
   isSubmitting: boolean;
   onGeneratePdf: () => void;
   onOpenMailModal: (orderId: string) => void;
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
 }
 
 // J-2-b: sales/quotes/_components/QuoteFormHeader.tsx・sales/orders/_components/OrderFormHeader.tsxと
@@ -19,8 +21,9 @@ export function PurchaseOrderFormHeader({
   isSubmitting,
   onGeneratePdf,
   onOpenMailModal,
+  approvalEnabled,
 }: PurchaseOrderFormHeaderProps) {
-  const badge = editingStatus ? getDocumentLifecycleStatus(editingStatus) : null;
+  const badge = editingStatus ? getDocumentLifecycleStatus(editingStatus, { approvalEnabled }) : null;
   const isApproved = editingStatus === "APPROVED";
 
   return (
@@ -37,7 +40,7 @@ export function PurchaseOrderFormHeader({
             type="button"
             disabled={!isApproved || isSubmitting}
             onClick={() => onOpenMailModal(editingId)}
-            title={!isApproved ? "ステータスが承認済みの場合のみメール送信が可能です" : ""}
+            title={!isApproved ? "ステータスが承認済み・確定の場合のみメール送信が可能です" : ""}
             className={`font-bold text-xs px-3 py-2 rounded-lg shadow transition-colors ${
               isApproved
                 ? "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
@@ -51,7 +54,7 @@ export function PurchaseOrderFormHeader({
             type="button"
             disabled={!isApproved || isSubmitting}
             onClick={onGeneratePdf}
-            title={!isApproved ? "ステータスが承認済みの場合のみPDF発行が可能です" : ""}
+            title={!isApproved ? "ステータスが承認済み・確定の場合のみPDF発行が可能です" : ""}
             className={`font-bold text-xs px-4 py-2 rounded-lg shadow transition-colors ${
               isApproved
                 ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"

@@ -1,0 +1,1 @@
+ALTER TABLE `business_locations` ADD `fax_number` text;

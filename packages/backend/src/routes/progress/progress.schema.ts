@@ -117,6 +117,8 @@ export interface ProgressRow {
   // 案件全体の状態(伝票がある全工程が完了なら COMPLETED)
   caseState: "COMPLETED" | "IN_PROGRESS";
   nextSteps: ProgressNextStep[];
+  // REQ-013: 未起票の工程と担当予定(担当の解決は次工程と同じ。個別割当 > 工程の既定担当)
+  unissuedSteps: ProgressNextStep[];
   // この案件に設定済みの個別割当(工程キー→社員番号と氏名)。画面での編集用
   assignments: Partial<Record<ProgressStageKey, { employeeNumber: string; name: string }>>;
 }

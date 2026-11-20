@@ -18,15 +18,13 @@ interface OtpDownloadCardProps extends UseOtpDownloadOptions {
 }
 
 /**
- * 取引先・仕入先向けの公開ダウンロード画面(メールアドレス→確認コード→ダウンロード)。
+ * 取引先・仕入先向けの公開ダウンロード画面(確認コードの送信→確認コード→ダウンロード。REQ-007 でメールアドレスの入力をやめた)。
  * <PublicPage> の中に置いて使う。画面ごとの差は props(title・API・ID名・ファイル名)だけ。
  */
 export function OtpDownloadCard({ title, ...options }: OtpDownloadCardProps) {
   const {
     missingParams,
     step,
-    email,
-    setEmail,
     otp,
     setOtp,
     error,
@@ -36,12 +34,12 @@ export function OtpDownloadCard({ title, ...options }: OtpDownloadCardProps) {
     fileName,
     handleRequestOtp,
     handleVerifyOtp,
-    handleBackToEmail,
+    handleBackToRequest,
   } = useOtpDownload(options);
 
   const description =
-    step === "email"
-      ? "ご登録のメールアドレスを入力してください。確認コードをお送りします。"
+    step === "request"
+      ? "「確認コードを送信する」を押すと、登録されているメールアドレスに確認コードをお送りします。"
       : step === "otp"
         ? "メールに記載された確認コードを入力してください。"
         : "ダウンロードの準備ができました。";
@@ -58,19 +56,8 @@ export function OtpDownloadCard({ title, ...options }: OtpDownloadCardProps) {
         message={message && step === "otp" ? `✅ ${message}` : undefined}
       />
 
-      {step === "email" && (
+      {step === "request" && (
         <form onSubmit={handleRequestOtp} className="space-y-4">
-          <PublicField label="メールアドレス">
-            <input
-              type="email"
-              required
-              disabled={missingParams}
-              className={publicInputClass}
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </PublicField>
           <button
             type="submit"
             disabled={loading || missingParams}
@@ -80,7 +67,6 @@ export function OtpDownloadCard({ title, ...options }: OtpDownloadCardProps) {
           </button>
         </form>
       )}
-
       {step === "otp" && (
         <form onSubmit={handleVerifyOtp} className="space-y-4">
           <PublicField label="確認コード">
@@ -104,10 +90,10 @@ export function OtpDownloadCard({ title, ...options }: OtpDownloadCardProps) {
           </button>
           <button
             type="button"
-            onClick={handleBackToEmail}
+            onClick={handleBackToRequest}
             className={publicButtonClass.text}
           >
-            メールアドレスを入力し直す
+            確認コードを送り直す
           </button>
         </form>
       )}

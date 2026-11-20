@@ -99,8 +99,8 @@ export default function MasterPermissionsPage() {
         isSaving={state.isSaving}
         onRoleChange={state.setSelectedRoleId}
         onSave={state.handleSaveRoleMapping}
-        onToggleColumn={state.handleToggleColumnCheckboxes}
-        onToggleRow={state.handleToggleRowCheckboxes}
+        onSetColumn={state.handleSetColumnPermissions}
+        onSetRow={state.handleSetRowPermissions}
         onCellChange={state.handleMatrixCheckChange}
       />
     </div>

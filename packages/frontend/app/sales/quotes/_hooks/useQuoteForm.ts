@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   QuoteRecord,
   PartnerMaster,
@@ -184,7 +184,7 @@ export function useQuoteForm({
   useEffect(() => {
     async function loadCompanySettings() {
       try {
-        const data = await apiFetch<CompanySettingsResponse>(
+        const data = await apiFetchShared<CompanySettingsResponse>(
           "/api/company-settings",
         );
         setCompanyName(data.company_name || "");
@@ -204,7 +204,7 @@ export function useQuoteForm({
   // 💡 OTPダウンロード宛先制限フラグは新規/編集どちらでもメール送信モーダルで
   // 必要になるため、上のloadCompanySettingsとは独立して常に取得する
   useEffect(() => {
-    apiFetch<CompanySettingsResponse>("/api/company-settings")
+    apiFetchShared<CompanySettingsResponse>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(
           data.is_otp_download_restricted_to_contacts === true,
@@ -292,7 +292,7 @@ export function useQuoteForm({
         dbCompAddr.trim() === "" &&
         dbCompTel.trim() === ""
       ) {
-        apiFetch<CompanySettingsResponse>("/api/company-settings")
+        apiFetchShared<CompanySettingsResponse>("/api/company-settings")
           .then((compData) => {
             setCompanyName(compData.company_name || "");
             setCompanyZip(compData.company_zip || "");

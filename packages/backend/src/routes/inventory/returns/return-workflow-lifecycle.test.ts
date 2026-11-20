@@ -11,7 +11,7 @@ import { stockReturnsRouter } from "./index";
 
 /**
  * Item6 Phase6-3-3: 承認機能ON時の返品ライフサイクル(申請→承認/差戻し→取消)。
- * targetTypeは入出庫と同じ"inventory_stock"を共有するため、承認フロー(requestType="inventory_stock")も
+ * targetTypeは入出庫と同じ"inventory_stock"を共有する。承認フローはメニュー単位(BUG-103)のため、在庫・棚卸管理(requestType="inventory_audit")のフローを
  * 共有前提でテストする。ON/OFFの判定だけは独立フラグ(is_return_approval_enabled)を使う。
  */
 

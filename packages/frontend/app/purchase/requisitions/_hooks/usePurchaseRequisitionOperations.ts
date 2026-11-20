@@ -93,6 +93,9 @@ export function usePurchaseRequisitionOperations({
   const [partnerInputType, setPartnerInputType] = useState<"MASTER" | "DIRECT">("MASTER");
   // Phase3フォローアップ: 見積との項目整合。勘定科目はヘッダー1件につき1つ
   const [projectId, setProjectId] = useState("");
+  // REQ-005: 直送の指定と、直送する受注。受注から作成した時に設定し、発注を作る時に引き継ぐ
+  const [isDirectShipment, setIsDirectShipment] = useState(false);
+  const [directSalesOrderId, setDirectSalesOrderId] = useState<string | null>(null);
   // 見積のsalesPersonEmployeeNumber/inputPersonEmployeeNumberと同じ2担当者分離
   const [applicantId, setApplicantId] = useState("");
   const [inputPersonEmployeeNumber, setInputPersonEmployeeNumber] = useState("");
@@ -254,7 +257,8 @@ export function usePurchaseRequisitionOperations({
     setEditingId(null);
     setEditingStatus(null);
     setTitle("");
-    setDepartmentSurrogateId(departments[0]?.id ?? "");
+    // REQ-027: 申請部署の初期値は申請者(ログインしているユーザー)の所属部署。選択肢の値は surrogateId のため id ではなく surrogateId を入れる
+    setDepartmentSurrogateId(departments[0]?.surrogateId ?? "");
     setRequestType("ONE_TIME");
     setMemo("");
     setItems([]);
@@ -262,12 +266,32 @@ export function usePurchaseRequisitionOperations({
     setPartnerName("");
     setPartnerInputType("MASTER");
     setProjectId("");
+    setIsDirectShipment(false);
+    setDirectSalesOrderId(null);
     setApplicantId(currentUserEmployeeNumber || "");
     setInputPersonEmployeeNumber(currentUserEmployeeNumber || "");
     setAttachments([]);
     setSelectedFiles({});
     setError("");
   }, [departments, currentUserEmployeeNumber]);
+
+  // REQ-008: 保存に成功した時の要約(仕入の画面と同じ SavedSummaryModal で出す)。閉じると null
+  const [savedSummary, setSavedSummary] = useState<{ id: string; title: string; partnerName: string; totalAmount: number } | null>(null);
+
+  // BUG-099: 一覧の「内容確認」。一覧の行は明細を含まないため、詳細を取得してから参照用パネルに出す
+  const [previewRequisition, setPreviewRequisition] = useState<PurchaseRequisitionRecord | null>(null);
+  const handleOpenPreview = useCallback(async (record: PurchaseRequisitionRecord) => {
+    setError("");
+    try {
+      setPreviewRequisition(
+        await apiFetch<PurchaseRequisitionRecord>(`/api/purchase-requisitions/${record.id}`, {
+          defaultErrorMessage: "購買申請詳細の取得に失敗しました",
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "購買申請詳細の取得に失敗しました");
+    }
+  }, []);
 
   // 一覧の検索結果(searchRequisitions)は明細を含まないため、必ず詳細取得
   // (GET /api/purchase-requisitions/:id)でヘッダー・明細・添付を取り直してからフォームへ反映する。
@@ -297,6 +321,8 @@ export function usePurchaseRequisitionOperations({
     setPartnerName(detail.partnerName || "");
     setPartnerInputType(detail.partnerInputType || "MASTER");
     setProjectId(detail.projectId || "");
+    setIsDirectShipment(detail.isDirectShipment === true);
+    setDirectSalesOrderId(detail.directSalesOrderId || null);
     setApplicantId(detail.applicantId || "");
     setInputPersonEmployeeNumber(detail.inputPersonEmployeeNumber || "");
     setAttachments(detail.attachments || []);
@@ -317,6 +343,8 @@ export function usePurchaseRequisitionOperations({
       setProjectId(data.projectId || "");
       setMemo(data.memo || "");
       setItems(data.items);
+      setIsDirectShipment(data.isDirectShipment === true);
+      setDirectSalesOrderId(data.isDirectShipment ? data.directSalesOrderId || null : null);
       setViewMode("FORM");
     },
     [handleClearForm],
@@ -501,6 +529,9 @@ export function usePurchaseRequisitionOperations({
   const onSupplierMasterSelect = useCallback(
     async (newPartnerId: string) => {
       setPartnerId(newPartnerId);
+      // REQ-019: 仕入先はマスタからの選択だけ。保存する仕入先名はマスタの名称にする(以前の自由入力の申請も、選び直すとマスタになる)
+      setPartnerInputType("MASTER");
+      setPartnerName(suppliers.find((s) => s.id === newPartnerId)?.name ?? "");
       if (!newPartnerId) return;
       const updates = await Promise.all(
         items.map(async (it, idx) => {
@@ -516,7 +547,7 @@ export function usePurchaseRequisitionOperations({
         }),
       );
     },
-    [items, fetchPurchasePrice],
+    [items, fetchPurchasePrice, suppliers],
   );
 
   // useQuoteForm.tsの添付ファイルハンドラと同じ方針
@@ -620,15 +651,20 @@ export function usePurchaseRequisitionOperations({
     isPurchaseRequisitionWfEnabled &&
     (editingStatus === "PENDING_APPROVAL" || editingStatus === "PENDING_DELETION");
 
+  // REQ-019: 保存する仕入先名はマスタの名称
+  const supplierNameOf = (id: string) => suppliers.find((s) => s.id === id)?.name ?? "";
+
   const buildRequisitionJson = () => ({
     id: editingId || undefined,
     title,
     departmentSurrogateId,
     requestType,
     partnerId: partnerId || null,
-    partnerName: partnerName || null,
-    partnerInputType,
+    partnerName: supplierNameOf(partnerId) || partnerName || null,
+    partnerInputType: "MASTER" as const,
     projectId: projectId || null,
+    isDirectShipment,
+    directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
     applicantId: applicantId || null,
     inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
     totalAmount,
@@ -675,8 +711,9 @@ export function usePurchaseRequisitionOperations({
       setError("申請部署(所属部署)を選択してください");
       return;
     }
-    if (partnerInputType === "DIRECT" ? !partnerName : !partnerId) {
-      setError("仕入先(またはマスタ外仕入先の名称)を選択・入力してください");
+    // REQ-019: 仕入先はマスタからの選択だけ(以前の自由入力で保存した申請も、保存する時はマスタから選び直す)
+    if (!partnerId) {
+      setError("仕入先をマスタから選択してください");
       return;
     }
     if (!projectId) {
@@ -699,9 +736,11 @@ export function usePurchaseRequisitionOperations({
                 departmentSurrogateId,
                 requestType,
                 partnerId: partnerId || null,
-                partnerName: partnerName || null,
-                partnerInputType,
+                partnerName: supplierNameOf(partnerId) || partnerName || null,
+                partnerInputType: "MASTER",
                 projectId: projectId || null,
+                isDirectShipment,
+                directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
                 applicantId: applicantId || null,
                 inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
                 totalAmount,
@@ -759,6 +798,16 @@ export function usePurchaseRequisitionOperations({
       // 同じ明細として更新されるよう、保存後の明細(ID込み)を取り直す
       const savedId = editingId || data.id;
       if (savedId) {
+        const supplierName =
+          partnerInputType === "DIRECT"
+            ? partnerName
+            : (suppliers.find((s) => s.id === partnerId)?.name ?? partnerName);
+        setSavedSummary({
+          id: savedId,
+          title: title || "(件名なし)",
+          partnerName: supplierName || "(未設定)",
+          totalAmount: Number(totalAmount) || 0,
+        });
         try {
           const saved = await apiFetch<{ items?: PurchaseRequisitionItemRecord[] }>(
             `/api/purchase-requisitions/${savedId}`,
@@ -789,7 +838,7 @@ export function usePurchaseRequisitionOperations({
           defaultErrorMessage: "承認申請に失敗しました",
         },
       );
-      setMessage(data.message || "承認を申請しました");
+      setMessage(data.message || (isPurchaseRequisitionWfEnabled ? "承認を申請しました" : "購買申請を確定しました"));
       setViewMode("LIST");
       handleClearForm();
       void syncRequisitions(filterStatus);
@@ -889,6 +938,11 @@ export function usePurchaseRequisitionOperations({
     total,
     totalPages,
     requisitions,
+    previewRequisition,
+    setPreviewRequisition,
+    handleOpenPreview,
+    savedSummary,
+    setSavedSummary,
     sortBy: sortKeys[0]?.key ?? null,
     sortDirection: sortKeys[0]?.direction ?? "asc",
     sortKeys,
@@ -910,6 +964,9 @@ export function usePurchaseRequisitionOperations({
     onSupplierMasterSelect,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     applicantId,
     setApplicantId,
     inputPersonEmployeeNumber,

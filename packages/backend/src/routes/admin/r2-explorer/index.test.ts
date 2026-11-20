@@ -169,3 +169,22 @@ describe("追加要望L-3-d: アップロード・ダウンロード", () => {
     expect((await callGet("/objects/download?bucket=system&key=r2-explorer-test/none.txt")).status).toBe(404);
   });
 });
+
+// REQ-001: バケットごとのファイル数・合計の大きさと総容量
+describe("GET /usage", () => {
+  it("バケットごとのファイル数・大きさを数え、総容量を返す", async () => {
+    const before = (await (await callGet("/usage")).json()) as {
+      buckets: { key: string; objectCount: number; totalBytes: number }[];
+      objectCount: number;
+      totalBytes: number;
+    };
+    await env.SYSTEM_BUCKET.put("r2-explorer-test/usage/a.txt", "12345");
+    await env.SYSTEM_BUCKET.put("r2-explorer-test/usage/b.txt", "123");
+    const after = (await (await callGet("/usage")).json()) as typeof before;
+    const system = (b: typeof before) => b.buckets.find((x) => x.key === "system")!;
+    expect(system(after).objectCount - system(before).objectCount).toBe(2);
+    expect(system(after).totalBytes - system(before).totalBytes).toBe(8);
+    expect(after.totalBytes).toBe(after.buckets.reduce((s, b) => s + b.totalBytes, 0));
+    await env.SYSTEM_BUCKET.delete(["r2-explorer-test/usage/a.txt", "r2-explorer-test/usage/b.txt"]);
+  });
+});

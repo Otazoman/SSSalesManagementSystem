@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
-import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
 import { WorkflowHistoryTask, SearchFilters } from "../_types";
 
 interface UseWorkflowHistoryProps {
@@ -21,14 +20,6 @@ interface HistoryPageResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number };
   isAdmin?: boolean;
   counts?: HistoryCounts;
-}
-
-// 💡 GET /api/workflow-tasks/historyはpage/limit未指定時も常にオブジェクトを返す
-// (`WorkflowTasksService.getHistory()`の戻り値`{histories, isAdmin}`をそのままJSON化)。
-// 他master画面のAPI(未指定時は配列を返す)とは異なる形なので、bareな配列は想定しない。
-interface HistoryUnpagedResponse {
-  histories: WorkflowHistoryTask[];
-  isAdmin?: boolean;
 }
 
 const initialFilters: SearchFilters = {
@@ -57,8 +48,6 @@ export function useWorkflowHistory({
   canRead,
   loadingPermissions,
 }: UseWorkflowHistoryProps) {
-  const { paginationEnabled } = usePaginationSetting();
-
   const [histories, setHistories] = useState<WorkflowHistoryTask[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -90,42 +79,22 @@ export function useWorkflowHistory({
         // backend側で全タブ値を解釈するようになったため常に送る
         if (filters.status) params.append("status", filters.status);
 
-        // 💡 件数集計(counts)・ACTIVE_TASKSの重複排除はgetHistoryPage()側にしかないため、
-        // 会社設定でページングが無効(is_pagination_enabled=false)の間も、常にpage/limitを
-        // 送って正しい集計・絞り込みロジックを通す(masterのuse-paginated-listのように
-        // page/limitを省略すると、履歴画面だけgetHistory()の従来形式にフォールバックし
-        // 集計・絞り込みが効かなくなってしまうため、この画面だけ意図的に挙動を変えている)。
-        // ページング無効時はUIを隠しつつバックエンドの上限(MAX_LIMIT=500、platform/http/
-        // pagination.ts)まで1回で取得する(D1無料枠のコスト制御を尊重し、無制限取得はしない)。
-        params.append("page", String(paginationEnabled ? effectivePage : 1));
-        params.append("limit", String(paginationEnabled ? effectiveLimit : 500));
+        // PERF-02: 申請履歴は、会社設定のページングの有無にかかわらず常にページ単位(既定50件。API の上限も50件)で
+        // 取得し、ページ送りを出す。以前はページングが無効の時に500件まで1回で取得していたが、件数に比例して
+        // 重くなり、無料プランの CPU 時間の上限を超えていた。会社設定を読み終えるのを待たないため、
+        // 画面を開いた時の取得も1回で済む(以前は読み込みの前後で2回取得していた)
+        params.append("page", String(effectivePage));
+        params.append("limit", String(effectiveLimit));
 
-        const data = await apiFetch<HistoryPageResponse | HistoryUnpagedResponse>(
+        const data = await apiFetch<HistoryPageResponse>(
           `/api/workflow-tasks/history?${params.toString()}`,
         );
 
-        if ("data" in data) {
-          // page/limit指定時: ページング済みレスポンス(counts・重複排除済み)
-          setHistories(data.data);
-          setIsAdmin(data.isAdmin || false);
-          setTotal(data.pagination.total);
-          setTotalPages(data.pagination.totalPages);
-          setCounts(data.counts || initialCounts);
-        } else {
-          // page/limit未指定時(paginationEnabledがfalse、またはまだ読み込み中): 従来形式
-          // ({histories, isAdmin}、全件・件数集計はクライアント側フォールバック)
-          const fetchedList = data.histories;
-          setHistories(fetchedList);
-          setIsAdmin(data.isAdmin || false);
-          setTotal(fetchedList.length);
-          setTotalPages(1);
-          setCounts({
-            approved: fetchedList.filter((h) => h.status === "APPROVED").length,
-            remanded: fetchedList.filter((h) => h.status === "REMANDED").length,
-            pending: fetchedList.filter((h) => h.status === "PENDING").length,
-            canceled: fetchedList.filter((h) => h.status === "CANCELED").length,
-          });
-        }
+        setHistories(data.data ?? []);
+        setIsAdmin(data.isAdmin || false);
+        setTotal(data.pagination?.total ?? 0);
+        setTotalPages(data.pagination?.totalPages ?? 1);
+        setCounts(data.counts || initialCounts);
 
         if (overrides?.page !== undefined) setPageState(overrides.page);
         if (overrides?.limit !== undefined) setLimitState(overrides.limit);
@@ -135,13 +104,13 @@ export function useWorkflowHistory({
         setLoadingData(false);
       }
     },
-    [loadingPermissions, canRead, userId, filters, paginationEnabled, page, limit],
+    [loadingPermissions, canRead, userId, filters, page, limit],
   );
 
   useEffect(() => {
     void fetchWorkflowHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingPermissions, canRead, userId, filters, paginationEnabled]);
+  }, [loadingPermissions, canRead, userId, filters]);
 
   const setPage = useCallback(
     (nextPage: number) => {
@@ -188,7 +157,6 @@ export function useWorkflowHistory({
     filters,
     setFilters,
     counts,
-    paginationEnabled,
     page,
     setPage,
     limit,

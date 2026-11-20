@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "../../../_shared/ui/Button";
 import { Modal } from "../../../_shared/ui/Modal";
+import { MessageBanner } from "../../../_shared/ui/MessageBanner";
 import { FirmBankingPreviewResult } from "../_hooks/usePaymentActions";
 
 interface FirmBankingExportModalProps {
@@ -13,6 +14,9 @@ interface FirmBankingExportModalProps {
   onPreview: () => void;
   onDownload: () => void;
   onClose: () => void;
+  // BUG-120: 確認・作成のエラー(会社設定の自社口座が未設定、振込先口座が無い、承認前の支払など)をモーダルの中に出す。
+  // 以前は裏の画面にしか出ず、「内容を確認する」が反応しないように見えた
+  error?: string;
 }
 
 // ファームバンキング: 選択した支払から全銀協会「総合振込」フォーマットの振込データファイルを
@@ -28,6 +32,7 @@ export function FirmBankingExportModal({
   onPreview,
   onDownload,
   onClose,
+  error = "",
 }: FirmBankingExportModalProps) {
   if (!isOpen) return null;
 
@@ -45,11 +50,13 @@ export function FirmBankingExportModal({
         </label>
         <input
           type="date"
-          className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-slate-50"
+          className="w-full border border-slate-300 p-2 text-base sm:text-xs rounded bg-white text-slate-900"
           value={transferDate}
           onChange={(e) => setTransferDate(e.target.value)}
         />
       </div>
+
+      <MessageBanner error={error ? `⚠️ ${error}` : undefined} />
 
       {preview && (
         <div className="border border-slate-200 rounded-lg p-3.5 bg-slate-50 space-y-2 text-xs">

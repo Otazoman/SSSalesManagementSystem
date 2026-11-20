@@ -117,3 +117,34 @@ describe("PartnerDeliveryDestinationsModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+// BUG-112: 承認待ち(temporary)の納品先は「承認待ち」と出し、無効化・削除の操作を出さない
+describe("PartnerDeliveryDestinationsModal: 承認待ちの納品先", () => {
+  it("承認待ちの納品先は承認待ちと出し、操作のボタンを出さない", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse([
+          {
+            id: "DD-T",
+            partnerId: "PARTNER-1",
+            name: "申請中の支店",
+            postalCode: null,
+            address: null,
+            phone: null,
+            memo: null,
+            status: "temporary",
+          },
+        ]),
+      ),
+    );
+    render(
+      <PartnerDeliveryDestinationsModal partnerId="PARTNER-1" partnerName="取引先1" canUpdate onClose={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("申請中の支店")).toBeInTheDocument();
+    expect(screen.getByText("承認待ち")).toBeInTheDocument();
+    expect(screen.queryByText("無効化")).not.toBeInTheDocument();
+    expect(screen.queryByText("完全に削除")).not.toBeInTheDocument();
+  });
+});

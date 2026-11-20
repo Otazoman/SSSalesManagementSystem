@@ -46,6 +46,8 @@ export function UserForm({
     setSlackUserId,
     notificationChannel,
     setNotificationChannel,
+    loginOtpEnabled,
+    setLoginOtpEnabled,
     formRelations,
     addRelationRow,
     removeRelationRow,
@@ -153,6 +155,29 @@ export function UserForm({
               onChange={(e) => setSlackUserId(e.target.value)}
             />
           </FormField>
+        </div>
+
+        {/* REQ-004: ログイン時の OTP */}
+        <div className="p-2 bg-slate-50 rounded border border-slate-200 space-y-1">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="loginOtpCheckbox"
+              checked={loginOtpEnabled}
+              onChange={(e) => setLoginOtpEnabled(e.target.checked)}
+              className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+            />
+            <label
+              htmlFor="loginOtpCheckbox"
+              className="text-xs font-bold text-slate-800 cursor-pointer select-none"
+            >
+              🔐 ログイン時に確認コード(OTP)を使う
+            </label>
+          </div>
+          <p className="text-[11px] text-slate-600 leading-relaxed">
+            パスワードの後に、通知方法(メール/Slack)に送った確認コードを入力してログインします。Slack に送れない場合はメールに送ります。
+            有効にするには、メールアドレスと、会社設定のメール送信(SMTP)の設定が必要です。
+          </p>
         </div>
 
         {!editingUserId && (

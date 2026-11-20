@@ -151,6 +151,8 @@ const headerData = {
     deliveryPlace: header.deliveryPlace ?? null,
     deliveryDestinationId: header.deliveryDestinationId ?? null,
     paymentTerms: header.paymentTerms ?? null,
+    // BUG-074: 変更申請でプロジェクトを変えられるようにする(projectId を含まない以前の申請では変えない)
+    ...(header.projectId !== undefined ? { projectId: header.projectId || null } : {}),
     isPrepaid: header.isPrepaid ?? undefined,
     prepaidAt: header.prepaidAt ? new Date(header.prepaidAt) : undefined,
     updatedBy: approverEmployeeNumber,

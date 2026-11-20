@@ -4,5 +4,6 @@ export interface ProjectRecord {
   memo: string | null;
   startDate: string | null;
   endDate: string | null;
-  status: "active" | "suspended";
+  // BUG-097: 承認 ON の時は仮登録(temporary)もある
+  status: "active" | "temporary" | "suspended";
 }

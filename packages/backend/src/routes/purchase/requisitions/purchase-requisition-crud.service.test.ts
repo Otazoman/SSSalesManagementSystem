@@ -275,12 +275,22 @@ async function seedApprovalFlow(
   }
 }
 
+// REQ-019: 申請には仕入先マスタの指定が要るため、既定でテスト用の仕入先を付ける(partnerId を渡せば上書きできる)
+const DEFAULT_SUPPLIER_ID = "SUP-REQ-DEFAULT";
+
 async function seedRequisition(
   id: string,
   overrides: Partial<typeof schema.purchaseRequests.$inferInsert> = {},
 ) {
+  if (overrides.partnerId === undefined) {
+    await db
+      .insert(schema.partners)
+      .values({ id: DEFAULT_SUPPLIER_ID, name: "既定の仕入先", type: "SUPPLIER", createdBy: "system", createdAt: now, updatedBy: "system", updatedAt: now })
+      .onConflictDoNothing();
+  }
   await db.insert(schema.purchaseRequests).values({
     id,
+    partnerId: DEFAULT_SUPPLIER_ID,
     title: `購買申請${id}`,
     departmentSurrogateId: "dept-a",
     applicantId: "applicant-1",
@@ -489,6 +499,14 @@ describe("DELETE /:id のステータスガード", () => {
 });
 
 describe("POST /:id/submit-for-approval", () => {
+  it("REQ-019: 仕入先マスタの指定が無い購買申請は申請できない(下書きのまま)", async () => {
+    await seedRequisition("PR-NOSUP", { partnerId: null, partnerName: "自由入力商店", partnerInputType: "DIRECT" });
+    const res = await callSubmitForApproval("PR-NOSUP", "applicant-1");
+    expect(res.status).toBe(400);
+    const row = (await db.select().from(schema.purchaseRequests).where(eq(schema.purchaseRequests.id, "PR-NOSUP")))[0];
+    expect(row.status).toBe("DRAFT");
+  });
+
   it("DRAFT以外は申請できない(400)", async () => {
     await seedRequisition("PR-1", { status: "APPROVED" });
     const res = await callSubmitForApproval("PR-1", "applicant-1");
@@ -1191,5 +1209,60 @@ describe("購買申請の明細ID・添付の行を保ったままの更新", ()
       uploadedById: "system",
     });
     expect(atts[0].uploadedAt).toEqual(uploadedAt);
+  });
+});
+
+// REQ-005: 受注から作る購買申請の「直送」の指定(発注に引き継ぐ)
+describe("購買申請の直送の指定", () => {
+  beforeEach(async () => {
+    await db.insert(schema.partners).values({
+      id: "P-SO",
+      name: "得意先",
+      creditLimit: 0,
+      createdBy: "system",
+      createdAt: now,
+      updatedBy: "system",
+      updatedAt: now,
+    });
+    await db.insert(schema.salesOrders).values({
+      id: "SO-1",
+      partnerId: "P-SO",
+      orderDate: now,
+      status: "APPROVED",
+      createdBy: "system",
+      createdAt: now,
+      updatedBy: "system",
+      updatedAt: now,
+    });
+  });
+
+  // 共通の beforeEach が取引先を消せるよう、受注を参照する購買申請・受注を先に消す
+  afterEach(async () => {
+    await db.delete(schema.purchaseRequestItems);
+    await db.delete(schema.purchaseRequests);
+    await db.delete(schema.salesOrders);
+  });
+
+  it("直送と受注を指定して登録すると、その値で保存される。受注が見つからなければ400", async () => {
+    const base = { title: "直送の申請", departmentSurrogateId: "dept-a", requestType: "ONE_TIME", items: [] };
+    const res = await callCreateRequisition("applicant-1", {
+      ...base,
+      id: "PR-D1",
+      isDirectShipment: true,
+      directSalesOrderId: "SO-1",
+    });
+    expect(res.status).toBe(200);
+    const requisition = await findRequisition("PR-D1");
+    expect(requisition?.isDirectShipment).toBe(true);
+    expect(requisition?.directSalesOrderId).toBe("SO-1");
+
+    const unknown = await callCreateRequisition("applicant-1", {
+      ...base,
+      id: "PR-D2",
+      isDirectShipment: true,
+      directSalesOrderId: "SO-X",
+    });
+    expect(unknown.status).toBe(400);
+    expect(await findRequisition("PR-D2")).toBeNull();
   });
 });

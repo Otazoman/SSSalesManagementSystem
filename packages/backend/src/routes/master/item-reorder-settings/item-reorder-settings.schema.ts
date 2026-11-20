@@ -8,6 +8,8 @@ export const ItemReorderSettingPayloadSchema = v.object({
   reorderPoint: v.pipe(v.number(), v.minValue(0, "発注点は0以上で入力してください。")),
   safetyStock: v.pipe(v.number(), v.minValue(0, "安全在庫は0以上で入力してください。")),
   memo: v.optional(v.nullable(v.string())),
+  // BUG-098: 承認 ON の変更申請で、今の行を仮登録(temporary)にしてロックする時だけ送る(省略時は状態を変えない。新規登録では使わない)
+  status: v.optional(v.picklist(["active", "temporary"])),
 });
 
 export type ItemReorderSettingPayload = v.InferOutput<typeof ItemReorderSettingPayloadSchema>;

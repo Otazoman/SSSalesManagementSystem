@@ -285,7 +285,9 @@ describe("追加要望M-1: 商談管理(専用DB)", () => {
     expect(detail.attachments).toMatchObject([{ id: attachmentId, fileName: "議事録.txt" }]);
 
     const [row] = await dealsDb.select().from(dealsSchema.dealAttachments);
-    expect(row.attachmentR2Path).toMatch(/^deals\/.+_議事録\.txt$/);
+    // BUG-088: 商談番号のフォルダ(deals/<商談番号>/)に入る
+    expect(row.attachmentR2Path.startsWith(`deals/${id}/`)).toBe(true);
+    expect(row.attachmentR2Path).toMatch(/_議事録\.txt$/);
     expect(await env.DEALS_BUCKET.head(row.attachmentR2Path)).not.toBeNull();
 
     const download = await call(`/${id}/attachments/${attachmentId}`);

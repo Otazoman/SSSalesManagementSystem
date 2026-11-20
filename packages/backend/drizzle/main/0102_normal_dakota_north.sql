@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `delivery_place_address` text;

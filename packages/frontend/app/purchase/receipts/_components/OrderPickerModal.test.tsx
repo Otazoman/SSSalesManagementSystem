@@ -56,3 +56,28 @@ describe("OrderPickerModal: BUG-064 発注の検索", () => {
     expect(await screen.findByText("PO-0001")).toBeInTheDocument();
   });
 });
+
+describe("OrderPickerModal: BUG-117 発注の件名を引き継ぐ", () => {
+  it("取り込む時に、選んだ発注の件名を渡す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const u = new URL(url.toString(), "http://localhost");
+        if (u.pathname.startsWith("/api/purchase-recognitions/order-progress/")) {
+          return jsonResponse([
+            { sourceOrderItemId: "POI-1", itemId: "ITEM-1", itemName: "品目", orderedQuantity: 2, recognizedQuantity: 0, remainingQuantity: 2, unitPrice: 100, unitCode: "PCS", taxCategoryCode: "T10", accountCode: null },
+          ]);
+        }
+        if (u.pathname.startsWith("/api/purchase-orders")) return jsonResponse(orders);
+        return jsonResponse([]);
+      }),
+    );
+    const onApply = vi.fn();
+    render(<OrderPickerModal onClose={vi.fn()} onApply={onApply} />);
+    fireEvent.click(await screen.findByText("PO-0001"));
+    const confirm = await screen.findByRole("button", { name: /取り込む|反映|明細を追加|決定/ });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(onApply).toHaveBeenCalled());
+    expect(onApply.mock.calls[0][4]).toBe("製品X 納入");
+  });
+});

@@ -67,6 +67,7 @@ D1(データベース)/ R2(帳票・添付ファイル)/ KV(会社設定・権�
   (Frontend は Backend に直接つながるため、Backend が先に存在している必要があります)。
 - Backend には公開 URL がありません(`workers_dev: false`)。外部からは Frontend の URL だけでアクセスします。
 - Cloudflare の無料プランで動作する構成です。
+  - 帳票の PDF は、Backend の CPU 時間の上限(無料プランは1リクエスト 10 ms)に収めるため、ブラウザで生成します(`packages/report-renderer`)。初回だけフォント(約 3.7MB)の読み込みに数秒かかります。
 
 ### 使用技術
 
@@ -251,11 +252,16 @@ Mac・Linux の場合は、`git clone` した後、方法A の手順2のコマ�
 ### 3-2. 依存パッケージをインストールする
 
 ```bash
-cd packages/backend
+cd packages/report-renderer
+npm install
+cd ../backend
 npm install
 cd ../frontend
 npm install
 ```
+
+`packages/report-renderer` は、帳票 PDF の描画のコードを backend・frontend で共有するパッケージです(PERF-07)。backend・frontend から
+`file:../report-renderer` で参照しているため、先にここで `npm install` します。
 
 ### 3-3. ローカル用の設定ファイルを作る(wrangler.jsonc・.dev.vars)
 
@@ -738,7 +744,9 @@ npx wrangler r2 object put system/company/company_seal.png --file=company/compan
 ```bash
 git pull
 node infra/scripts/sync-wrangler.mjs --write    # wrangler.jsonc.example の変更を反映する
-cd packages/backend
+cd packages/report-renderer
+npm install                                     # 帳票の描画の共有パッケージ(backend・frontend より先に)
+cd ../backend
 npm install
 npx tsc --noEmit
 npm test

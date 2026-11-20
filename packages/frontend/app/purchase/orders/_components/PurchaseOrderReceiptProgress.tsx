@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { OutsideInventoryNote, type OutsideInventoryLine } from "../../../_shared/ui/OutsideInventoryNote";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { Button } from "../../../_shared/ui/Button";
+import { DirectShipmentCompletionModal } from "./DirectShipmentCompletionModal";
 
 interface ReceiptProgressItem {
   orderItemId: string;
@@ -16,17 +19,31 @@ interface ReceiptProgressItem {
 
 interface PurchaseOrderReceiptProgressProps {
   orderId: string;
+  // REQ-005 第2段階: 直送の発注なら、入荷指示の代わりに「直送完了」を出す。対象は受注明細とつながる発注明細だけ
+  directSalesOrderId?: string | null;
+  directLinkedOrderItemIds?: string[];
+  // REQ-011(1): 品目マスタに無い明細(直接入力)。入荷の対象外として表の下に灰色で出す
+  outsideInventoryLines?: OutsideInventoryLine[];
 }
 
 // Item9: 承認済み発注の入荷状況(明細ごとの入荷済/残数量)を表示し、残数量がある明細から
 // 入荷指示の作成画面へ遷移する導線を提供する(sales/orders/_components/OrderShipmentProgress.tsx
 // と対称)。発注には受注のような倉庫引当(reservation)が無いため、その内訳列は持たない。
 // 実際の作成フォームは/inventory/receiving側の既存フォームをクエリパラメータ経由でprefillする
-export function PurchaseOrderReceiptProgress({ orderId }: PurchaseOrderReceiptProgressProps) {
+export function PurchaseOrderReceiptProgress({
+  orderId,
+  directSalesOrderId = null,
+  directLinkedOrderItemIds = [],
+  outsideInventoryLines = [],
+}: PurchaseOrderReceiptProgressProps) {
   const router = useRouter();
   const [items, setItems] = useState<ReceiptProgressItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showDirectCompletion, setShowDirectCompletion] = useState(false);
+  const [directMessage, setDirectMessage] = useState("");
+  // 直送完了の後に入荷状況を読み直す
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,9 +62,18 @@ export function PurchaseOrderReceiptProgress({ orderId }: PurchaseOrderReceiptPr
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, reloadKey]);
 
   const hasRemaining = items.some((item) => item.remainingQuantity > 0);
+  const directLines = directSalesOrderId
+    ? items
+        .filter((item) => directLinkedOrderItemIds.includes(item.orderItemId) && item.remainingQuantity > 0)
+        .map((item) => ({
+          orderItemId: item.orderItemId,
+          itemName: item.itemName || item.itemId || "-",
+          remainingQuantity: item.remainingQuantity,
+        }))
+    : [];
 
   if (loading) {
     return <p className="text-xs text-slate-600">入荷状況を読み込み中...</p>;
@@ -66,7 +92,7 @@ export function PurchaseOrderReceiptProgress({ orderId }: PurchaseOrderReceiptPr
       <h4 className="text-xs font-black text-slate-700">📦 入荷状況(発注→入荷指示/入庫の消込)</h4>
 
       <table className="w-full text-xs text-left">
-        <thead className="bg-slate-100 border-b border-slate-200 font-bold text-slate-600">
+        <thead className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
           <tr>
             <th className="p-2">品目</th>
             <th className="p-2 text-right">発注数量</th>
@@ -92,7 +118,52 @@ export function PurchaseOrderReceiptProgress({ orderId }: PurchaseOrderReceiptPr
         </tbody>
       </table>
 
-      {hasRemaining && (
+      {/* REQ-011(2): 直接入力の明細は「一時保管で受入」から一時保管の台帳へ(発注の入荷済数量には数えない) */}
+      <OutsideInventoryNote
+        lines={outsideInventoryLines.map((line) =>
+          line.key.startsWith("direct-")
+            ? line
+            : {
+                ...line,
+                href: `/inventory/audit?tab=holdings&receivePo=${encodeURIComponent(orderId)}&receivePoItem=${encodeURIComponent(line.key)}`,
+                actionLabel: "一時保管で受入",
+              },
+        )}
+      />
+
+      {directMessage && (
+        <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-lg">
+          {directMessage}
+        </div>
+      )}
+
+      {directSalesOrderId && directLines.length > 0 && (
+        <Button variant="success" size="sm" fullWidth onClick={() => setShowDirectCompletion(true)}>
+          🚚 直送完了にする(得意先への納品を記録)
+        </Button>
+      )}
+
+      {/* BUG-116: 直送の発注なのに受注明細とつながる明細が無い時は、ボタンを出せない理由を知らせる */}
+      {directSalesOrderId && directLines.length === 0 && hasRemaining && (
+        <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-lg">
+          ⚠️ この発注の明細は受注[{directSalesOrderId}]の明細とつながっていないため、直送完了にできません。受注(または受注から作った購買申請)から発注を作り直してください。
+        </div>
+      )}
+
+      {showDirectCompletion && directSalesOrderId && (
+        <DirectShipmentCompletionModal
+          orderId={orderId}
+          salesOrderId={directSalesOrderId}
+          lines={directLines}
+          onClose={() => setShowDirectCompletion(false)}
+          onCompleted={(message) => {
+            setDirectMessage(message);
+            setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
+
+      {hasRemaining && !directSalesOrderId && (
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             type="button"

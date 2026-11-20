@@ -139,6 +139,8 @@ export default function PartnerForm({
               <option value="SUPPLIER">仕入先</option>
               <option value="BOTH">両方</option>
               <option value="PROSPECT">見込み客 (PROSPECT)</option>
+              {/* REQ-006: 倉庫間移動の指示書の宛先として自動で登録した倉庫(この種類は自動の登録だけで使う) */}
+              {formData.type === "WAREHOUSE" && <option value="WAREHOUSE">倉庫 (倉庫間移動の宛先)</option>}
             </select>
           </div>
           <div>

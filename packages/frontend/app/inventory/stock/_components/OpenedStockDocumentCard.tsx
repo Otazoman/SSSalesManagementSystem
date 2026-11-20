@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SourceDocumentLink } from "./SourceDocumentLink";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { StatusBadge, StatusBadgeSpec } from "../../../_shared/ui/StatusBadge";
 import { getApprovalResultStatus, getInstructionStatus } from "../../../_shared/status";
@@ -182,7 +183,21 @@ export function OpenedStockDocumentCard({ kind, id, onClose }: OpenedStockDocume
             {config.headerFields.map((f) => (
               <div key={f.key} className="flex gap-2">
                 <dt className="w-28 shrink-0 font-semibold text-slate-800">{f.label}</dt>
-                <dd className="text-slate-900 break-all">{display(detail.header[f.key])}</dd>
+                <dd className="text-slate-900 break-all">
+                  {/* REQ-021・REQ-022: 発注番号・受注番号は元の伝票を開くリンクにする */}
+                  {f.key === "orderId" || f.key === "salesOrderId" ? (
+                    detail.header[f.key] ? (
+                      <SourceDocumentLink
+                        kind={f.key === "orderId" ? "purchase_order" : "sales_order"}
+                        id={String(detail.header[f.key])}
+                      />
+                    ) : (
+                      ""
+                    )
+                  ) : (
+                    display(detail.header[f.key])
+                  )}
+                </dd>
               </div>
             ))}
           </dl>

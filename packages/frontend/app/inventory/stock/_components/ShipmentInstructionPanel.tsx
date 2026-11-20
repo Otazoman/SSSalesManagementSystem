@@ -1,6 +1,8 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { InstructionMailButton } from "./InstructionMailButton";
+import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
@@ -26,6 +28,7 @@ import {
 import { ApplicantDepartmentSelect } from "../../../_shared/ui/ApplicantDepartmentSelect";
 import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletionControl";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, issueReportPdfs } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -111,15 +114,24 @@ export function ShipmentInstructionPanel({
     setMessageState({});
     setBulkSending(true);
     try {
-      const result = await apiFetch<{ message: string }>(
-        "/api/shipment-instructions/bulk-generate-pdf",
-        {
-          method: "POST",
-          json: { ids: Array.from(selectedIds) },
-          defaultErrorMessage: "一括PDF発行・送信に失敗しました",
-        },
-      );
-      setMessageState({ message: result.message });
+      const result = await issueReportPdfs("/api/shipment-instructions", Array.from(selectedIds), { defaultErrorMessage: "一括PDF発行・送信に失敗しました" });
+      // BUG-113: REQ-012 で PDF の発行ではメールを送らなくなったため、発行できた指示書を倉庫の登録済みの担当者へ送る
+      const issuedIds = result.results.filter((r) => r.success).map((r) => r.id);
+      const issued = `${result.results.length}件中${issuedIds.length}件のPDFを発行しました。`;
+      if (issuedIds.length === 0) {
+        setMessageState({ error: `${issued}${result.results.map((r) => r.message).filter(Boolean).join(" / ")}` });
+      } else {
+        const mail = await apiFetch<{ message?: string; results?: Array<{ id: string; status: string; error?: string }> }>(
+          "/api/shipment-instructions/bulk-send-email",
+          { method: "POST", json: { ids: issuedIds }, defaultErrorMessage: "メールの一括送信に失敗しました" },
+        );
+        const failures = (mail.results ?? []).filter((r) => r.status === "FAILED").map((r) => `${r.id}: ${r.error}`);
+        setMessageState(
+          failures.length > 0
+            ? { message: `${issued}${mail.message ?? ""}`, error: failures.join(" / ") }
+            : { message: `${issued}${mail.message ?? ""}` },
+        );
+      }
       setSelectedIds(new Set());
       void history.refetch();
     } catch (err: unknown) {
@@ -138,13 +150,7 @@ export function ShipmentInstructionPanel({
     setMessageState({});
     setGeneratingPdfId(id);
     try {
-      const result = await apiFetch<{ message: string }>(
-        `/api/shipment-instructions/${id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "出荷指示書PDFの生成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message: string }>("/api/shipment-instructions", id, { defaultErrorMessage: "出荷指示書PDFの生成に失敗しました" });
       setMessageState({ message: result.message });
       void history.refetch();
     } catch (err: unknown) {
@@ -635,7 +641,7 @@ export function ShipmentInstructionPanel({
               <td className="px-4 py-2">
                 <StatusBadge {...getInstructionStatus(i.status)} />
               </td>
-              <td className="px-4 py-2 text-slate-600">{i.createdBy}</td>
+              <td className="px-4 py-2 text-slate-700">{displayUserName(history.users, i.createdBy)}</td>
               <td className="px-4 py-2 text-right space-x-2 whitespace-nowrap">
                 {eligibleForPdf(i.status) && (
                   <Button size="sm" onClick={() => void toggleExpand(i.id)}>
@@ -664,6 +670,15 @@ export function ShipmentInstructionPanel({
                   >
                     📄 PDFを表示
                   </Button>
+                )}
+                {/* REQ-012: 案内メールは PDF の発行と同時に送らず、この操作で送る */}
+                {i.instructionDocumentR2Path && (
+                  <InstructionMailButton
+                    kind="shipment"
+                    instructionId={i.id}
+                    warehouseId={i.warehouseId}
+                    onResult={(result) => setMessageState(result)}
+                  />
                 )}
                 <Button
                   size="sm"

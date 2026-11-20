@@ -11,6 +11,7 @@
 import { ProductPriceRepository } from "../../routes/master/product-prices/product-price.repository";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import { resolveMasterPreview } from "./master-pending-change";
 import type {
   TargetAdapter,
   ApplyApprovedParams,
@@ -69,26 +70,31 @@ async function applyApproved({
 
 async function getTaskPreview({
   db,
+  requestId,
   targetId,
 }: TaskPreviewParams): Promise<TaskPreviewResult> {
   const repo = ProductPriceRepository.fromDb(db);
   const price = await repo.findPriceById(targetId);
   return {
     targetName: price ? `${price.itemId} / ${price.priceType}` : "不明な単価設定",
-    previewData: price,
+    previewData: (await resolveMasterPreview(db, requestId, price)).newData,
   };
 }
 
 async function getHistoryPreview({
   db,
+  requestId,
   targetId,
+  requestType,
 }: HistoryPreviewParams): Promise<HistoryPreviewResult> {
   const repo = ProductPriceRepository.fromDb(db);
   const price = await repo.findPriceById(targetId);
+  // BUG-089: 変更申請は、退避した変更後の内容を新しい内容、今の行を変更前の内容として出す
+  const pending = await resolveMasterPreview(db, requestId, price);
   return {
     targetName: price ? `${price.itemId} / ${price.priceType}` : "不明な単価設定",
-    snapshotNew: price,
-    snapshotOld: null,
+    snapshotNew: pending.newData,
+    snapshotOld: requestType === "UPDATE" ? pending.oldData : null,
   };
 }
 

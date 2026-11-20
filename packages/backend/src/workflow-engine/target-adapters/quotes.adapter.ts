@@ -143,6 +143,8 @@ async function applyApproved({
     deliveryDate: header.deliveryDate ?? null,
     deliveryPlace: header.deliveryPlace ?? null,
     paymentTerms: header.paymentTerms ?? null,
+    // BUG-074: 変更申請でプロジェクトを変えられるようにする(projectId を含まない以前の申請では変えない)
+    ...(header.projectId !== undefined ? { projectId: header.projectId || null } : {}),
     updatedBy: approverEmployeeNumber,
     updatedAt: now,
   };

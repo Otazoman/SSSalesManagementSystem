@@ -50,7 +50,7 @@ const card = (
 );
 
 describe("OtpDownloadCard", () => {
-  it("メール入力→確認コード→ダウンロードの流れで、APIの場所とファイル名が props どおりになる", async () => {
+  it("REQ-007: メールアドレスを入力せずに、確認コードの送信→確認コード→ダウンロードの流れで、APIの場所とファイル名が props どおりになる", async () => {
     const user = userEvent.setup();
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ message: "送信しました" }))
@@ -62,10 +62,6 @@ describe("OtpDownloadCard", () => {
     expect(
       screen.getByRole("heading", { name: "📋 注文請書ダウンロード" }),
     ).toBeInTheDocument();
-    await user.type(
-      screen.getByPlaceholderText("you@example.com"),
-      "a@example.com",
-    );
     await user.click(
       screen.getByRole("button", { name: "確認コードを送信する" }),
     );
@@ -76,7 +72,7 @@ describe("OtpDownloadCard", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "a@example.com" }),
+        body: JSON.stringify({}),
       },
     );
     expect(await screen.findByText("✅ 送信しました")).toBeInTheDocument();
@@ -92,7 +88,7 @@ describe("OtpDownloadCard", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "a@example.com", otp: "123456" }),
+        body: JSON.stringify({ otp: "123456" }),
       },
     );
     const link = await screen.findByRole("link", {
@@ -108,10 +104,6 @@ describe("OtpDownloadCard", () => {
       .mockResolvedValueOnce(jsonResponse({}))
       .mockResolvedValueOnce(fileResponse());
     render(card());
-    await user.type(
-      screen.getByPlaceholderText("you@example.com"),
-      "a@example.com",
-    );
     await user.click(
       screen.getByRole("button", { name: "確認コードを送信する" }),
     );
@@ -124,11 +116,12 @@ describe("OtpDownloadCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("URLにIDが無い時は警告を出し、入力・送信できない", () => {
+  it("URLにIDが無い時は警告を出し、送信できない", () => {
     params = new URLSearchParams("orderId=O1"); // attachmentId なし
     render(card());
     expect(screen.getByText(/URLが不正です/)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("you@example.com")).toBeDisabled();
+    // REQ-007: メールアドレスの入力欄は無い
+    expect(screen.queryByPlaceholderText("you@example.com")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "確認コードを送信する" }),
     ).toBeDisabled();
@@ -148,10 +141,6 @@ describe("OtpDownloadCard", () => {
       }),
     );
     expect(screen.queryByText(/URLが不正です/)).not.toBeInTheDocument();
-    await user.type(
-      screen.getByPlaceholderText("you@example.com"),
-      "a@example.com",
-    );
     await user.click(
       screen.getByRole("button", { name: "確認コードを送信する" }),
     );
@@ -160,7 +149,7 @@ describe("OtpDownloadCard", () => {
     );
   });
 
-  it("送信・検証のエラーを表示する。メールアドレスの入力し直しで最初に戻る", async () => {
+  it("送信・検証のエラーを表示する。「確認コードを送り直す」で最初に戻る", async () => {
     const user = userEvent.setup();
     fetchMock
       .mockResolvedValueOnce(
@@ -172,10 +161,6 @@ describe("OtpDownloadCard", () => {
       );
     render(card());
 
-    await user.type(
-      screen.getByPlaceholderText("you@example.com"),
-      "a@example.com",
-    );
     await user.click(
       screen.getByRole("button", { name: "確認コードを送信する" }),
     );
@@ -193,11 +178,11 @@ describe("OtpDownloadCard", () => {
     expect(await screen.findByText("⚠️ コードが違います")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: "メールアドレスを入力し直す" }),
+      screen.getByRole("button", { name: "確認コードを送り直す" }),
     );
     await waitFor(() =>
       expect(
-        screen.getByPlaceholderText("you@example.com"),
+        screen.getByRole("button", { name: "確認コードを送信する" }),
       ).toBeInTheDocument(),
     );
     expect(screen.queryByText("⚠️ コードが違います")).not.toBeInTheDocument();

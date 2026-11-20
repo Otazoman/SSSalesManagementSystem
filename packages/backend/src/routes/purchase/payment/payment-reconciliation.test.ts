@@ -253,4 +253,27 @@ describe("PaymentReconciliationService.recordDisbursement: 消込ロジック", 
     ).rejects.toThrow(/未消込額/);
     expect(await db.select().from(schema.paymentDisbursements)).toHaveLength(0);
   });
+
+  // BUG-094: 支払額が0円(相殺・赤伝など)の支払は、0円の記録で完了にできる
+  const zero = { paidDate: now.toISOString(), amount: 0, method: "BANK_TRANSFER", memo: null };
+
+  it("BUG-094: 未消込額が0円の支払は、0円の記録で完了(RECONCILED)になる。2回目は消込済みとして拒否する", async () => {
+    const paymentId = await createTestPayment();
+    await db.update(schema.paymentHeaders).set({ totalAmount: 0, taxAmount: 0 }).where(eq(schema.paymentHeaders.id, paymentId));
+
+    const result = await withContext((c) => getService(c).recordDisbursement(c, paymentId, zero));
+    expect(result.reconciliationStatus).toBe("RECONCILED");
+
+    await expect(withContext((c) => getService(c).recordDisbursement(c, paymentId, zero))).rejects.toThrow("既に消込済み");
+  });
+
+  it("BUG-094: 未消込額がある時の0円・マイナスの支払は拒否し、記録しない", async () => {
+    const paymentId = await createTestPayment();
+    await expect(withContext((c) => getService(c).recordDisbursement(c, paymentId, zero))).rejects.toThrow("1円以上");
+    await expect(
+      withContext((c) => getService(c).recordDisbursement(c, paymentId, { ...zero, amount: -100 })),
+    ).rejects.toThrow("1円以上");
+    const rows = await db.select().from(schema.paymentDisbursements).where(eq(schema.paymentDisbursements.paymentHeaderId, paymentId));
+    expect(rows).toHaveLength(0);
+  });
 });

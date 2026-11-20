@@ -19,6 +19,7 @@ import { QuoteStatusAndActions } from "./QuoteStatusAndActions";
 import { QuoteMailModal } from "./QuoteMailModal";
 import type { ApplicantDepartmentOption } from "../../../types";
 
+import { QuoteLostControl } from "./QuoteLostControl";
 interface QuoteFormProps {
   editingId: string | null;
   quoteId: string;
@@ -38,8 +39,10 @@ interface QuoteFormProps {
   isSubmitting: boolean;
   isQuoteWfEnabled: boolean;
   onSubmitForApproval: (id: string) => void;
+  // REQ-015: 失注にした・取り消した後(メッセージを出して一覧へ戻る)
+  onLostChanged?: (message: string) => void;
   onSubmitApprovedEdit: (formData: any) => void;
-  onGeneratePDF: (id: string) => void;
+  onGeneratePDF: (id: string, options?: { includeOrderForm?: boolean }) => void;
   fetchSpecialPrice: (
     custID: string,
     prodID: string,
@@ -75,6 +78,7 @@ export function QuoteForm({
   isSubmitting,
   isQuoteWfEnabled,
   onSubmitForApproval,
+  onLostChanged,
   onSubmitApprovedEdit,
   onGeneratePDF,
   fetchSpecialPrice,
@@ -170,9 +174,10 @@ export function QuoteForm({
   // Item4-e: 承認処理中(PENDING_APPROVAL/PENDING_DELETION)は編集不可。
   // ただし承認機能が無効な場合はpartnersと同様ロックしない(会社設定で無効化した時点で
   // 審査待ち状態自体の意味が無くなるため、DRAFT/仮登録相当として直接編集できる)
+  // REQ-015: 失注の見積は、承認の有無にかかわらず編集できない(失注を取り消すと編集できる)
   const isLocked =
-    isQuoteWfEnabled &&
-    (status === "PENDING_APPROVAL" || status === "PENDING_DELETION");
+    status === "LOST" ||
+    (isQuoteWfEnabled && (status === "PENDING_APPROVAL" || status === "PENDING_DELETION"));
 
   return (
     <form onSubmit={(e) => handleFormSubmit(e, false)} className="space-y-6">
@@ -283,6 +288,17 @@ export function QuoteForm({
             onSubmitApprovedEdit(buildCurrentPayload())
           }
         />
+
+        {/* REQ-015: 失注にする・失注を取り消す(保存済みの見積だけ) */}
+        {editingId && onLostChanged && (
+          <QuoteLostControl
+            quoteId={editingId}
+            status={status}
+            lostDate={initialData?.lostDate}
+            lostReason={initialData?.lostReason}
+            onChanged={onLostChanged}
+          />
+        )}
       </div>
 
       {showMailModal && (

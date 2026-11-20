@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../db/schema";
 import { progressRouter } from "./index";
-import { computeNextStages } from "./progress-next-step";
+import { computeNextStages, computeUnissuedStages } from "./progress-next-step";
 
 const db = drizzle(env.DB, { schema });
 const now = new Date("2026-09-01T00:00:00Z");
@@ -33,6 +33,8 @@ beforeEach(async () => {
   await db.delete(schema.approvalFlowSteps);
   await db.delete(schema.approvalFlows);
   await db.delete(schema.purchaseRecognitions);
+  // BUG-110: 発注明細(受注明細とつながる)のテスト用。発注・受注明細より先に消す
+  await db.delete(schema.orderItems);
   await db.delete(schema.orders);
   await db.delete(schema.purchaseRequestItems);
   await db.delete(schema.purchaseRequests);
@@ -162,6 +164,73 @@ describe("GET / (進捗一覧)", () => {
     expect(row.stages.sales_invoice).toEqual([]);
   });
 
+  // BUG-110: 受注から直接作った発注(直送・受注の欠品から。購買申請を通らない)は、発注明細と受注明細のつながりで受注の案件に載せる
+  it("購買申請を通らずに受注から作った発注は、受注の案件の発注の欄に載り、単独の行にならない。発注番号でも受注の案件が見つかる", async () => {
+    await db.insert(schema.salesOrders).values({
+      id: "SO-D",
+      partnerId: "P-1",
+      orderDate: later,
+      status: "APPROVED",
+      totalAmount: 0,
+      taxAmount: 0,
+      ...audit,
+    });
+    await db.insert(schema.salesOrderItems).values({
+      id: "SOI-D",
+      salesOrderId: "SO-D",
+      itemId: "ITEM1",
+      inputType: "MASTER",
+      quantity: 2,
+      unitPrice: 100,
+      amount: 200,
+      sortOrder: 0,
+    });
+    await db.insert(schema.orders).values({
+      id: "PO-D",
+      title: "直送の発注",
+      partnerId: "P-1",
+      orderDate: later,
+      status: "APPROVED",
+      isDirectShipment: true,
+      directSalesOrderId: "SO-D",
+      totalAmount: 200,
+      taxAmount: 0,
+      ...audit,
+    });
+    await db.insert(schema.orderItems).values({
+      id: "POI-D",
+      orderId: "PO-D",
+      itemId: "ITEM1",
+      quantity: 2,
+      unitPrice: 100,
+      salesOrderItemId: "SOI-D",
+    });
+
+    const body = (await (await callProgress()).json()) as any;
+    expect(body.items.map((r: any) => `${r.rootKind}:${r.rootId}`)).toEqual(["sales_order:SO-D"]);
+    expect(body.items[0].stages.purchase_order.map((d: any) => d.id)).toEqual(["PO-D"]);
+
+    const byOrderNumber = (await (await callProgress("?docNumber=PO-D")).json()) as any;
+    expect(byOrderNumber.items.map((r: any) => r.rootId)).toEqual(["SO-D"]);
+  });
+
+  it("REQ-015: 失注の見積の案件は完了として扱い、見積の欄に失注を出す", async () => {
+    await db.insert(schema.quotes).values({
+      id: "Q-LOST",
+      partnerId: "P-1",
+      quoteDate: now,
+      status: "LOST",
+      lostDate: "2026-11-15",
+      totalAmount: 0,
+      taxAmount: 0,
+      ...audit,
+    } as never);
+    expect(((await (await callProgress("?state=in_progress")).json()) as any).items).toHaveLength(0);
+    const completed = (await (await callProgress("?state=completed")).json()) as any;
+    expect(completed.items.map((r: any) => r.rootId)).toEqual(["Q-LOST"]);
+    expect(completed.items[0].stages.quote[0]).toMatchObject({ id: "Q-LOST", status: "LOST" });
+  });
+
   it("受注化されていない見積・受注に紐づかない購買申請・購買申請なしの発注は単独行になる", async () => {
     await db.insert(schema.quotes).values({
       id: "Q-ALONE",
@@ -276,6 +345,54 @@ describe("GET / (進捗一覧)", () => {
 
     const bad = await callProgress("?rootKind=unknown");
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("BUG-090: 入荷指示・入庫の欄", () => {
+  afterEach(async () => {
+    await db.delete(schema.itemReceiptHeaders);
+    await db.delete(schema.itemReceiptInstructions);
+  });
+
+  const instruction = (id: string, status: string) => ({
+    id,
+    partnerId: "P-1",
+    warehouseId: "WH-1",
+    instructedReceiveDate: later,
+    status,
+    orderId: "PO-1",
+    createdBy: "EMP001",
+    createdAt: now,
+  });
+
+  it("承認済みの発注 + 入庫の無い入荷指示(申請中): 入荷指示の欄に申請中として出る", async () => {
+    await seedSalesOrderWithPurchase();
+    await db.insert(schema.itemReceiptInstructions).values(instruction("RI-1", "UNAPPROVED"));
+
+    const row = ((await (await callProgress()).json()) as any).items[0];
+    expect(row.stages.purchase_order[0]).toMatchObject({ id: "PO-1", status: "APPROVED" });
+    expect(row.stages.receipt_instruction).toHaveLength(1);
+    expect(row.stages.receipt_instruction[0]).toMatchObject({ id: "RI-1", status: "UNAPPROVED" });
+    expect(row.stages.item_receipt).toEqual([]);
+  });
+
+  it("承認済みの発注 + 申請中の入庫: 入庫の欄に申請中として出る。入荷指示は入庫経由と発注番号経由で重ならない", async () => {
+    await seedSalesOrderWithPurchase();
+    await db.insert(schema.itemReceiptInstructions).values(instruction("RI-1", "APPROVED"));
+    await db.insert(schema.itemReceiptHeaders).values({
+      id: "RC-1",
+      orderId: "PO-1",
+      receiptInstructionId: "RI-1",
+      receivedDate: later,
+      status: "UNAPPROVED",
+      createdBy: "EMP001",
+      createdAt: now,
+    });
+
+    const row = ((await (await callProgress()).json()) as any).items[0];
+    expect(row.stages.item_receipt).toHaveLength(1);
+    expect(row.stages.item_receipt[0]).toMatchObject({ id: "RC-1", status: "UNAPPROVED" });
+    expect(row.stages.receipt_instruction.map((d: any) => d.id)).toEqual(["RI-1"]);
   });
 });
 
@@ -555,6 +672,88 @@ describe("追加要望M-2: 完了/進行中の判定と既定表示", () => {
   });
 });
 
+// PERF-11: 進行中/完了の走査では、完了の判定に必要な分だけを30件ずつ組み立て、
+// 名前・承認の状況・担当の解決は、最後に返す行にだけ1回行う
+describe("進捗確認の問い合わせ回数(PERF-11)", () => {
+  afterEach(async () => {
+    await db.delete(schema.documentCompletionOverrides);
+  });
+
+  // D1 に送った SQL を記録する env
+  function envRecordingSql() {
+    const statements: string[] = [];
+    const d1 = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (query: string) => {
+            statements.push(query);
+            return target.prepare(query);
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    return { testEnv: { ...env, DB: d1 }, statements };
+  }
+
+  // 完了済みの受注 completedCount 件(新しい順に先に並ぶ)と、最後に進行中の受注1件
+  async function seedMostlyCompleted(completedCount: number) {
+    for (let i = 0; i < completedCount; i++) {
+      const id = `SO-DONE-${String(i).padStart(3, "0")}`;
+      await db.insert(schema.salesOrders).values({
+        id,
+        partnerId: "P-1",
+        orderDate: new Date(later.getTime() - i * 60000),
+        status: "APPROVED",
+        salesPersonEmployeeNumber: "EMP001",
+        totalAmount: 0,
+        taxAmount: 0,
+        ...audit,
+      });
+      await forceDocument("sales_order", id, "COMPLETED");
+    }
+    await db.insert(schema.salesOrders).values({
+      id: "SO-OPEN",
+      partnerId: "P-1",
+      orderDate: now,
+      status: "PENDING",
+      salesPersonEmployeeNumber: "EMP001",
+      totalAmount: 0,
+      taxAmount: 0,
+      ...audit,
+    });
+  }
+
+  const isPartnerNameQuery = (q: string) => /from "partners"/i.test(q) && !/from \(/i.test(q);
+
+  it("完了済みの案件を複数回の走査で読み飛ばしても、名前などの取得は返す行の分の1回だけ", async () => {
+    await seedMostlyCompleted(45);
+    const { testEnv, statements } = envRecordingSql();
+    const ctx = createExecutionContext();
+    const res = await progressRouter.request("/?state=in_progress", {}, testEnv, ctx);
+    await waitOnExecutionContext(ctx);
+    const body = (await res.json()) as any;
+
+    expect(body.items.map((r: any) => r.rootId)).toEqual(["SO-OPEN"]);
+    expect(body.items[0].partnerName).toBe("テスト商事");
+    expect(body.items[0].stages.sales_order[0].assigneeName).toBe("営業太郎");
+    expect(statements.filter(isPartnerNameQuery)).toHaveLength(1);
+  });
+
+  it("CSV でも、名前などの取得は返す行の分の1回だけ", async () => {
+    await seedMostlyCompleted(45);
+    const { testEnv, statements } = envRecordingSql();
+    const ctx = createExecutionContext();
+    const res = await progressRouter.request("/csv-download?state=all", {}, testEnv, ctx);
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(200);
+    const lines = (await res.text()).split("\n");
+    expect(lines).toHaveLength(1 + 46);
+    expect(statements.filter(isPartnerNameQuery)).toHaveLength(1);
+  });
+});
+
 describe("追加要望M-2: 複合検索(件名・取引先・伝票番号・キーワード・見積起点)", () => {
   it("件名・取引先名・伝票番号(案件内のどの伝票でも)・横断キーワードをANDで絞り込める", async () => {
     await seedSalesOrderWithPurchase();
@@ -650,5 +849,42 @@ describe("追加要望M-2: 工程担当に部署+ロール", () => {
       assigneeName: "部署/ロール: 営業部 / 出荷担当",
       source: "stage",
     });
+  });
+});
+
+// REQ-013: 未起票の工程(起点より後で伝票が無い工程。入荷指示・出荷指示は任意のため出さない)
+describe("REQ-013: 未起票の工程", () => {
+  const has = (...keys: string[]) => (key: string) => keys.includes(key);
+  const keysOf = (r: Array<{ stageKey: string }>) => r.map((x) => x.stageKey);
+
+  it("受注だけ: 出庫・売上・請求が未起票(出荷指示は任意のため出さない)。購買側は出さない", () => {
+    expect(keysOf(computeUnissuedStages("sales_order", has("sales_order") as never))).toEqual(["item_shipment", "sales_invoice", "billing"]);
+  });
+
+  it("受注 + 発注: 販売側に加え、購買側の発注より後(入庫・仕入・支払)が未起票", () => {
+    const r = computeUnissuedStages("sales_order", has("sales_order", "purchase_order") as never);
+    expect(r.filter((x) => x.chain === "purchase").map((x) => x.stageKey)).toEqual(["item_receipt", "purchase_recognition", "payment"]);
+  });
+
+  it("発注だけ: 入庫・仕入・支払が未起票(販売側は出さない)", () => {
+    expect(keysOf(computeUnissuedStages("purchase_order", has("purchase_order") as never))).toEqual([
+      "item_receipt",
+      "purchase_recognition",
+      "payment",
+    ]);
+  });
+
+  it("見積だけ: 受注だけが未起票。失注の見積は未起票を出さない(REQ-015)", () => {
+    expect(keysOf(computeUnissuedStages("quote", has("quote") as never))).toEqual(["sales_order"]);
+    expect(computeUnissuedStages("quote", has("quote") as never, { quoteLost: true })).toEqual([]);
+  });
+
+  it("一覧の応答に、未起票の工程と担当予定(工程の既定担当)を返す", async () => {
+    await seedSalesOrderWithPurchase();
+    await db.insert(schema.progressStageOwners).values({ stageKey: "item_shipment", assigneeType: "USER", assigneeRef: "EMP001", ...audit } as never);
+    const row = ((await (await callProgress()).json()) as any).items[0];
+    const shipment = row.unissuedSteps.find((u: any) => u.stageKey === "item_shipment");
+    expect(shipment).toMatchObject({ chain: "sales", assigneeName: "営業太郎", source: "stage" });
+    expect(row.unissuedSteps.some((u: any) => u.stageKey === "shipment_instruction")).toBe(false);
   });
 });

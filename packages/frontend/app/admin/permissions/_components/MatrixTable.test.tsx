@@ -32,8 +32,8 @@ function baseProps(overrides: Partial<Parameters<typeof MatrixTable>[0]> = {}) {
     isSaving: false,
     onRoleChange: vi.fn(),
     onSave: vi.fn(),
-    onToggleColumn: vi.fn(),
-    onToggleRow: vi.fn(),
+    onSetColumn: vi.fn(),
+    onSetRow: vi.fn(),
     onCellChange: vi.fn(),
     ...overrides,
   };
@@ -50,8 +50,21 @@ describe("MatrixTable", () => {
     render(<MatrixTable {...baseProps()} />);
     expect(screen.getByText("単位マスタ")).toBeInTheDocument();
     const checkboxes = screen.getAllByRole("checkbox");
-    // 一括適用行 x2 + 単位マスタ行(read, create, 行一括) x3 = 5個
-    expect(checkboxes.length).toBe(5);
+    // BUG-082: 一括操作はボタンのため、チェックボックスは単位マスタ行の read, create の2個だけ
+    expect(checkboxes.length).toBe(2);
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).not.toBeChecked();
+  });
+
+  it("BUG-082: 行の全権限がONでも、一括操作はチェック状態を表示しない(ボタンのみ)", () => {
+    render(
+      <MatrixTable
+        {...baseProps({ checkedPermissionIds: ["master_units:read", "master_units:create"] })}
+      />,
+    );
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "「単位マスタ」のすべての権限をすべてON" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "「単位マスタ」のすべての権限をすべてOFF" })).toBeInTheDocument();
   });
 
   it("権限レコードが存在しないアクションは「—」を表示しチェックボックスを出さない", () => {
@@ -69,26 +82,27 @@ describe("MatrixTable", () => {
     const onCellChange = vi.fn();
     render(<MatrixTable {...baseProps({ onCellChange })} />);
     const checkboxes = screen.getAllByRole("checkbox");
-    // インデックス2,3が単位マスタ行(read, create)
-    await userEvent.click(checkboxes[2]);
+    // インデックス0,1が単位マスタ行(read, create)
+    await userEvent.click(checkboxes[0]);
     expect(onCellChange).toHaveBeenCalledWith("master_units:read");
   });
 
-  it("一括適用行のチェックボックスクリックでonToggleColumnを呼ぶ", async () => {
-    const onToggleColumn = vi.fn();
-    render(<MatrixTable {...baseProps({ onToggleColumn })} />);
-    const checkboxes = screen.getAllByRole("checkbox");
-    await userEvent.click(checkboxes[0]);
-    expect(onToggleColumn).toHaveBeenCalledWith("read");
+  it("一括適用行の「すべてON」「すべてOFF」でonSetColumnをアクションとON/OFFで呼ぶ", async () => {
+    const onSetColumn = vi.fn();
+    render(<MatrixTable {...baseProps({ onSetColumn })} />);
+    await userEvent.click(screen.getByRole("button", { name: "すべての画面の「閲覧 (R)」をすべてON" }));
+    expect(onSetColumn).toHaveBeenCalledWith("read", true);
+    await userEvent.click(screen.getByRole("button", { name: "すべての画面の「閲覧 (R)」をすべてOFF" }));
+    expect(onSetColumn).toHaveBeenCalledWith("read", false);
   });
 
-  it("行一括チェックボックスクリックでonToggleRowをresourceKeyで呼ぶ", async () => {
-    const onToggleRow = vi.fn();
-    render(<MatrixTable {...baseProps({ onToggleRow })} />);
-    const checkboxes = screen.getAllByRole("checkbox");
-    // インデックス4が単位マスタ行の行一括チェックボックス
-    await userEvent.click(checkboxes[4]);
-    expect(onToggleRow).toHaveBeenCalledWith("master_units");
+  it("行一括の「すべてON」「すべてOFF」でonSetRowをresourceKeyとON/OFFで呼ぶ", async () => {
+    const onSetRow = vi.fn();
+    render(<MatrixTable {...baseProps({ onSetRow })} />);
+    await userEvent.click(screen.getByRole("button", { name: "「単位マスタ」のすべての権限をすべてON" }));
+    expect(onSetRow).toHaveBeenCalledWith("master_units", true);
+    await userEvent.click(screen.getByRole("button", { name: "「単位マスタ」のすべての権限をすべてOFF" }));
+    expect(onSetRow).toHaveBeenCalledWith("master_units", false);
   });
 
   it("保存ボタンクリックでonSaveを呼ぶ", async () => {
@@ -103,8 +117,11 @@ describe("MatrixTable", () => {
     expect(screen.getByRole("button", { name: "同期書き込み中..." })).toBeDisabled();
   });
 
-  it("canUpdate:falseの場合はチェックボックスが無効化される", () => {
+  it("canUpdate:falseの場合はチェックボックスと一括操作のボタンが無効化される", () => {
     render(<MatrixTable {...baseProps({ canUpdate: false })} />);
     screen.getAllByRole("checkbox").forEach((cb) => expect(cb).toBeDisabled());
+    screen
+      .getAllByRole("button", { name: /すべて(ON|OFF)$/ })
+      .forEach((button) => expect(button).toBeDisabled());
   });
 });

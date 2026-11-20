@@ -41,6 +41,9 @@ export const quotes = sqliteTable("quotes", {
   quoteDate: integer("quote_date", { mode: "timestamp" }).notNull(),
   validUntil: integer("valid_until", { mode: "timestamp" }),
   status: text("status").notNull().default("DRAFT"),
+  // REQ-015(2026-11-15 ユーザー承認済み): 失注。status が LOST(失注)の時の失注日(YYYY-MM-DD)と失注理由。失注の取消で空に戻す
+  lostDate: text("lost_date"),
+  lostReason: text("lost_reason"),
   currentApprovalLayer: integer("current_approval_layer").notNull().default(1),
   approvalFlowId: text("approval_flow_id").references(() => approvalFlows.id),
   totalAmount: integer("total_amount").notNull().default(0),
@@ -516,6 +519,9 @@ export const paymentReceipts = sqliteTable("payment_receipts", {
   cashReceiptId: text("cash_receipt_id").references((): AnySQLiteColumn => cashReceipts.id),
   reconciledById: text("reconciled_by_id").notNull(),
   reconciledAt: integer("reconciled_at", { mode: "timestamp" }).notNull(),
+  // REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。
+  // 既定は承認済(承認機能が OFF の時・今あるデータはそのまま有効)
+  approvalStatus: text("approval_status").notNull().default("APPROVED"),
 });
 
 // ==========================================
@@ -581,6 +587,9 @@ export const paymentDisbursements = sqliteTable("payment_disbursements", {
   memo: text("memo"),
   reconciledById: text("reconciled_by_id").notNull(),
   reconciledAt: integer("reconciled_at", { mode: "timestamp" }).notNull(),
+  // REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。
+  // 既定は承認済(承認機能が OFF の時・今あるデータはそのまま有効)
+  approvalStatus: text("approval_status").notNull().default("APPROVED"),
 });
 
 // ==========================================
@@ -659,6 +668,9 @@ export const purchaseRequests = sqliteTable("purchase_requests", {
   inputPersonEmployeeNumber: text("input_person_employee_number"),
   // 見積と同じく税額を保存(合計totalAmountは税込)
   taxAmount: integer("tax_amount"),
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の購買申請か、と直送元の受注。発注を作る時に引き継ぐ
+  isDirectShipment: integer("is_direct_shipment", { mode: "boolean" }).notNull().default(false),
+  directSalesOrderId: text("direct_sales_order_id").references(() => salesOrders.id),
   ...withAuditColumns(),
 });
 
@@ -745,6 +757,8 @@ export const orders = sqliteTable("orders", {
   companyFax: text("company_fax"),
   deliveryDate: text("delivery_date"),
   deliveryPlace: text("delivery_place"),
+  // REQ-009(2026-11-15 ユーザー承認済み): 納品場所の所在地。deliveryPlace は「納品場所名」として使う。今ある発注は空のまま
+  deliveryPlaceAddress: text("delivery_place_address"),
   // 新規要望(2026-09-23): 発注の納品場所を「拠点用」「倉庫用」の2つの独立した選択欄から選べる
   // ようにする(あわせて上のdeliveryPlace自由入力も引き続き使える)。選択時はdeliveryPlaceへ
   // 名称をコピーする方式(表示上の実体は従来どおりdeliveryPlace1本のまま、FK列は選択状態の
@@ -755,6 +769,10 @@ export const orders = sqliteTable("orders", {
   deliveryWarehouseId: text("delivery_warehouse_id").references(
     () => warehouses.id,
   ),
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の発注か、と直送元の受注(1つの受注から作る時だけ直送にできる)。
+  // 直送先は deliveryPlace に「直送: 得意先名 受注の納品先」として入れる
+  isDirectShipment: integer("is_direct_shipment", { mode: "boolean" }).notNull().default(false),
+  directSalesOrderId: text("direct_sales_order_id").references(() => salesOrders.id),
   paymentTerms: text("payment_terms"),
   // 発行済み発注書PDFのR2キー(sales_orders.orderAcknowledgmentR2Pathと同型)
   orderDocumentR2Path: text("order_document_r2_path"),
@@ -855,6 +873,8 @@ export const itemReceiptItems = sqliteTable("item_receipt_items", {
   itemAttachmentR2Path: text("item_attachment_r2_path"),
   qrCodeKey: text("qr_code_key"),
   memo: text("memo"),
+  // REQ-006: 倉庫間移動の入庫の場合、どの移動の明細に対する入庫か(分けて入庫した分の消し込みに使う)。FK は付けない(移動の表は後で定義するため)
+  stockTransferItemId: text("stock_transfer_item_id"),
 });
 
 // 検収書発行: order_attachmentsと同型の複数バージョン管理テーブル(発注書と同じ方式)。
@@ -919,6 +939,11 @@ export const itemShipmentHeaders = sqliteTable("item_shipment_headers", {
   // Item6 Phase6-4: 自動生成された納品書PDFのR2キー(DELIVERY_NOTES_BUCKET、旧: SYSTEM_BUCKET)。partnerId設定済みの
   // 出庫が確定(APPROVED)したタイミングで自動生成される。null=未生成(partnerId未設定等)
   deliveryNoteR2Path: text("delivery_note_r2_path"),
+  // REQ-005: 直送完了で作った出庫の場合、対になる入庫(直送用の倉庫への入庫)。入庫の承認確定・差戻し・取下げに
+  // この出庫も合わせる(出庫だけで承認・再提出はしない)。null=通常の出庫
+  directReceiptHeaderId: text("direct_receipt_header_id").references(
+    (): AnySQLiteColumn => itemReceiptHeaders.id,
+  ),
   createdBy: text("created_by").notNull(), // Item1: employeeNumberを保存(FK制約は意図的に外している)
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
@@ -1007,6 +1032,8 @@ export const itemReceiptInstructions = sqliteTable("item_receipt_instructions", 
   memo: text("memo"),
   createdBy: text("created_by").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  // BUG-071: 「発注から選ぶ」で作った入荷指示の元の発注(任意)。入庫へ引き継ぎ、発注の入荷済数量に数える
+  orderId: text("order_id").references(() => orders.id),
 });
 
 export const itemReceiptInstructionItems = sqliteTable("item_receipt_instruction_items", {
@@ -1023,6 +1050,8 @@ export const itemReceiptInstructionItems = sqliteTable("item_receipt_instruction
     .notNull()
     .references(() => accounts.code),
   memo: text("memo"),
+  // BUG-071: 元の発注明細(任意)。この明細から入庫した明細に引き継ぐ
+  orderItemId: text("order_item_id").references(() => orderItems.id),
 });
 
 // Item6 Phase6-4: 出荷指示書PDF(quote_attachmentsと同型、専用R2バケットSHIPMENT_INSTRUCTIONS_BUCKET+
@@ -1163,6 +1192,100 @@ export const stockReturns = sqliteTable("stock_returns", {
   memo: text("memo"),
   createdBy: text("created_by").notNull(), // Item1: employeeNumberを保存(FK制約は意図的に外している)
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+// REQ-006: 倉庫間移動の伝票。実際の在庫の増減は、今の出庫(移動元)・入庫(移動先)で行い、この伝票がそれを束ねる。
+// 状態: SHIPPING_PENDING=出庫の承認待ち、IN_TRANSIT=輸送中、PARTIALLY_RECEIVED=一部入庫、RECEIVED=入庫済み、
+// CLOSED_WITH_DIFFERENCE=差異で完了、CANCELED=取消(出庫が取り下げられた)。輸送中の数量は、どちらの倉庫の在庫数にも含めない
+export const stockTransfers = sqliteTable("stock_transfers", {
+  id: text("id").primaryKey(),
+  sourceWarehouseId: text("source_warehouse_id")
+    .notNull()
+    .references(() => warehouses.id),
+  destinationWarehouseId: text("destination_warehouse_id")
+    .notNull()
+    .references(() => warehouses.id),
+  shippedDate: integer("shipped_date", { mode: "timestamp" }).notNull(),
+  status: text("status").notNull().default("SHIPPING_PENDING"),
+  // 移動元の出庫(自社倉庫)。移動元が外部倉庫の場合は、出荷指示の実績の取込で作られた出庫
+  shipmentId: text("shipment_id"),
+  // 外部倉庫が絡む場合の指示書(移動元が外部倉庫なら出荷指示、移動先が外部倉庫なら入荷指示)
+  shipmentInstructionId: text("shipment_instruction_id"),
+  receiptInstructionId: text("receipt_instruction_id"),
+  // 差異で完了した理由
+  closedReason: text("closed_reason"),
+  memo: text("memo"),
+  ...withAuditColumns(),
+});
+
+// REQ-006: 倉庫間移動の明細。入庫済み数は、承認済みの入庫(item_receipt_items.stock_transfer_item_id)の合計で計算し直して保存する
+export const stockTransferItems = sqliteTable("stock_transfer_items", {
+  id: text("id").primaryKey(),
+  transferId: text("transfer_id")
+    .notNull()
+    .references(() => stockTransfers.id, { onDelete: "cascade" }),
+  itemId: text("item_id")
+    .notNull()
+    .references(() => items.id),
+  lotNumber: text("lot_number").notNull().default("NONE"),
+  accountCode: text("account_code").references(() => accounts.code),
+  // 移動元のロケーション(外部倉庫から出す場合は、出荷指示の実績で決まるため空のことがある)
+  sourceLocationId: text("source_location_id"),
+  // 出庫数(移動する数量)
+  quantity: real("quantity").notNull(),
+  receivedQuantity: real("received_quantity").notNull().default(0),
+  // 差異で完了した時の、届かなかった数量
+  differenceQuantity: real("difference_quantity").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+// REQ-011(2): 一時保管の台帳。品目マスタに無い物(発注・受注の直接入力の明細など)を、在庫(stocks)とは別に管理する。
+// 在庫数・引当・棚卸・在庫評価・仕訳には含めない。数量は「確定」の動き(temporary_holding_movements)の合計
+export const temporaryHoldings = sqliteTable("temporary_holdings", {
+  id: text("id").primaryKey(),
+  // OWN=自社品、CUSTODY=預り品(取引先から預かった物。取引先が必須)
+  category: text("category").notNull(),
+  itemName: text("item_name").notNull(),
+  // 規格・メモ
+  spec: text("spec"),
+  // 確定した動きの合計(受入 + 調整 − 払出)。確定のたびに計算し直して保存する
+  quantity: real("quantity").notNull().default(0),
+  unitName: text("unit_name"),
+  warehouseId: text("warehouse_id")
+    .notNull()
+    .references(() => warehouses.id),
+  locationId: text("location_id"),
+  // 元の伝票: PURCHASE_ORDER=発注(発注の直接入力の明細から受け入れた場合)。なしは null
+  sourceType: text("source_type"),
+  sourceId: text("source_id"),
+  sourceItemId: text("source_item_id"),
+  partnerId: text("partner_id").references(() => partners.id),
+  receivedDate: integer("received_date", { mode: "timestamp" }).notNull(),
+  plannedReleaseDate: integer("planned_release_date", { mode: "timestamp" }),
+  // HOLDING=保管中、RELEASED=払出済(数量が0になった)、MOVED_TO_STOCK=在庫へ移行済(REQ-011(3))
+  status: text("status").notNull().default("HOLDING"),
+  ...withAuditColumns(),
+});
+
+// REQ-011(2): 一時保管の動き(受入・払出・調整の1件ずつ)。承認フローがあれば申請中から始まり、承認で確定する
+export const temporaryHoldingMovements = sqliteTable("temporary_holding_movements", {
+  id: text("id").primaryKey(),
+  holdingId: text("holding_id")
+    .notNull()
+    .references(() => temporaryHoldings.id, { onDelete: "cascade" }),
+  // RECEIVE=受入、RELEASE=払出、ADJUST=数量の調整
+  movementType: text("movement_type").notNull(),
+  // 台帳の数量の増減(受入は+、払出は−、調整は+か−)
+  quantity: real("quantity").notNull(),
+  movementDate: integer("movement_date", { mode: "timestamp" }).notNull(),
+  memo: text("memo"),
+  // 払出の相手の伝票: SALES_ORDER=受注(受注の直接入力の明細に紐づけて払い出した場合)。なしは null
+  sourceType: text("source_type"),
+  sourceId: text("source_id"),
+  sourceItemId: text("source_item_id"),
+  // PENDING=申請中、CONFIRMED=確定、REMANDED=差戻し。確定だけを台帳の数量に数える
+  approvalStatus: text("approval_status").notNull().default("CONFIRMED"),
+  ...withAuditColumns(),
 });
 
 // ==========================================
@@ -1307,6 +1430,9 @@ export const cashReceipts = sqliteTable("cash_receipts", {
   status: text("status").notNull().default("UNLINKED"),
   billingHeaderId: text("billing_header_id").references(() => billingHeaders.id),
   linkedAt: integer("linked_at", { mode: "timestamp" }),
+  // REQ-018: 承認の状態(PENDING=申請中、APPROVED=承認済、REMANDED=差戻し)。承認済みだけを消込額・仕訳に数える。
+  // 既定は承認済(承認機能が OFF の時・今あるデータはそのまま有効)
+  approvalStatus: text("approval_status").notNull().default("APPROVED"),
   ...withAuditColumns(),
 });
 

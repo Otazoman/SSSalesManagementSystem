@@ -1,6 +1,8 @@
 import { ItemReorderSettingRecord, ItemLookup, WarehouseLookup } from "../_types";
 import { useItemReorderSettingForm } from "../_hooks/useItemReorderSettingForm";
 import { formFieldInputClass } from "../../../_shared/ui/FormField";
+import { ApplicantDepartmentSelect } from "../../../_shared/ui/ApplicantDepartmentSelect";
+import type { ApplicantDepartmentOption } from "../../../types";
 
 interface Props {
   initialData: ItemReorderSettingRecord | null;
@@ -11,6 +13,11 @@ interface Props {
   onSuccess: (msg: string) => void;
   onError: (msg: string) => void;
   onClear: () => void;
+  // BUG-098: 承認 ON の時は「申請」になり、承認待ちの間は編集できない
+  isWfEnabled?: boolean;
+  departments?: ApplicantDepartmentOption[];
+  applicantDepartmentSurrogateId?: string | null;
+  setApplicantDepartmentSurrogateId?: (id: string) => void;
 }
 
 export function ItemReorderSettingForm({
@@ -22,6 +29,10 @@ export function ItemReorderSettingForm({
   onSuccess,
   onError,
   onClear,
+  isWfEnabled = false,
+  departments = [],
+  applicantDepartmentSurrogateId = null,
+  setApplicantDepartmentSurrogateId = () => {},
 }: Props) {
   const {
     itemId,
@@ -35,9 +46,13 @@ export function ItemReorderSettingForm({
     memo,
     setMemo,
     handleSubmit,
-  } = useItemReorderSettingForm(initialData, canCreate, canUpdate, onSuccess, onError);
+    isLocked,
+  } = useItemReorderSettingForm(initialData, canCreate, canUpdate, onSuccess, onError, {
+    isWfEnabled,
+    applicantDepartmentSurrogateId,
+  });
 
-  const isEditable = initialData ? canUpdate : canCreate;
+  const isEditable = (initialData ? canUpdate : canCreate) && !isLocked;
   const inputClass = formFieldInputClass;
 
   return (
@@ -124,6 +139,18 @@ export function ItemReorderSettingForm({
             onChange={(e) => setMemo(e.target.value)}
           />
         </div>
+        {isLocked && (
+          <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            🔒 承認待ちのため、承認されるか差し戻されるまで変更できません
+          </p>
+        )}
+        {isWfEnabled && (
+          <ApplicantDepartmentSelect
+            departments={departments}
+            value={applicantDepartmentSurrogateId}
+            onChange={setApplicantDepartmentSurrogateId}
+          />
+        )}
       </fieldset>
       <div className="flex space-x-2 pt-2">
         <button
@@ -135,7 +162,7 @@ export function ItemReorderSettingForm({
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
         >
-          保存する
+          {isWfEnabled ? (initialData ? "変更を申請" : "仮登録して申請") : "保存する"}
         </button>
         {initialData && (
           <button

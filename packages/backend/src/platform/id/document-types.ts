@@ -29,4 +29,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
   { key: "cash_receipt", label: "入金(単体入金)", defaultPrefix: "RV" },
   // 追加要望M-1: 商談管理
   { key: "deal", label: "商談", defaultPrefix: "DL" },
+  // REQ-011(2): 一時保管の台帳
+  { key: "temporary_holding", label: "一時保管", defaultPrefix: "TH" },
+  // REQ-006: 倉庫間移動
+  { key: "stock_transfer", label: "倉庫間移動", defaultPrefix: "TF" },
 ];

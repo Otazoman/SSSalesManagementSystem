@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useQuoteForm } from "./useQuoteForm";
+// 画面は「今日」を日本時間の日付で作る(BUG-043)。テストも同じ関数で作る(UTC の日付だと日本時間の 0時〜9時に1日ずれる)
+import { todayJst } from "../../../_shared/jst-date";
 import { PartnerMaster, ProductMaster, UserOption, QuoteItem } from "../_types";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -126,7 +128,7 @@ describe("useQuoteForm", () => {
       rerender(baseProps({ partners }));
 
       await waitFor(() => expect(result.current.customerId).toBe("CUST-1"));
-      expect(result.current.quoteDate).toBe(new Date().toISOString().split("T")[0]);
+      expect(result.current.quoteDate).toBe(todayJst());
       expect(result.current.status).toBe("DRAFT");
       expect(result.current.items).toHaveLength(1);
       expect(result.current.items[0]).toMatchObject({ itemId: "", quantity: 1, unitPrice: 0 });
@@ -459,7 +461,7 @@ describe("useQuoteForm: BUG-054 数量の入力と単価の取得の順序", () 
 describe("useQuoteForm 複写(editingId:null + initialData)", () => {
   it("複写元の内容を引き継ぎ、見積日・有効期限・ステータス・入力担当者は新規作成時の既定値にする", async () => {
     mockFetch();
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayJst();
     const props = baseProps({
       editingId: null,
       quoteId: "",

@@ -1,6 +1,8 @@
 "use client";
 
 import { Fragment, useRef, useState } from "react";
+import { SourceDocumentLink } from "./SourceDocumentLink";
+import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
@@ -62,6 +64,9 @@ interface InventoryHistoryPanelProps {
     partnerId: string | null,
     // 新規要望(2026-09-23): 倉庫間移動の移動元(入庫)/移動先(出庫)倉庫。未設定の場合はnull
     transferWarehouseId: string | null,
+    // BUG-084: 入庫の発注(再申請で発注とのつながりを保つため)。BUG-085: 明細の倉庫の種類
+    // (自社倉庫の入庫か、外部倉庫の入荷実績かで、修正に使うタブを分けるため)。出庫は orderId が常にnull
+    meta?: { orderId: string | null; warehouseType: string | null },
   ) => void;
   // 業務機能別ページ(入荷/出荷)から使う場合に指定する。指定時は入庫/出庫の切替ボタンを隠し、
   // 該当タイプに固定表示する(未指定時は従来通り両方を切替表示、既存呼び出し元は無変更)
@@ -392,20 +397,12 @@ export function InventoryHistoryPanel({
               >
                 <td className="px-4 py-2 font-mono font-semibold">
                   {h.id}
-                  {history.historyType === "shipment" &&
-                    (h as ShipmentHeaderRecord).salesOrderId && (
-                      <a
-                        href={`/sales/orders?editId=${encodeURIComponent(
-                          (h as ShipmentHeaderRecord).salesOrderId as string,
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="ml-2 text-indigo-600 hover:text-indigo-800 hover:underline"
-                      >
-                        🔗 {(h as ShipmentHeaderRecord).salesOrderId}
-                      </a>
-                    )}
+                  {/* REQ-021・REQ-022: 出庫は元の受注、入庫は元の発注を開くリンク */}
+                  {history.historyType === "shipment" ? (
+                    <SourceDocumentLink kind="sales_order" id={(h as ShipmentHeaderRecord).salesOrderId} className="ml-2" />
+                  ) : (
+                    <SourceDocumentLink kind="purchase_order" id={(h as ReceiptHeaderRecord).orderId} className="ml-2" />
+                  )}
                   {/* 新規要望(2026-09-23): 倉庫間移動の伝票であることを一覧で判別できるようにする */}
                   {transferWarehouseId && (
                     <span className="ml-2 inline-block text-xs font-bold font-sans text-teal-800 bg-teal-50 border border-teal-300 rounded px-1.5 py-0.5">
@@ -422,7 +419,7 @@ export function InventoryHistoryPanel({
                   <StatusBadge {...getApprovalResultStatus(h.status)} />
                 </td>
                 <td className="px-4 py-2 text-slate-600">{h.memo || "-"}</td>
-                <td className="px-4 py-2 text-slate-600">{h.createdBy}</td>
+                <td className="px-4 py-2 text-slate-700">{displayUserName(history.users, h.createdBy)}</td>
                 <td className="px-4 py-2 text-right text-indigo-600 font-bold">
                   {expanded ? "▲ 閉じる" : "▼ 明細"}
                 </td>
@@ -537,10 +534,21 @@ export function InventoryHistoryPanel({
                               history.historyType,
                               h.id,
                               detail.items,
+                              // BUG-070: 入庫も仕入先を渡す(再申請の保存で仕入先が消えないように)
                               history.historyType === "shipment"
                                 ? (h as ShipmentHeaderRecord).partnerId
-                                : null,
+                                : (h as ReceiptHeaderRecord).partnerId,
                               transferWarehouseId,
+                              {
+                                orderId:
+                                  history.historyType === "receipt"
+                                    ? (h as ReceiptHeaderRecord).orderId
+                                    : null,
+                                warehouseType:
+                                  history.warehouses.find(
+                                    (w) => w.id === detail.items[0]?.warehouseId,
+                                  )?.warehouseType ?? null,
+                              },
                             );
                           }}
                         >

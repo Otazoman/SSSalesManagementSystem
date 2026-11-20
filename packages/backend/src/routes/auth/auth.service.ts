@@ -2,40 +2,30 @@ import { Context } from "hono";
 import { AuthRepository } from "./auth.repository";
 import { hashPassword, verifyPassword } from "../../utils/crypto";
 import { writeAuditLog } from "../../utils/logger";
-import {
-  isPartnerWorkflowGloballyEnabled,
-  isQuoteWorkflowGloballyEnabled,
-  isPartnerContactWorkflowGloballyEnabled,
-  isUnitWorkflowGloballyEnabled,
-  isLocationWorkflowGloballyEnabled,
-  isProductPriceWorkflowGloballyEnabled,
-  isProductWorkflowGloballyEnabled,
-  isAccountWorkflowGloballyEnabled,
-  isWarehouseWorkflowGloballyEnabled,
-  isBusinessLocationWorkflowGloballyEnabled,
-  isItemStructureWorkflowGloballyEnabled,
-  isReceivingWorkflowGloballyEnabled,
-  isShippingWorkflowGloballyEnabled,
-  isInventoryAdjustmentWorkflowGloballyEnabled,
-  isDamageWorkflowGloballyEnabled,
-  isDisposalWorkflowGloballyEnabled,
-  isReturnWorkflowGloballyEnabled,
-  isShippingInstructionWorkflowGloballyEnabled,
-  isShippingResultWorkflowGloballyEnabled,
-  isReceivingInstructionWorkflowGloballyEnabled,
-  isReceivingResultWorkflowGloballyEnabled,
-  isSalesOrderWorkflowGloballyEnabled,
-  isPurchaseRequisitionWorkflowGloballyEnabled,
-  isPurchaseOrderWorkflowGloballyEnabled,
-  isSalesInvoiceWorkflowGloballyEnabled,
-  isPurchaseRecognitionWorkflowGloballyEnabled,
-} from "../../workflow-engine/settings";
+import { readWorkflowFlags } from "../../workflow-engine/settings";
 import { Env } from "../../types/env";
-import { LoginInput, UpdateNotificationSettingsInput } from "./auth.schema";
+import {
+  LoginInput,
+  ResendLoginOtpInput,
+  UpdateNotificationSettingsInput,
+  VerifyLoginOtpInput,
+} from "./auth.schema";
 import { SessionPayload } from "../../platform/auth/session-token";
 import { setSessionCookie, clearSessionCookie, getSession } from "../../platform/auth/get-session";
 import { LoginStateRepository, LoginState } from "../../platform/auth/login-state.repository";
 import { getCompanySettings } from "../../platform/kv/company-settings-cache";
+import { fetchPermissionsForRole } from "../../platform/auth/screen-permission";
+import { generateOtpCode } from "../../platform/otp/generate-otp-code";
+import { LoginOtpRepository } from "../../platform/auth/login-otp.repository";
+import {
+  deliverLoginOtp,
+  hashLoginOtpCode,
+  LoginOtpDeliveryError,
+  readLoginOtpSettings,
+  timingSafeEqualHex,
+} from "../../platform/auth/login-otp";
+
+type LoginUser = NonNullable<Awaited<ReturnType<AuthRepository["findUserByEmail"]>>>;
 
 const RESOURCE_KEY = "auth";
 
@@ -63,25 +53,9 @@ export class AuthService {
 
   // ロール1件分の権限IDリストをKVキャッシュ優先で取得する共通ヘルパー
   // (getProfileで複数ロール分をループ呼び出しして合算するために切り出した)
+  // PERF-07 B-4: サーバー側の画面の権限の確認でも同じものを使うため、platform/auth/screen-permission.ts へ移した
   private async fetchPermissionsForRole(roleId: string): Promise<string[]> {
-    try {
-      const cached: string[] | null = await this.env.KV_PERMISSIONS.get(
-        `role_permissions:${roleId}`,
-        { type: "json" },
-      );
-      if (cached !== null) return cached;
-
-      const fetched = await this.repo.fetchRolePermissions(roleId);
-      await this.env.KV_PERMISSIONS.put(
-        `role_permissions:${roleId}`,
-        JSON.stringify(fetched),
-        { expirationTtl: 86400 },
-      );
-      return fetched;
-    } catch (kvErr) {
-      console.error("[Profile API KV Permissions Fetch Error]", kvErr);
-      return [];
-    }
+    return fetchPermissionsForRole(this.env, roleId);
   }
 
   async login(c: Context<{ Bindings: Env }>, input: LoginInput) {
@@ -185,14 +159,32 @@ export class AuthService {
       };
     }
 
-    // ログインに成功したら、続けて失敗した回数を0に戻す
-    if (loginState && (loginState.failedCount > 0 || loginState.lockedUntil)) {
-      await loginStates.resetFailures(user.id);
-    }
-
     // BUG-021: 古い形(全ユーザー共通の固定ソルト)で保存されていれば、ユーザーごとのソルトの形へ書き換える
     if (verified.needsRehash) {
       await this.repo.updatePasswordHash(user.id, await hashPassword(password));
+    }
+
+    // REQ-004: ログイン時の OTP を使うユーザーは、ここではセッションを発行せず、OTP を送って入力を待つ。
+    // 失敗の回数は、OTP も合ってセッションを発行する時に0に戻す(パスワードが合うたびに戻すと、OTP を何度でも試せてしまうため)
+    if (user.loginOtpEnabled) {
+      return await this.startLoginOtp(c, user, clientIp, now);
+    }
+
+    return await this.completeLogin(c, user, clientIp, now);
+  }
+
+  // パスワード(OTP を使うユーザーは OTP も)を確かめた後に、セッションを発行する
+  private async completeLogin(
+    c: Context<{ Bindings: Env }>,
+    user: LoginUser,
+    clientIp: string,
+    now: Date,
+  ) {
+    // ログインに成功したら、続けて失敗した回数を0に戻す
+    const loginStates = new LoginStateRepository(this.env.DB);
+    const loginState = await loginStates.find(user.id);
+    if (loginState && (loginState.failedCount > 0 || loginState.lockedUntil)) {
+      await loginStates.resetFailures(user.id);
     }
 
     // 所属・権限関係の読み込み
@@ -283,6 +275,197 @@ export class AuthService {
           companyName: companyName,
           mustChangePassword: isFirstLogin,
         },
+      },
+    };
+  }
+
+  // REQ-004: OTP を作って送り、チャレンジ(OTP の確認・再送に使うID)を返す。送れなかった場合は 503(失敗の回数には数えない)
+  private async startLoginOtp(
+    c: Context<{ Bindings: Env }>,
+    user: LoginUser,
+    clientIp: string,
+    now: Date,
+  ) {
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS).catch(() => null)) ?? {};
+    const settings = readLoginOtpSettings(config);
+    const challengeId = crypto.randomUUID();
+    const code = generateOtpCode(settings.digitCount);
+
+    let channel: "email" | "slack";
+    try {
+      channel = await deliverLoginOtp({ env: this.env, config, user, code, expiryMinutes: settings.expiryMinutes });
+    } catch (err) {
+      if (!(err instanceof LoginOtpDeliveryError)) throw err;
+      await writeAuditLog(c, "LOGIN_OTP_DELIVERY_FAILED", RESOURCE_KEY, user.id, null, {
+        email: user.email,
+        ipAddress: clientIp,
+        reason: err.message,
+      });
+      return { status: 503, data: { success: false, message: err.message } };
+    }
+
+    await new LoginOtpRepository(this.env.DB_OTP).insert({
+      id: challengeId,
+      userId: user.id,
+      codeHash: await hashLoginOtpCode(challengeId, code),
+      channel,
+      expiresAt: new Date(now.getTime() + settings.expiryMinutes * 60_000),
+      lastSentAt: now,
+      createdAt: now,
+    });
+    await writeAuditLog(c, "LOGIN_OTP_SENT", RESOURCE_KEY, user.id, null, {
+      email: user.email,
+      ipAddress: clientIp,
+      channel,
+    });
+
+    return {
+      status: 200,
+      data: {
+        success: true,
+        otpRequired: true,
+        challengeId,
+        channel,
+        digitCount: settings.digitCount,
+        expiresInMinutes: settings.expiryMinutes,
+        resendIntervalSeconds: settings.resendIntervalSeconds,
+      },
+    };
+  }
+
+  // REQ-004: OTP のチャレンジを確かめる(期限・使用済み・ユーザーの状態)。使えない場合はその応答を返す
+  private async loadActiveChallenge(challengeId: string, now: Date) {
+    const otpRepo = new LoginOtpRepository(this.env.DB_OTP);
+    const challenge = await otpRepo.findById(challengeId);
+    const restart = (message: string) => ({
+      error: { status: 400, data: { success: false, restart: true, message } },
+    });
+    if (!challenge || challenge.verifiedAt || challenge.expiresAt <= now) {
+      return restart("確認コードの有効期限が切れたか、無効です。もう一度ログインしてください");
+    }
+    const user = await this.repo.findUserById(challenge.userId);
+    if (!user || !user.isActive || !user.loginOtpEnabled) {
+      await otpRepo.delete(challenge.id);
+      return restart("もう一度ログインしてください");
+    }
+    const loginStates = new LoginStateRepository(this.env.DB);
+    const loginState = await loginStates.find(user.id);
+    if (loginState?.lockedUntil && loginState.lockedUntil > now) {
+      return {
+        error: {
+          status: 403,
+          data: {
+            success: false,
+            restart: true,
+            message: "ログインの失敗が続いたため、一時的にログインを止めています。しばらくしてからお試しください",
+          },
+        },
+      };
+    }
+    return { otpRepo, challenge, user, loginState };
+  }
+
+  // REQ-004: OTP を確かめて、合っていればセッションを発行する。間違いはパスワードの失敗と同じく数え、上限でロックする
+  async verifyLoginOtp(c: Context<{ Bindings: Env }>, input: VerifyLoginOtpInput) {
+    const now = new Date();
+    const clientIp = c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "UNKNOWN_IP";
+    const loaded = await this.loadActiveChallenge(input.challengeId, now);
+    if ("error" in loaded) return loaded.error!;
+    const { otpRepo, challenge, user, loginState } = loaded;
+
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS).catch(() => null)) ?? {};
+    const settings = readLoginOtpSettings(config);
+    if (challenge.attemptCount >= settings.maxAttempts) {
+      await otpRepo.delete(challenge.id);
+      return {
+        status: 400,
+        data: { success: false, restart: true, message: "確認コードの入力の回数が上限に達しました。もう一度ログインしてください" },
+      };
+    }
+
+    const matched = timingSafeEqualHex(await hashLoginOtpCode(challenge.id, input.code), challenge.codeHash);
+    if (!matched) {
+      const attemptCount = challenge.attemptCount + 1;
+      await otpRepo.recordFailedAttempt(challenge.id, attemptCount);
+      await writeAuditLog(c, "LOGIN_FAILED_WRONG_OTP", RESOURCE_KEY, user.id, null, {
+        email: user.email,
+        ipAddress: clientIp,
+        reason: "確認コード(OTP)が一致しません。",
+      });
+      const locked = await this.recordLoginFailure(c, user, loginState, now, clientIp);
+      if (locked) {
+        await otpRepo.delete(challenge.id);
+        return { status: locked.status, data: { ...locked.data, restart: true } };
+      }
+      const remaining = settings.maxAttempts - attemptCount;
+      if (remaining <= 0) {
+        await otpRepo.delete(challenge.id);
+        return {
+          status: 400,
+          data: { success: false, restart: true, message: "確認コードの入力の回数が上限に達しました。もう一度ログインしてください" },
+        };
+      }
+      return {
+        status: 401,
+        data: { success: false, message: `確認コードが正しくありません(あと${remaining}回入力できます)` },
+      };
+    }
+
+    await otpRepo.markVerified(challenge.id, now);
+    return await this.completeLogin(c, user, clientIp, now);
+  }
+
+  // REQ-004: OTP を送り直す。会社設定の間隔より早い場合は 429。送り直すと、コード・有効期限・入力の回数を振り直す
+  async resendLoginOtp(c: Context<{ Bindings: Env }>, input: ResendLoginOtpInput) {
+    const now = new Date();
+    const clientIp = c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "UNKNOWN_IP";
+    const loaded = await this.loadActiveChallenge(input.challengeId, now);
+    if ("error" in loaded) return loaded.error!;
+    const { otpRepo, challenge, user } = loaded;
+
+    const config = (await getCompanySettings(this.env.COMPANY_SETTINGS).catch(() => null)) ?? {};
+    const settings = readLoginOtpSettings(config);
+    const waitSeconds = Math.ceil(
+      (challenge.lastSentAt.getTime() + settings.resendIntervalSeconds * 1000 - now.getTime()) / 1000,
+    );
+    if (waitSeconds > 0) {
+      return {
+        status: 429,
+        data: { success: false, retryAfterSeconds: waitSeconds, message: `確認コードの再送は、あと${waitSeconds}秒お待ちください` },
+      };
+    }
+
+    const code = generateOtpCode(settings.digitCount);
+    let channel: "email" | "slack";
+    try {
+      channel = await deliverLoginOtp({ env: this.env, config, user, code, expiryMinutes: settings.expiryMinutes });
+    } catch (err) {
+      if (!(err instanceof LoginOtpDeliveryError)) throw err;
+      await writeAuditLog(c, "LOGIN_OTP_DELIVERY_FAILED", RESOURCE_KEY, user.id, null, {
+        email: user.email,
+        ipAddress: clientIp,
+        reason: err.message,
+      });
+      return { status: 503, data: { success: false, message: err.message } };
+    }
+    await otpRepo.replaceCode(challenge.id, {
+      codeHash: await hashLoginOtpCode(challenge.id, code),
+      channel,
+      expiresAt: new Date(now.getTime() + settings.expiryMinutes * 60_000),
+      lastSentAt: now,
+    });
+    await writeAuditLog(c, "LOGIN_OTP_RESENT", RESOURCE_KEY, user.id, null, {
+      email: user.email,
+      ipAddress: clientIp,
+      channel,
+    });
+    return {
+      status: 200,
+      data: {
+        success: true,
+        channel,
+        expiresInMinutes: settings.expiryMinutes,
+        resendIntervalSeconds: settings.resendIntervalSeconds,
       },
     };
   }
@@ -379,8 +562,11 @@ export class AuthService {
         : [currentRoleId];
 
     const permissionSet = new Set<string>();
-    for (const roleId of roleIds) {
-      const rolePermissions = await this.fetchPermissionsForRole(roleId);
+    // PERF-04: ロールごとの権限の取得は互いに依存しないため、並行して行う
+    const permissionsByRole = await Promise.all(
+      roleIds.map((roleId) => this.fetchPermissionsForRole(roleId)),
+    );
+    for (const rolePermissions of permissionsByRole) {
       rolePermissions.forEach((p) => permissionSet.add(p));
     }
     const permissions = Array.from(permissionSet);
@@ -404,64 +590,18 @@ export class AuthService {
       isAuditEnabled,
     );
 
-    // Item5: 5つとも同じCOMPANY_SETTINGS KVの"config"キーを個別に読みに行くため、
-    // 逐次awaitだと5回分のKVレイテンシが直列に積み上がってしまう(実測でauth/profileが
-    // 4秒超に悪化する原因になっていた)。並列実行してレイテンシを1回分に抑える。
-    const [
-      isPartnerWfEnabled,
-      isQuoteWfEnabled,
-      isPartnerContactWfEnabled,
-      isUnitWfEnabled,
-      isLocationWfEnabled,
-      isProductPriceWfEnabled,
-      isProductWfEnabled,
-      isAccountWfEnabled,
-      isWarehouseWfEnabled,
-      isBusinessLocationWfEnabled,
-      isItemStructureWfEnabled,
-      isReceivingWfEnabled,
-      isShippingWfEnabled,
-      isInventoryWfEnabled,
-      isDamageWfEnabled,
-      isDisposalWfEnabled,
-      isReturnWfEnabled,
-      isShippingInstructionWfEnabled,
-      isShippingResultWfEnabled,
-      isReceivingInstructionWfEnabled,
-      isReceivingResultWfEnabled,
-      isSalesOrderWfEnabled,
-      isPurchaseRequisitionWfEnabled,
-      isPurchaseOrderWfEnabled,
-      isSalesInvoiceWfEnabled,
-      isPurchaseRecognitionWfEnabled,
-    ] = await Promise.all([
-      isPartnerWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isQuoteWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPartnerContactWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isUnitWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isLocationWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isProductPriceWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isProductWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isAccountWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isWarehouseWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isBusinessLocationWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isItemStructureWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReceivingWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isShippingWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isInventoryAdjustmentWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isDamageWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isDisposalWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReturnWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isShippingInstructionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isShippingResultWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReceivingInstructionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isReceivingResultWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isSalesOrderWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPurchaseRequisitionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPurchaseOrderWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isSalesInvoiceWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-      isPurchaseRecognitionWorkflowGloballyEnabled(this.env.COMPANY_SETTINGS),
-    ]);
+    // PERF-04: 承認ワークフローのスイッチ(26個)は、会社設定(KV の "config")を1回だけ読んでまとめて判定する
+    // (以前はスイッチごとに同じキーを読み、26回 JSON として解釈していた)。
+    // 読めない・壊れている時は、以前と同じく全て OFF にする
+    let companyConfig: Record<string, any> | null = null;
+    try {
+      if (this.env.COMPANY_SETTINGS) {
+        companyConfig = await getCompanySettings(this.env.COMPANY_SETTINGS);
+      }
+    } catch (error) {
+      console.error("承認ワークフローの設定(会社設定)の読み取りに失敗しました:", error);
+    }
+    const workflowFlags = readWorkflowFlags(companyConfig);
 
     const notificationSettings = await this.repo.findNotificationSettings(
       userId,
@@ -496,32 +636,7 @@ export class AuthService {
         companyName: companyName || "サンプル 販売管理",
         permissions: permissions,
         departments: departments,
-        isPartnerWfEnabled: isPartnerWfEnabled,
-        isQuoteWfEnabled: isQuoteWfEnabled,
-        isPartnerContactWfEnabled: isPartnerContactWfEnabled,
-        isUnitWfEnabled: isUnitWfEnabled,
-        isLocationWfEnabled: isLocationWfEnabled,
-        isProductPriceWfEnabled: isProductPriceWfEnabled,
-        isProductWfEnabled: isProductWfEnabled,
-        isAccountWfEnabled: isAccountWfEnabled,
-        isWarehouseWfEnabled: isWarehouseWfEnabled,
-        isBusinessLocationWfEnabled: isBusinessLocationWfEnabled,
-        isItemStructureWfEnabled: isItemStructureWfEnabled,
-        isReceivingWfEnabled: isReceivingWfEnabled,
-        isShippingWfEnabled: isShippingWfEnabled,
-        isInventoryWfEnabled: isInventoryWfEnabled,
-        isDamageWfEnabled: isDamageWfEnabled,
-        isDisposalWfEnabled: isDisposalWfEnabled,
-        isReturnWfEnabled: isReturnWfEnabled,
-        isShippingInstructionWfEnabled: isShippingInstructionWfEnabled,
-        isShippingResultWfEnabled: isShippingResultWfEnabled,
-        isReceivingInstructionWfEnabled: isReceivingInstructionWfEnabled,
-        isReceivingResultWfEnabled: isReceivingResultWfEnabled,
-        isSalesOrderWfEnabled: isSalesOrderWfEnabled,
-        isPurchaseRequisitionWfEnabled: isPurchaseRequisitionWfEnabled,
-        isPurchaseOrderWfEnabled: isPurchaseOrderWfEnabled,
-        isSalesInvoiceWfEnabled: isSalesInvoiceWfEnabled,
-        isPurchaseRecognitionWfEnabled: isPurchaseRecognitionWfEnabled,
+        ...workflowFlags,
         slackUserId: notificationSettings?.slackUserId || null,
         notificationChannel: notificationSettings?.notificationChannel || "email",
       },

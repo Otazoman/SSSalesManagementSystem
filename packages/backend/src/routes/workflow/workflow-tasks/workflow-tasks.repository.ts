@@ -1,6 +1,8 @@
-import { eq, and, or, desc, gte, inArray } from "drizzle-orm";
+import { eq, and, or, desc, gte, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { alias } from "drizzle-orm/sqlite-core";
 import * as schema from "../../../db/schema";
+import { fetchInChunks } from "../../../platform/repository/chunked-fetch";
 
 // #14-2⑤: index.tsで直接drizzle()を生成していたのをRepository層へ移す(ロジック変更なし)
 export function createWorkflowTasksDb(d1: D1Database) {
@@ -504,6 +506,190 @@ export class WorkflowTasksRepository {
       .where(eq(schema.roles.id, roleId))
       .limit(1);
     return res[0]?.name || null;
+  }
+
+  // ==========================================
+  // PERF-02: 申請履歴を「軽い行で絞り込み → 1ページ分だけ組み立てる」ための取得
+  // (問い合わせの回数が申請の件数に比例しないよう、行ごとではなく1回・表ごとにまとめて取得する)
+  // ==========================================
+
+  /**
+   * 申請履歴の一覧の判定に使う行を、履歴(workflow_logs)と申請(master_approval_requests)を結合した
+   * 1回の問い合わせで取得する。
+   * - parent: その履歴の申請。requestId があればその申請、無い古い行は対象の最新の申請
+   *   (getParentRequestById / getLatestMasterApprovalRequest と同じ結び付け)
+   * - pendingParent: 対象の承認待ち(PENDING)の申請(getPendingParentRequest と同じ。部署の判定に使う)
+   * - ownTarget: ログインユーザーがその対象に申請したことがあるか(getRequestTargetsByApplicant と同じ判定)
+   * 管理者以外は、getMyRelevantWorkflowLogs と同じ条件(自分が処理した / 自分のロールが承認待ち /
+   * 自分が申請した対象)で絞り込む。並びは管理者向けの取得と同じ(処理日時の新しい順・id の降順)。
+   */
+  static async getHistoryRows(
+    db: any,
+    params: {
+      isAdmin: boolean;
+      loginUserId: string;
+      myRoleIds: string[];
+      statusFilter?: string | null;
+    },
+  ): Promise<
+    Array<{
+      log: WorkflowLog;
+      parent: MasterApprovalRequest | null;
+      pendingParent: MasterApprovalRequest | null;
+      ownTarget: number | boolean;
+    }>
+  > {
+    const { isAdmin, loginUserId, myRoleIds, statusFilter } = params;
+    const wl = schema.workflowLogs;
+    const parent = alias(schema.masterApprovalRequests, "history_parent");
+    const pendingParent = alias(schema.masterApprovalRequests, "history_pending_parent");
+
+    const ownTarget = sql<number>`exists (select 1 from master_approval_requests own_req
+      where own_req.applicant_id = ${loginUserId}
+        and own_req.target_id = ${wl.targetId}
+        and own_req.target_type = ${wl.targetType})`;
+
+    const statusCondition =
+      statusFilter && statusFilter !== "all" ? eq(wl.status, statusFilter) : undefined;
+    const relevantCondition = isAdmin
+      ? undefined
+      : or(
+          eq(wl.approverId, loginUserId),
+          myRoleIds.length > 0
+            ? and(eq(wl.status, "PENDING"), inArray(wl.approverRoleId, myRoleIds))
+            : undefined,
+          ownTarget,
+        );
+
+    return await db
+      .select({ log: wl, parent, pendingParent, ownTarget })
+      .from(wl)
+      .leftJoin(
+        parent,
+        sql`${parent.id} = coalesce(${wl.requestId}, (select latest_req.id from master_approval_requests latest_req
+          where latest_req.target_id = ${wl.targetId} and latest_req.target_type = ${wl.targetType}
+          order by latest_req.created_at desc limit 1))`,
+      )
+      .leftJoin(
+        pendingParent,
+        sql`${pendingParent.id} = (select pending_req.id from master_approval_requests pending_req
+          where pending_req.target_id = ${wl.targetId} and pending_req.target_type = ${wl.targetType}
+            and pending_req.status = 'PENDING' limit 1)`,
+      )
+      .where(and(relevantCondition, statusCondition))
+      .orderBy(desc(wl.performedAt), desc(wl.id));
+  }
+
+  /**
+   * PERF-03: 承認待ち(PENDING)の履歴と、その対象の承認待ちの申請を1回の問い合わせで取得する
+   * (getPendingLogs + 行ごとの getPendingParentRequest と同じ結び付け。並びも getPendingLogs と同じく指定しない)
+   */
+  static async getPendingTaskRows(
+    db: any,
+  ): Promise<Array<{ log: WorkflowLog; pendingParent: MasterApprovalRequest | null }>> {
+    const wl = schema.workflowLogs;
+    const pendingParent = alias(schema.masterApprovalRequests, "task_pending_parent");
+    return await db
+      .select({ log: wl, pendingParent })
+      .from(wl)
+      .leftJoin(
+        pendingParent,
+        sql`${pendingParent.id} = (select pending_req.id from master_approval_requests pending_req
+          where pending_req.target_id = ${wl.targetId} and pending_req.target_type = ${wl.targetType}
+            and pending_req.status = 'PENDING' limit 1)`,
+      )
+      .where(eq(wl.status, "PENDING"));
+  }
+
+  /** 承認フローの定義(全件。件数は少ない設定の表) */
+  static async getAllApprovalFlows(db: any): Promise<ApprovalFlow[]> {
+    return await db.select().from(schema.approvalFlows);
+  }
+
+  /** 承認フローの段の定義(全件)を段の順に取得 */
+  static async getAllApprovalFlowSteps(db: any): Promise<ApprovalFlowStep[]> {
+    return await db
+      .select()
+      .from(schema.approvalFlowSteps)
+      .orderBy(schema.approvalFlowSteps.stepOrder);
+  }
+
+  /** ロール名(全件) */
+  static async getAllRoleNames(db: any): Promise<Array<{ id: string; name: string | null }>> {
+    return await db.select({ id: schema.roles.id, name: schema.roles.name }).from(schema.roles);
+  }
+
+  /** 指定したユーザーの user_roles の行(getPrimaryDepartmentId・resolveApprovers の「先頭の行」を求めるのに使う) */
+  static async getUserRolesByUserIds(
+    db: any,
+    userIds: string[],
+  ): Promise<Array<{ userId: string; departmentSurrogateId: string | null }>> {
+    return await fetchInChunks(userIds, (chunk) =>
+      db
+        .select({
+          userId: schema.userRoles.userId,
+          departmentSurrogateId: schema.userRoles.departmentSurrogateId,
+        })
+        .from(schema.userRoles)
+        .where(inArray(schema.userRoles.userId, chunk)),
+    );
+  }
+
+  /** 指定したユーザーの id と氏名(DB の返す順) */
+  static async getUsersByIds(
+    db: any,
+    userIds: string[],
+  ): Promise<Array<{ id: string; name: string }>> {
+    return await fetchInChunks(userIds, (chunk) =>
+      db
+        .select({ id: schema.users.id, name: schema.users.name })
+        .from(schema.users)
+        .where(inArray(schema.users.id, chunk)),
+    );
+  }
+
+  /** 有効なユーザーか(resolveApprovers は有効なユーザーだけを承認者にする) */
+  static async isUserActive(db: any, userId: string): Promise<boolean> {
+    const res = await db
+      .select({ isActive: schema.users.isActive })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    return res[0]?.isActive === true;
+  }
+
+  /**
+   * 指定したロールを持つ有効なユーザーの user_roles の行(resolveApprovers と同じ結合・条件。部署の条件は呼び出し側で見る)
+   */
+  static async getActiveApproverCandidates(
+    db: any,
+    roleIds: string[],
+  ): Promise<Array<{ userId: string; roleId: string; departmentSurrogateId: string | null }>> {
+    return await fetchInChunks(roleIds, (chunk) =>
+      db
+        .select({
+          userId: schema.userRoles.userId,
+          roleId: schema.userRoles.roleId,
+          departmentSurrogateId: schema.userRoles.departmentSurrogateId,
+        })
+        .from(schema.userRoles)
+        .innerJoin(schema.users, eq(schema.userRoles.userId, schema.users.id))
+        .where(and(inArray(schema.userRoles.roleId, chunk), eq(schema.users.isActive, true))),
+    );
+  }
+
+  /** 指定した対象の履歴(承認の進み具合の表示用。種類・日時の絞り込みは呼び出し側で行う) */
+  static async getWorkflowLogsByTargetIds(
+    db: any,
+    targetIds: string[],
+  ): Promise<WorkflowLog[]> {
+    return await fetchInChunks(targetIds, (chunk) =>
+      db
+        .select()
+        .from(schema.workflowLogs)
+        .where(inArray(schema.workflowLogs.targetId, chunk))
+        .orderBy(schema.workflowLogs.layer),
+    );
   }
 
   /** 対象の進行中(PENDING/REMANDED)の親申請リクエストを最新順で取得 */

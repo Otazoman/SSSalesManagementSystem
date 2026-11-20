@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { usePagePermissions } from "../../hooks/use-page-permission";
 import { PartnerRecord } from "./_types";
@@ -43,7 +43,6 @@ export default function PartnersPage() {
   );
 
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // 新規要望(2026-09-23): 取引先ごとの複数納品先(受注の納品先選択で使う)管理モーダル
@@ -364,25 +363,26 @@ export default function PartnersPage() {
             件
           </span>
           <button
-            onClick={async () =>
-              showForm
-                ? (await guard.confirmDiscard()) && formProps.handleCloseForm()
-                : setShowForm(true)
-            }
-            disabled={!canCreate && !showForm}
-            className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${canCreate || showForm ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700" : "bg-slate-300 text-slate-500 cursor-not-allowed"}`}
+            onClick={() => setShowForm(true)}
+            disabled={!canCreate}
+            className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${canCreate ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700" : "bg-slate-300 text-slate-500 cursor-not-allowed"}`}
           >
-            {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+            ➕ 新規個別登録・CSVインポート
           </button>
         </div>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingId ? "取引先の編集" : "取引先の新規登録・CSVインポート"}
+          onClose={formProps.handleCloseForm}
+          error={error || formProps.error}
+          message={message}
         >
+          {() => (
+            <>
           <PartnerForm
             editingId={editingId}
             formData={formProps.formData}
@@ -420,7 +420,9 @@ export default function PartnersPage() {
             }}
             onError={(msg) => setError(msg)}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

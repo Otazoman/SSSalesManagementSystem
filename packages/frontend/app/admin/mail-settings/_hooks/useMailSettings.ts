@@ -8,7 +8,7 @@ import {
   UploadStatus,
 } from "../_types";
 import { SystemSettings } from "../../company-settings/_types";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, clearSharedApiCache } from "../../../_shared/hooks/use-api-fetch";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
 
 export function useMailSettings() {
@@ -135,6 +135,8 @@ export function useMailSettings() {
         json: otpSettings,
         defaultErrorMessage: "OTPダウンロード設定の更新に失敗しました",
       });
+      // PERF-06: 会社設定を各画面が取り直すようにする
+      clearSharedApiCache("/api/company-settings");
 
       setMessage("OTPダウンロードの詳細設定を保存しました");
     } catch (err) {

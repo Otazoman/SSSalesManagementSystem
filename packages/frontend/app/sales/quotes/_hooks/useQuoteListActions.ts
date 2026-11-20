@@ -3,6 +3,7 @@ import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { QuoteRecord } from "../_types";
 import { useDebouncedValue } from "../../../_shared/hooks/use-debounced-value";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface UseQuoteListActionsProps {
   quotes: QuoteRecord[];
@@ -163,10 +164,12 @@ export function useQuoteListActions({
     e.target.value = "";
   };
 
-  const handleGeneratePDF = async (id: string) => {
+  // REQ-002: includeOrderForm が true なら、見積書の後ろにご発注書を付ける
+  const handleGeneratePDF = async (id: string, options: { includeOrderForm?: boolean } = {}) => {
     if (
       !(await confirm(
-        `現在表示中の見積バージョン [ ${id} ] から正式なPDF帳票を自動生成しますか？`,
+        `現在表示中の見積バージョン [ ${id} ] から正式なPDF帳票を自動生成しますか？` +
+          (options.includeOrderForm ? "(見積書の後ろにご発注書を付けます)" : ""),
       ))
     )
       return;
@@ -174,10 +177,7 @@ export function useQuoteListActions({
     setMessage("⌛ PDFファイルを生成中...");
     setError("");
     try {
-      await apiFetch(`/api/quotes/${id}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "PDF生成に失敗しました",
-      });
+      await issueReportPdf("/api/quotes", id, { query: { includeOrderForm: String(options.includeOrderForm === true) }, defaultErrorMessage: "PDF生成に失敗しました" });
 
       setMessage(
         "✅ PDF見積書の生成に成功しました。添付ファイル欄をご確認ください。",
@@ -202,6 +202,14 @@ export function useQuoteListActions({
       void syncQuotes({ ...filters, status: filterStatus });
       setViewMode("LIST");
     }
+  };
+
+  // REQ-015: 失注にした・取り消した後は、メッセージを出して一覧を読み直し、一覧へ戻る
+  const handleLostChangedAction = (msg: string) => {
+    setError("");
+    setMessage(msg);
+    void syncQuotes({ ...filters, status: filterStatus });
+    setViewMode("LIST");
   };
 
   const handleDeleteAction = async (id: string) => {
@@ -279,6 +287,7 @@ export function useQuoteListActions({
     handleCSVImportChange,
     handleGeneratePDF,
     handleSubmitForApprovalAction,
+    handleLostChangedAction,
     handleDeleteAction,
     handleBulkMailSendAction,
     getSiblingVersions,

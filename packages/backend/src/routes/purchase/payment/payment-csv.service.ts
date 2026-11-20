@@ -1,3 +1,5 @@
+import { paymentApprovalBlockReason } from "./payment-approval.service";
+import { isPaymentWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
 import { Context } from "hono";
 import { PaymentRepository } from "./payment.repository";
 import { RESOURCE_KEY } from "./payment-constants";
@@ -5,6 +7,8 @@ import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-wr
 import { parseCsv } from "../../../platform/csv/csv-parser";
 import { assertReconRowsAreNew, parseReconCells, reconKey, type ReconLimit, type ReconRow } from "../../../platform/csv/reconciliation-rows";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
+import { BadRequestError } from "../../../platform/http/http-error";
+import { isPaymentDisbursementWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
 
 // Item10 Phase5: billing-csv.service.tsと同じ方針。payment_headers+payment_header_items
 // (1行1明細のフラット形式)、および payment_disbursements(手動消込結果の一括登録用)の
@@ -103,6 +107,29 @@ export class PaymentCsvService {
     const idxItemAmount = getIdx(["itemamount", "item_amount"]);
     const idxItemTaxAmount = getIdx(["itemtaxamount", "item_tax_amount"]);
 
+    // REQ-026: 支払の承認が ON の時は、承認申請中・承認済みの支払を CSV で書き換えない(1件も書き込む前に断る)
+    const paymentApprovalEnabled = await isPaymentWorkflowGloballyEnabled(c.env.COMPANY_SETTINGS);
+    const existingStatusById = new Map<string, string>();
+    if (paymentApprovalEnabled) {
+      const csvIds = [
+        ...new Set(
+          allLines
+            .slice(1)
+            .map((cols) => (cols.length > idxId && cols[idxId] ? cols[idxId].trim() : ""))
+            .filter((id) => id && id !== "id"),
+        ),
+      ];
+      for (const header of csvIds.length > 0 ? await this.repo.findHeadersByIds(csvIds) : []) {
+        existingStatusById.set(header.id, header.status);
+      }
+      const locked = [...existingStatusById].filter(([, status]) => status !== "DRAFT").map(([id]) => id);
+      if (locked.length > 0) {
+        throw new BadRequestError(
+          `支払の承認機能が有効なため、承認申請中・承認済みの支払は CSV で変更できません(${locked.slice(0, 3).join(", ")}${locked.length > 3 ? " ほか" : ""})`,
+        );
+      }
+    }
+
     let count = 0;
     const clearedHeaderIds = new Set<string>();
     const headerSortOrders = new Map<string, number>();
@@ -140,7 +167,8 @@ export class PaymentCsvService {
           mode: rawMode || "PER_TRANSACTION",
           periodStart: getCellVal(idxPeriodStart) ? new Date(getCellVal(idxPeriodStart)!) : null,
           periodEnd: getCellVal(idxPeriodEnd) ? new Date(getCellVal(idxPeriodEnd)!) : null,
-          status: rawStatus || "DRAFT",
+          // REQ-026: 支払の承認が ON の時は、CSV で状態を変えない(新しい支払は下書き。承認は申請で行う)
+          status: paymentApprovalEnabled ? (existingStatusById.get(id) ?? "DRAFT") : rawStatus || "DRAFT",
           totalAmount: rawTotal ? Number(rawTotal) : 0,
           taxAmount: rawTax ? Number(rawTax) : 0,
           reconciledAmount: rawReconciled ? Number(rawReconciled) : 0,
@@ -218,6 +246,10 @@ export class PaymentCsvService {
   }
 
   async bulkImportDisbursementsCsv(c: Context, file: File) {
+    // REQ-018: 承認機能が ON の時は、CSV からは取り込まない(1行ごとに申請を作ると、DB の問い合わせ回数の上限に当たるため)
+    if (await isPaymentDisbursementWorkflowGloballyEnabled(c.env.COMPANY_SETTINGS)) {
+      throw new BadRequestError("支払消込の承認機能が有効なため、CSV からは取り込めません。画面から1件ずつ記録して承認を申請してください");
+    }
     const opId = await this.repo.getFallbackOperatorId(c);
     const text = await file.text();
 
@@ -270,8 +302,12 @@ export class PaymentCsvService {
     for (const id of new Set(rows.map((r) => r.headerId))) {
       const header = await this.repo.findHeaderById(id);
       if (!header) continue;
+      // REQ-026: 支払の承認が ON の時は、承認済みの支払の消込だけ取り込む
+      const blocked = await paymentApprovalBlockReason(c, header, "支払消込を取り込");
+      if (blocked) parseErrors.push(blocked);
       existingHeaderIds.add(id);
-      const existing = await this.repo.findDisbursementsByHeaderId(id);
+      // REQ-018: 差し戻された行は数えない(消込額・重複の確認とも)
+      const existing = (await this.repo.findDisbursementsByHeaderId(id)).filter((r) => r.approvalStatus !== "REMANDED");
       limits.set(id, {
         totalAmount: header.totalAmount,
         reconciledAmount: existing.reduce((sum, r) => sum + r.amount, 0),

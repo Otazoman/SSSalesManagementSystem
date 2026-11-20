@@ -25,7 +25,11 @@
 | [stock_reclassifications](#stock_reclassifications) | 品質区分の変更 | `DB` | 良品・破損品・検品待ちの区分の変更。1行 = 1回の変更 |
 | [stock_returns](#stock_returns) | 返品 | `DB` | 仕入先への返品・得意先からの返品。1行 = 1回の返品 |
 | [stock_transactions](#stock_transactions) | 在庫の増減履歴 | `DB` | 入庫・出庫・棚卸・品質区分の変更・廃棄・返品による在庫の増減の記録 |
+| [stock_transfer_items](#stock_transfer_items) | 倉庫間移動の明細 | `DB` | 移動する品目・数量と、入庫済み・差異の数量 |
+| [stock_transfers](#stock_transfers) | 倉庫間移動 | `DB` | 倉庫から倉庫への移動の伝票。実際の在庫の増減は出庫・入庫で行い、この伝票が束ねる(REQ-006) |
 | [stocks](#stocks) | 在庫 | `DB` | 商品 × 倉庫 × ロケーション × ロット × 品質区分ごとの在庫数 |
+| [temporary_holding_movements](#temporary_holding_movements) | 一時保管の動き | `DB` | 一時保管の受入・払出・調整の1件ずつ。確定した動きだけを台帳の数量に数える |
+| [temporary_holdings](#temporary_holdings) | 一時保管 | `DB` | 品目マスタに無い物(自社品・預り品)の台帳。在庫には含めない(REQ-011) |
 | [warehouse_stock_reservations](#warehouse_stock_reservations) | 在庫の引当(倉庫単位) | `DB` | 受注による商品 × 倉庫単位の在庫の引当数 |
 
 ## ER 図
@@ -52,11 +56,13 @@ erDiagram
     text instruction_header_id FK
     text item_id FK
     text account_code FK
+    text order_item_id FK
   }
   item_receipt_instructions {
     text id PK
     text partner_id FK
     text approval_flow_id FK
+    text order_id FK
   }
   item_receipt_items {
     text id PK
@@ -72,6 +78,7 @@ erDiagram
     text sales_order_id FK
     text destination_warehouse_id FK
     text approval_flow_id FK
+    text direct_receipt_header_id FK
   }
   item_shipment_instruction_items {
     text id PK
@@ -131,12 +138,32 @@ erDiagram
   stock_transactions {
     text id PK
   }
+  stock_transfer_items {
+    text id PK
+    text transfer_id FK
+    text item_id FK
+    text account_code FK
+  }
+  stock_transfers {
+    text id PK
+    text source_warehouse_id FK
+    text destination_warehouse_id FK
+  }
   stocks {
     text id PK
     text item_id FK
     text warehouse_id FK
     text location_id FK
     text account_code FK
+  }
+  temporary_holding_movements {
+    text id PK
+    text holding_id FK
+  }
+  temporary_holdings {
+    text id PK
+    text warehouse_id FK
+    text partner_id FK
   }
   warehouse_stock_reservations {
     text item_id PK
@@ -182,8 +209,10 @@ erDiagram
   item_receipt_instructions |o--o{ item_receipt_instruction_items : "instruction_header_id"
   items ||--o{ item_receipt_instruction_items : "item_id"
   accounts ||--o{ item_receipt_instruction_items : "account_code"
+  order_items |o--o{ item_receipt_instruction_items : "order_item_id"
   partners ||--o{ item_receipt_instructions : "partner_id"
   approval_flows |o--o{ item_receipt_instructions : "approval_flow_id"
+  orders |o--o{ item_receipt_instructions : "order_id"
   item_receipt_headers |o--o{ item_receipt_items : "receipt_header_id"
   order_items |o--o{ item_receipt_items : "order_item_id"
   items ||--o{ item_receipt_items : "item_id"
@@ -193,6 +222,7 @@ erDiagram
   sales_orders |o--o{ item_shipment_headers : "sales_order_id"
   warehouses |o--o{ item_shipment_headers : "destination_warehouse_id"
   approval_flows |o--o{ item_shipment_headers : "approval_flow_id"
+  item_receipt_headers |o--o{ item_shipment_headers : "direct_receipt_header_id"
   item_shipment_instructions |o--o{ item_shipment_instruction_items : "instruction_header_id"
   items ||--o{ item_shipment_instruction_items : "item_id"
   sales_order_items |o--o{ item_shipment_instruction_items : "sales_order_item_id"
@@ -218,10 +248,18 @@ erDiagram
   items ||--o{ stock_returns : "item_id"
   accounts ||--o{ stock_returns : "account_code"
   approval_flows |o--o{ stock_returns : "approval_flow_id"
+  stock_transfers ||--o{ stock_transfer_items : "transfer_id"
+  items ||--o{ stock_transfer_items : "item_id"
+  accounts |o--o{ stock_transfer_items : "account_code"
+  warehouses ||--o{ stock_transfers : "source_warehouse_id"
+  warehouses ||--o{ stock_transfers : "destination_warehouse_id"
   items ||--o{ stocks : "item_id"
   warehouses ||--o{ stocks : "warehouse_id"
   locations ||--o{ stocks : "location_id"
   accounts ||--o{ stocks : "account_code"
+  temporary_holdings ||--o{ temporary_holding_movements : "holding_id"
+  warehouses ||--o{ temporary_holdings : "warehouse_id"
+  partners |o--o{ temporary_holdings : "partner_id"
 ```
 
 ## テーブルの詳細
@@ -291,6 +329,7 @@ erDiagram
 | `instructed_quantity` | 数値 | ○ |  |  | 指示数量 |
 | `account_code` | 文字列 | ○ |  | [accounts](master.md#accounts).code | 勘定科目 |
 | `memo` | 文字列 |  |  |  | 備考 |
+| `order_item_id` | 文字列 |  |  | [order_items](purchase.md#order_items).id | 発注明細 |
 
 <a id="item_receipt_instructions"></a>
 
@@ -313,6 +352,7 @@ erDiagram
 | `memo` | 文字列 |  |  |  | 備考 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `order_id` | 文字列 |  |  | [orders](purchase.md#orders).id | 発注 |
 
 <a id="item_receipt_items"></a>
 
@@ -339,6 +379,7 @@ erDiagram
 | `item_attachment_r2_path` | 文字列 |  |  |  | 添付ファイルの保存先(R2) |
 | `qr_code_key` | 文字列 |  |  |  | QRコード用のキー |
 | `memo` | 文字列 |  |  |  | 備考 |
+| `stock_transfer_item_id` | 文字列 |  |  |  | REQ-006: 倉庫間移動の入庫の場合、どの移動の明細に対する入庫か(分けて入庫した分の消し込みに使う)。FK は付けない(移動の表は後で定義するため) |
 
 <a id="item_shipment_headers"></a>
 
@@ -361,6 +402,7 @@ erDiagram
 | `approval_flow_id` | 文字列 |  |  | [approval_flows](workflow.md#approval_flows).id | 使用中の承認フロー |
 | `memo` | 文字列 |  |  |  | 備考 |
 | `delivery_note_r2_path` | 文字列 |  |  |  | 自動生成された納品書PDFのR2キー(DELIVERY_NOTES_BUCKET、旧: SYSTEM_BUCKET)。partnerId設定済みの 出庫が確定(APPROVED)したタイミングで自動生成される。 |
+| `direct_receipt_header_id` | 文字列 |  |  | [item_receipt_headers](#item_receipt_headers).id | REQ-005: 直送完了で作った出庫の場合、対になる入庫(直送用の倉庫への入庫)。入庫の承認確定・差戻し・取下げに この出庫も合わせる(出庫だけで承認・再提出はしない)。 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 
@@ -612,6 +654,52 @@ erDiagram
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 
+<a id="stock_transfer_items"></a>
+
+### stock_transfer_items(倉庫間移動の明細)
+
+移動する品目・数量と、入庫済み・差異の数量
+
+- DB: `DB`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `transfer_id` | 文字列 | ○ |  | [stock_transfers](#stock_transfers).id |  |
+| `item_id` | 文字列 | ○ |  | [items](master.md#items).id | 商品 |
+| `lot_number` | 文字列 | ○ | `NONE` |  | ロット番号 |
+| `account_code` | 文字列 |  |  | [accounts](master.md#accounts).code | 勘定科目 |
+| `source_location_id` | 文字列 |  |  |  | 移動元のロケーション(外部倉庫から出す場合は、出荷指示の実績で決まるため空のことがある) |
+| `quantity` | 数値 | ○ |  |  | 数量 |
+| `received_quantity` | 数値 | ○ | `0` |  | 入庫数量 |
+| `difference_quantity` | 数値 | ○ | `0` |  | 差異で完了した時の、届かなかった数量 |
+| `sort_order` | 整数 | ○ | `0` |  | 表示順 |
+
+<a id="stock_transfers"></a>
+
+### stock_transfers(倉庫間移動)
+
+倉庫から倉庫への移動の伝票。実際の在庫の増減は出庫・入庫で行い、この伝票が束ねる(REQ-006)
+
+- DB: `DB`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `source_warehouse_id` | 文字列 | ○ |  | [warehouses](master.md#warehouses).id |  |
+| `destination_warehouse_id` | 文字列 | ○ |  | [warehouses](master.md#warehouses).id |  |
+| `shipped_date` | 日時 | ○ |  |  | 出庫日 |
+| `status` | 文字列 | ○ | `SHIPPING_PENDING` |  | 状態 |
+| `shipment_id` | 文字列 |  |  |  | 移動元の出庫(自社倉庫)。移動元が外部倉庫の場合は、出荷指示の実績の取込で作られた出庫 |
+| `shipment_instruction_id` | 文字列 |  |  |  | 外部倉庫が絡む場合の指示書(移動元が外部倉庫なら出荷指示、移動先が外部倉庫なら入荷指示) |
+| `receipt_instruction_id` | 文字列 |  |  |  |  |
+| `closed_reason` | 文字列 |  |  |  | 差異で完了した理由 |
+| `memo` | 文字列 |  |  |  | 備考 |
+| `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
+| `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |
+| `updated_at` | 日時 | ○ |  |  | 更新日時 |
+
 <a id="stocks"></a>
 
 ### stocks(在庫)
@@ -635,6 +723,61 @@ erDiagram
 | `updated_at` | 日時 | ○ |  |  | 更新日時 |
 
 - 一意(重複不可): `qr_code_key`、`item_id` + `warehouse_id` + `location_id` + `lot_number` + `account_code` + `quality_status`
+
+<a id="temporary_holding_movements"></a>
+
+### temporary_holding_movements(一時保管の動き)
+
+一時保管の受入・払出・調整の1件ずつ。確定した動きだけを台帳の数量に数える
+
+- DB: `DB`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `holding_id` | 文字列 | ○ |  | [temporary_holdings](#temporary_holdings).id |  |
+| `movement_type` | 文字列 | ○ |  |  | RECEIVE=受入、RELEASE=払出、ADJUST=数量の調整 |
+| `quantity` | 数値 | ○ |  |  | 数量 |
+| `movement_date` | 日時 | ○ |  |  |  |
+| `memo` | 文字列 |  |  |  | 備考 |
+| `source_type` | 文字列 |  |  |  | 払出の相手の伝票: SALES_ORDER=受注(受注の直接入力の明細に紐づけて払い出した場合)。なしは null |
+| `source_id` | 文字列 |  |  |  |  |
+| `source_item_id` | 文字列 |  |  |  |  |
+| `approval_status` | 文字列 | ○ | `CONFIRMED` |  | PENDING=申請中、CONFIRMED=確定、REMANDED=差戻し。確定だけを台帳の数量に数える |
+| `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
+| `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |
+| `updated_at` | 日時 | ○ |  |  | 更新日時 |
+
+<a id="temporary_holdings"></a>
+
+### temporary_holdings(一時保管)
+
+品目マスタに無い物(自社品・預り品)の台帳。在庫には含めない(REQ-011)
+
+- DB: `DB`
+
+| 項目 | 型 | 必須 | 既定値 | 参照先 | 説明 |
+|---|---|:---:|---|---|---|
+| 🔑 `id` | 文字列 | ○ |  |  | ID(主キー) |
+| `category` | 文字列 | ○ |  |  | 分類 |
+| `item_name` | 文字列 | ○ |  |  | 品名(マスタに無い品目も入力できる) |
+| `spec` | 文字列 |  |  |  | 規格・メモ |
+| `quantity` | 数値 | ○ | `0` |  | 数量 |
+| `unit_name` | 文字列 |  |  |  |  |
+| `warehouse_id` | 文字列 | ○ |  | [warehouses](master.md#warehouses).id | 倉庫 |
+| `location_id` | 文字列 |  |  |  | ロケーション |
+| `source_type` | 文字列 |  |  |  | 元の伝票: PURCHASE_ORDER=発注(発注の直接入力の明細から受け入れた場合)。なしは null |
+| `source_id` | 文字列 |  |  |  |  |
+| `source_item_id` | 文字列 |  |  |  |  |
+| `partner_id` | 文字列 |  |  | [partners](master.md#partners).id | 取引先 |
+| `received_date` | 日時 | ○ |  |  | 入庫日 |
+| `planned_release_date` | 日時 |  |  |  |  |
+| `status` | 文字列 | ○ | `HOLDING` |  | 状態 |
+| `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
+| `created_at` | 日時 | ○ |  |  | 作成日時 |
+| `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |
+| `updated_at` | 日時 | ○ |  |  | 更新日時 |
 
 <a id="warehouse_stock_reservations"></a>
 

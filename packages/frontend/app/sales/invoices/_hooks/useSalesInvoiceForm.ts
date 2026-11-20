@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   SalesInvoiceRecord,
   PartnerMaster,
@@ -131,7 +131,7 @@ export function useSalesInvoiceForm({
   useEffect(() => {
     async function loadCompanySettings() {
       try {
-        const data = await apiFetch<CompanySettingsResponse>("/api/company-settings");
+        const data = await apiFetchShared<CompanySettingsResponse>("/api/company-settings");
         setCompanyName(data.company_name || "");
         setCompanyAddress(data.company_address || "");
         setCompanyTel(data.company_tel || "");
@@ -147,7 +147,7 @@ export function useSalesInvoiceForm({
 
   // K-4-1: OTPダウンロード宛先制限フラグ(useQuoteForm.tsと同型、新規/編集どちらでも必要なため独立取得)
   useEffect(() => {
-    apiFetch<CompanySettingsResponse>("/api/company-settings")
+    apiFetchShared<CompanySettingsResponse>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(data.is_otp_download_restricted_to_contacts === true);
       })
@@ -203,7 +203,7 @@ export function useSalesInvoiceForm({
       setPaymentTerms(initialData.payment_terms || initialData.paymentTerms || "貴社お支払基準に準拠");
 
       if (dbCompName.trim() === "" && dbCompAddr.trim() === "" && dbCompTel.trim() === "") {
-        apiFetch<CompanySettingsResponse>("/api/company-settings")
+        apiFetchShared<CompanySettingsResponse>("/api/company-settings")
           .then((compData) => {
             setCompanyName(compData.company_name || "");
             setCompanyAddress(compData.company_address || "");
@@ -443,6 +443,7 @@ export function useSalesInvoiceForm({
     selections: Array<{ progress: SalesOrderItemProgress; quantity: number }>,
     orderProjectId?: string | null,
     orderPartnerId?: string | null,
+    orderTitle?: string | null,
   ): string | undefined => {
     if (orderPartnerId && orderPartnerId !== partnerId && items.some((item) => !!item.sourceOrderItemId)) {
       return "別の得意先の受注明細が既に入っているため、この受注は追加できません(1つの売上には同じ得意先の受注だけをまとめられます)";
@@ -464,6 +465,8 @@ export function useSalesInvoiceForm({
     setSalesOrderId(targetOrderId);
     if (orderPartnerId) setPartnerId(orderPartnerId);
     if (orderProjectId) setProjectId(orderProjectId);
+    // BUG-117: 件名が空なら、受注の件名を引き継ぐ(入力済みの件名は変えない)
+    if (orderTitle && !invoiceTitle.trim()) setInvoiceTitle(orderTitle);
     setItems((prev) => {
       const withoutEmptyFirstRow = prev.length === 1 && !prev[0].itemId ? [] : prev;
       return [...withoutEmptyFirstRow, ...newItems];

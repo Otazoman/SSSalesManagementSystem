@@ -4,16 +4,23 @@ interface Props {
   canCreate: boolean;
   isSubmitting?: boolean;
   onImportCsv: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  // BUG-098: 承認 ON の間は CSV で取り込めない(サーバーも拒否する)
+  isWfEnabled?: boolean;
 }
 
-export function ItemReorderSettingCsvImport({ canCreate, isSubmitting = false, onImportCsv }: Props) {
-  const isImportDisabled = !canCreate || isSubmitting;
+export function ItemReorderSettingCsvImport({ canCreate, isSubmitting = false, onImportCsv, isWfEnabled = false }: Props) {
+  const isImportDisabled = !canCreate || isSubmitting || isWfEnabled;
 
   return (
     <div className="bg-white p-5 rounded-lg flex flex-col justify-between border border-slate-200 shadow-sm">
       <div>
         <h3 className="text-xs font-bold text-slate-900 border-b pb-1 mb-2">
           発注点/安全在庫CSV一括インポート
+          {isWfEnabled && (
+            <span className="ml-2 text-[9px] bg-amber-50 text-amber-700 px-1 rounded font-medium">
+              ※承認機能が有効な間は利用できません
+            </span>
+          )}
         </h3>
         <p className="text-[10px] text-slate-500 leading-relaxed">
           右記ヘッダーに準拠したCSVファイルを選択してください(品目×倉庫が既存の場合は上書き更新されます)：

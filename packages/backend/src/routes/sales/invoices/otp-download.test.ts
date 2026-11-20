@@ -188,31 +188,27 @@ describe("K-4-1: 売上関連書類OTPダウンロード", () => {
     expect(res.status).toBe(400);
   });
 
-  it("同一組み合わせへの短時間の連続リクエストはレート制限され、上限を超えた分は新たなOTPを発行しない", async () => {
+  // REQ-007: 入力なしで、登録済みの宛先の全員に同じコードを送る。回数制限は帳票の単位(メールアドレスでは数えない)
+  it("入力なしで発行でき、登録済みの宛先の全員に同じコードが届く。短時間の連続の発行は帳票の単位で制限される", async () => {
     const dbOtp = drizzle(env.DB_OTP, { schema: otpSchema });
+    const rowsOf = () =>
+      dbOtp.select().from(otpSchema.otpChallenges).where(eq(otpSchema.otpChallenges.documentId, INVOICE_ID));
+    await dbOtp.delete(otpSchema.otpChallenges);
 
-    for (let i = 0; i < 5; i++) {
-      const res = await postJson(`/download-request/${INVOICE_ID}/${ATTACHMENT_ID}`, {
-        email: RATE_LIMIT_EMAIL,
-      });
-      expect(res.status).toBe(200);
+    const first = await postJson(`/download-request/${INVOICE_ID}/${ATTACHMENT_ID}`, {});
+    expect(first.status).toBe(200);
+    const firstRows = await rowsOf();
+    expect(firstRows.length).toBeGreaterThan(0);
+    // 1回の発行では、全員に同じコード
+    expect(new Set(firstRows.map((r) => r.otpCode)).size).toBe(1);
+    expect(firstRows.some((r) => r.email === REGISTERED_EMAIL)).toBe(true);
+
+    for (let i = 0; i < 10; i++) {
+      expect((await postJson(`/download-request/${INVOICE_ID}/${ATTACHMENT_ID}`, {})).status).toBe(200);
     }
-
-    const rowsAtLimit = await dbOtp
-      .select()
-      .from(otpSchema.otpChallenges)
-      .where(eq(otpSchema.otpChallenges.email, RATE_LIMIT_EMAIL));
-    expect(rowsAtLimit.length).toBe(5);
-
-    const res = await postJson(`/download-request/${INVOICE_ID}/${ATTACHMENT_ID}`, {
-      email: RATE_LIMIT_EMAIL,
-    });
-    expect(res.status).toBe(200);
-
-    const rowsAfterLimit = await dbOtp
-      .select()
-      .from(otpSchema.otpChallenges)
-      .where(eq(otpSchema.otpChallenges.email, RATE_LIMIT_EMAIL));
-    expect(rowsAfterLimit.length).toBe(5);
+    const atLimit = (await rowsOf()).length;
+    // 上限を超えた分は、成功の文言は返すが新しいコードを発行しない
+    expect((await postJson(`/download-request/${INVOICE_ID}/${ATTACHMENT_ID}`, {})).status).toBe(200);
+    expect((await rowsOf()).length).toBe(atLimit);
   });
 });

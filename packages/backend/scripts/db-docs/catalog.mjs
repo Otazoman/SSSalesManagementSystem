@@ -116,6 +116,10 @@ export const TABLES = {
   stock_reclassifications: { domain: "inventory", label: "品質区分の変更", description: "良品・破損品・検品待ちの区分の変更。1行 = 1回の変更" },
   stock_disposals: { domain: "inventory", label: "廃棄", description: "在庫の廃棄。1行 = 1回の廃棄" },
   stock_returns: { domain: "inventory", label: "返品", description: "仕入先への返品・得意先からの返品。1行 = 1回の返品" },
+  stock_transfers: { domain: "inventory", label: "倉庫間移動", description: "倉庫から倉庫への移動の伝票。実際の在庫の増減は出庫・入庫で行い、この伝票が束ねる(REQ-006)" },
+  stock_transfer_items: { domain: "inventory", label: "倉庫間移動の明細", description: "移動する品目・数量と、入庫済み・差異の数量" },
+  temporary_holdings: { domain: "inventory", label: "一時保管", description: "品目マスタに無い物(自社品・預り品)の台帳。在庫には含めない(REQ-011)" },
+  temporary_holding_movements: { domain: "inventory", label: "一時保管の動き", description: "一時保管の受入・払出・調整の1件ずつ。確定した動きだけを台帳の数量に数える" },
 
   // ---- 会計(仕訳)
   journal_posting_rules: { domain: "accounting", label: "仕訳ルール", description: "会計事象(売上・仕入・入金・支払・前受・前払)ごとの借方・貸方の勘定科目" },
@@ -143,6 +147,7 @@ export const TABLES = {
   audit_logs: { domain: "other", label: "監査ログ", description: "登録・更新・削除などの操作の記録(変更前後の値を含む)(DB_LOG)" },
   mail_delivery_logs: { domain: "other", label: "メール送信ログ・送信待ち", description: "メール・Slack の送信待ちと送信結果。Cron が1分ごとに送信する(DB_LOG)" },
   otp_challenges: { domain: "other", label: "OTP", description: "取引先向けダウンロードの確認コードと、有効期限・試行回数(DB_OTP)" },
+  login_otp_challenges: { domain: "other", label: "ログインのOTP", description: "ログイン時の確認コード(ハッシュ)と、有効期限・試行回数・送信日時(DB_OTP)" },
   announcements: { domain: "other", label: "お知らせ", description: "ダッシュボードの「システムからのお知らせ」(DB_UI)" },
   screen_descriptions: { domain: "other", label: "画面説明", description: "画面ごとに見出しの下に表示する説明文(DB_UI)" },
   user_preferences: { domain: "other", label: "ユーザーの表示設定", description: "ユーザーごとの色・ダークモードの設定(DB_UI)" },

@@ -101,6 +101,29 @@ describe("PurchaseRecognitionsPage", () => {
     await waitFor(() => expect(screen.getByText("該当 0 件")).toBeInTheDocument());
   });
 
+  it("PERF-06: 新規計上の画面を開いても、会社設定(/api/company-settings)の取得は1回だけ", async () => {
+    mockUsePagePermissions.mockReturnValue({
+      canCreate: true,
+      canRead: true,
+      canUpdate: true,
+      canDelete: true,
+      isPurchaseRecognitionWfEnabled: false,
+      loading: false,
+    });
+    const fetchSpy = mockFetch([]);
+    const Page = await importPage();
+
+    render(<Page />);
+    await waitFor(() => expect(screen.getByText("該当 0 件")).toBeInTheDocument());
+    screen.getByText("➕ 仕入を新規計上・申請する").click();
+    await waitFor(() =>
+      expect(fetchSpy.mock.calls.some(([u]) => String(u).includes("/api/company-settings"))).toBe(true),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(fetchSpy.mock.calls.filter(([u]) => String(u).includes("/api/company-settings"))).toHaveLength(1);
+  });
+
   it("仕入データがある場合は一覧に反映される", async () => {
     mockUsePagePermissions.mockReturnValue({
       canCreate: true,

@@ -14,6 +14,7 @@ import {
 } from "../_types";
 import { todayJst } from "../../../_shared/jst-date";
 import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
+import { sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface RawUserRelation {
   departmentId?: string;
@@ -320,14 +321,15 @@ export function useSalesInvoices({ canRead, permsLoading }: UseSalesInvoicesProp
     setError("");
 
     try {
-      const data = await apiFetch<{ message?: string }>("/api/sales-invoices/bulk-send-email", {
+      const data = await bulkSendWithIssuedPdf("/api/sales-invoices", selectedInvoiceIds, (targetIds) =>
+        apiFetch<{ message?: string }>("/api/sales-invoices/bulk-send-email", {
         method: "POST",
-        json: {
-          invoiceIds: selectedInvoiceIds,
+        json: { invoiceIds: targetIds,
           fallbackOperatorId: "CURRENT_USER",
         },
         defaultErrorMessage: "一括送信リレーに失敗しました",
-      });
+      }),
+      );
 
       setMessage(data.message || "一括送信を予約しました");
       return true;
@@ -345,11 +347,13 @@ export function useSalesInvoices({ canRead, permsLoading }: UseSalesInvoicesProp
     setError("");
 
     try {
-      await apiFetch(`/api/sales-invoices/${params.invoiceId}/send-email`, {
+      await sendWithIssuedPdf("/api/sales-invoices", params.invoiceId, () =>
+        apiFetch(`/api/sales-invoices/${params.invoiceId}/send-email`, {
         method: "POST",
         json: params,
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
 
       setMessage("📧 メールの送信を予約しました");
       return true;

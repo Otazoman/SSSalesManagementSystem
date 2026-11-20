@@ -4,7 +4,12 @@ import { Env } from "../../types/env";
 import { AuthRepository } from "./auth.repository";
 import { AuthService } from "./auth.service";
 import { respondError, validationHook } from "../../platform/http/error-handler";
-import { loginSchema, updateNotificationSettingsSchema } from "./auth.schema";
+import {
+  loginSchema,
+  resendLoginOtpSchema,
+  updateNotificationSettingsSchema,
+  verifyLoginOtpSchema,
+} from "./auth.schema";
 import { getSession } from "../../platform/auth/get-session";
 
 const authRouter = new Hono<{ Bindings: Env }>();
@@ -25,6 +30,33 @@ authRouter.post(
       const service = getService(c);
 
       const result = await service.login(c, body);
+      return c.json(result.data, result.status as any);
+    } catch (err) {
+      return respondError(c, err, "サーバー内部でエラーが発生しました");
+    }
+  },
+);
+
+// REQ-004: ログイン時の OTP の確認(合っていればセッションを発行する)・再送。ログイン前に使う
+authRouter.post(
+  "/login/otp/verify",
+  vValidator("json", verifyLoginOtpSchema, validationHook()),
+  async (c) => {
+    try {
+      const result = await getService(c).verifyLoginOtp(c, c.req.valid("json"));
+      return c.json(result.data, result.status as any);
+    } catch (err) {
+      return respondError(c, err, "サーバー内部でエラーが発生しました");
+    }
+  },
+);
+
+authRouter.post(
+  "/login/otp/resend",
+  vValidator("json", resendLoginOtpSchema, validationHook()),
+  async (c) => {
+    try {
+      const result = await getService(c).resendLoginOtp(c, c.req.valid("json"));
       return c.json(result.data, result.status as any);
     } catch (err) {
       return respondError(c, err, "サーバー内部でエラーが発生しました");

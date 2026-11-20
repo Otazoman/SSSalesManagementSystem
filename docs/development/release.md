@@ -53,7 +53,8 @@ node packages/backend/scripts/db-docs/generate-db-docs.mjs --check   # スキー
 ```bash
 git pull
 node infra/scripts/sync-wrangler.mjs --write     # wrangler.jsonc.example の変更を反映(実ID・ストアIDは引き継がれる)
-cd packages/backend  && npm install
+cd packages/report-renderer && npm install   # 帳票の描画の共有パッケージ(PERF-07)。backend・frontend より先に
+cd ../backend        && npm install
 cd ../frontend       && npm install
 cd ../..
 ```
@@ -98,6 +99,9 @@ cd ../frontend
 npm run build
 npx wrangler deploy --env staging
 ```
+
+- `npm run build` は、`next build` の後に `scripts/csp/generate-csp-headers.mjs` を実行し、ページごとのスクリプトの実行元の制限
+  (Content-Security-Policy)を `out/_headers` に追記します(BUG-083)。`next build` だけで済ませると、この制限が付かないため、必ず `npm run build` を使ってください。
 
 表示の中に `env.BACKEND (my-erp-backend-staging)` があれば、Staging の Backend につながっています。
 

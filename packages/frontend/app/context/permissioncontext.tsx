@@ -22,6 +22,12 @@ interface UserState {
   isQuoteWfEnabled: boolean;
   isPartnerContactWfEnabled: boolean;
   isUnitWfEnabled: boolean;
+  // BUG-097・BUG-098
+  isProjectWfEnabled?: boolean;
+  isItemReorderSettingWfEnabled?: boolean;
+  isBillingWfEnabled?: boolean;
+  // REQ-026
+  isPaymentWfEnabled?: boolean;
   isLocationWfEnabled: boolean;
   isProductPriceWfEnabled: boolean;
   isProductWfEnabled: boolean;

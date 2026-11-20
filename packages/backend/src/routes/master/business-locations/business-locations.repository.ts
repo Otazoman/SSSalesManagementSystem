@@ -126,6 +126,7 @@ export class BusinessLocationsRepository {
       postalCode: data.postalCode || null,
       address: data.address || null,
       phoneNumber: data.phoneNumber || null,
+      faxNumber: data.faxNumber || null,
       status: data.status || "temporary",
       memo: data.memo || null,
       createdBy: operatorId,
@@ -149,6 +150,8 @@ export class BusinessLocationsRepository {
         postalCode: data.postalCode || null,
         address: data.address || null,
         phoneNumber: data.phoneNumber || null,
+        // REQ-003: FAX を含まない以前の変更申請では変えない
+        ...(data.faxNumber !== undefined ? { faxNumber: data.faxNumber || null } : {}),
         status: data.status || "temporary",
         memo: data.memo || null,
         updatedBy: operatorId,
@@ -183,6 +186,7 @@ export class BusinessLocationsRepository {
         postalCode: row.postalCode || null,
         address: row.address || null,
         phoneNumber: row.phoneNumber || null,
+        faxNumber: row.faxNumber || null,
         status: row.status || "active",
         memo: row.memo || null,
         createdBy: operatorId,
@@ -197,6 +201,8 @@ export class BusinessLocationsRepository {
           postalCode: row.postalCode || null,
           address: row.address || null,
           phoneNumber: row.phoneNumber || null,
+          // REQ-003: faxNumber の列が無い CSV では FAX を変えない
+          ...(row.faxNumber !== undefined ? { faxNumber: row.faxNumber || null } : {}),
           status: row.status || "active",
           memo: row.memo || null,
           updatedBy: operatorId,

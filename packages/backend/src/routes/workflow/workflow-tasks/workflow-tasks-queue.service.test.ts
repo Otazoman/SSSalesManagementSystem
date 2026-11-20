@@ -384,6 +384,127 @@ describe("WorkflowTasksQueueService.getMyPendingTasks", () => {
   });
 });
 
+// PERF-03: D1 に送った文(prepare)の数を数える drizzle を作る
+function countingDb() {
+  const counter = { prepares: 0 };
+  const d1 = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (query: string) => {
+          counter.prepares += 1;
+          return target.prepare(query);
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { countedDb: drizzle(d1, { schema }), counter };
+}
+
+describe("承認待ち一覧の問い合わせ回数(PERF-03)", () => {
+  beforeEach(async () => {
+    await db.delete(schema.units);
+  });
+
+  // 全社の承認待ち total 件(部署Aの申請者の分が mine 件、残りは部署Bの申請者の分)。
+  // 承認フローの段は部署の指定なし(申請者の所属部署の課長が承認者)
+  async function seed(total: number, mine: number) {
+    await seedDepartment("dept-a", "D-A", "部署A");
+    await seedDepartment("dept-b", "D-B", "部署B");
+    await seedRole("manager");
+    await seedRole("staff");
+    await seedUser("mgr-a", { name: "部署Aの課長" });
+    await seedUserRole("mgr-a", "manager", "dept-a");
+    await seedUser("app-a", { name: "部署Aの申請者" });
+    await seedUserRole("app-a", "staff", "dept-a");
+    await seedUser("app-b", { name: "部署Bの申請者" });
+    await seedUserRole("app-b", "staff", "dept-b");
+    await seedApprovalFlow("flow-units", "master_units", [{ order: 1, roleId: "manager" }]);
+    for (let i = 0; i < total; i++) {
+      const code = `U${String(i).padStart(4, "0")}`;
+      const applicantId = i < mine ? "app-a" : "app-b";
+      await db.insert(schema.units).values({
+        code,
+        name: `単位${i}`,
+        status: "temporary",
+        createdBy: applicantId,
+        createdAt: now,
+        updatedBy: applicantId,
+        updatedAt: now,
+      });
+      await db.insert(schema.masterApprovalRequests).values({
+        id: `req-${code}`,
+        targetType: "master_units",
+        targetId: code,
+        requestType: "REGISTER",
+        status: "PENDING",
+        applicantId,
+        flowId: "flow-units",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.workflowLogs).values({
+        id: `log-${code}`,
+        targetType: "master_units",
+        targetId: code,
+        approverRoleId: "manager",
+        layer: 1,
+        status: "PENDING",
+        requestId: `req-${code}`,
+      });
+    }
+  }
+
+  async function clear() {
+    for (const table of [
+      schema.workflowLogs,
+      schema.masterApprovalRequests,
+      schema.approvalFlowSteps,
+      schema.approvalFlows,
+      schema.units,
+      schema.userRoles,
+      schema.departments,
+      schema.roles,
+      schema.users,
+    ]) {
+      await db.delete(table);
+    }
+  }
+
+  it("全社の承認待ちが 5 件でも 100 件でも、問い合わせ回数は同じで、自分の分だけを返す", async () => {
+    await seed(5, 3);
+    const small = countingDb();
+    const smallTasks = await WorkflowTasksQueueService.getMyPendingTasks(small.countedDb, "mgr-a");
+    expect(smallTasks.map((t) => t.targetId)).toEqual(["U0000", "U0001", "U0002"]);
+
+    await clear();
+    await seed(100, 3);
+    const large = countingDb();
+    const largeTasks = await WorkflowTasksQueueService.getMyPendingTasks(large.countedDb, "mgr-a");
+    expect(largeTasks.map((t) => t.targetId)).toEqual(["U0000", "U0001", "U0002"]);
+
+    expect(large.counter.prepares).toBe(small.counter.prepares);
+  }, 60_000);
+
+  it("ページ版は、自分の分を数えてから1ページ分だけ組み立てる", async () => {
+    await seed(20, 3);
+    const page = await WorkflowTasksQueueService.getMyPendingTasksPage(db, "mgr-a", { page: 2, limit: 2 });
+    expect(page.pagination).toEqual({ page: 2, limit: 2, total: 3, totalPages: 2 });
+    expect(page.data.map((t: any) => t.targetId)).toEqual(["U0002"]);
+    const all = await WorkflowTasksQueueService.getMyPendingTasks(db, "mgr-a");
+    expect(page.data[0]).toEqual(all[2]);
+    expect(page.data[0]).toMatchObject({
+      applicantId: "部署Aの申請者 (ID: app-a)",
+      applicantDepartmentId: "dept-a",
+      targetName: "単位2",
+    });
+    expect((page.data[0] as any).flowProgress).toEqual([
+      expect.objectContaining({ stepOrder: 1, status: "PENDING", performedBy: "部署Aの課長", roleName: "manager" }),
+    ]);
+  });
+});
+
 describe("WorkflowTasksQueueService.getMyPendingTasksPage", () => {
   it("全件計算後にin-memoryでページ分割し、{data,pagination}形式で返す", async () => {
     await seedUser("applicant-1");

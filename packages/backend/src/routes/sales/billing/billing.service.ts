@@ -78,8 +78,14 @@ export class BillingService {
   }
 
   // --- PDF発行 ---
-  generatePdf(c: Context, id: string) {
-    return this.pdf.generatePdf(c, id);
+
+  // PERF-07 B-3・B-4
+  buildPdfSource(...args: Parameters<BillingPdfService["buildPdfSource"]>) {
+    return this.pdf.buildPdfSource(...args);
+  }
+
+  storePdf(...args: Parameters<BillingPdfService["storePdf"]>) {
+    return this.pdf.storePdf(...args);
   }
 
   // --- K-4-4: 再発行(保存済みPDFの再ダウンロード・再送付) ---
@@ -101,11 +107,11 @@ export class BillingService {
   }
 
   // --- 追加要望: OTPダウンロード(外部公開) ---
-  requestDownloadOtp(c: Context, id: string, email: string) {
+  requestDownloadOtp(c: Context, id: string, email: string | undefined) {
     return this.download.requestDownloadOtp(c, id, email);
   }
 
-  verifyDownloadOtp(c: Context, id: string, email: string, otp: string) {
+  verifyDownloadOtp(c: Context, id: string, email: string | undefined, otp: string) {
     return this.download.verifyDownloadOtp(c, id, email, otp);
   }
 }

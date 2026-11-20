@@ -31,11 +31,12 @@ export function CsvImportPanel({
         <p className="text-[10px] text-slate-700 leading-relaxed">
           ダウンロードした形式と同一のファイルを受け付けます：
           <code className="bg-slate-100 border border-slate-200 text-slate-800 p-1 rounded block mt-1 font-mono text-[8px] overflow-x-auto whitespace-nowrap">
-            employeeNumber,name,email,departmentId,roleId,passwordRaw,slackUserId,notificationChannel
+            employeeNumber,name,email,departmentId,roleId,passwordRaw,slackUserId,notificationChannel,loginOtpEnabled
           </code>
           <span className="block mt-1">
             notificationChannelは email / slack(空欄はemail)。slackの場合はslackUserIdが必須です。
-            末尾2列を省いた従来の6列形式も受け付け、その場合はSlack設定は変更されません。
+            loginOtpEnabled(ログイン時の確認コード)は true / false(空欄はfalse)。true にするには、会社設定のメール送信(SMTP)の設定が必要です。
+            末尾の列を省いた形式(loginOtpEnabled の無い8列、Slack列も無い6列)も受け付け、その場合は省いた列の設定は変更されません。
           </span>
         </p>
       </div>

@@ -151,3 +151,23 @@ describe("ProgressTable", () => {
     expect(screen.queryByText("自動判定に戻す")).toBeNull();
   });
 });
+
+// REQ-013: 伝票が無い工程は、未起票なら「未起票」と担当予定、案件の流れの対象外なら「―」
+describe("ProgressTable: REQ-013 未起票の工程", () => {
+  it("未起票の工程に「未起票」と担当予定(未設定なら「未設定」)を出し、対象外の工程は「―」", () => {
+    const row = makeRow(
+      { sales_order: [{ id: "SO-1", status: "APPROVED", assigneeName: null, approval: null, completed: false, manual: false }] },
+      {
+        unissuedSteps: [
+          { chain: "sales", stageKey: "item_shipment", assigneeName: "倉庫花子", source: "stage" },
+          { chain: "sales", stageKey: "sales_invoice", assigneeName: null, source: null },
+        ],
+      },
+    );
+    render(<ProgressTable rows={[row]} />);
+    expect(screen.getAllByText("未起票")).toHaveLength(2);
+    expect(screen.getByText("担当予定: 倉庫花子")).toBeInTheDocument();
+    expect(screen.getByText("担当予定: 未設定")).toBeInTheDocument();
+    expect(screen.getAllByText("―").length).toBeGreaterThan(0);
+  });
+});

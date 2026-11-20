@@ -22,6 +22,8 @@ export const businessLocationUpsertSchema = v.object({
   postalCode: v.optional(v.nullable(v.string())),
   address: v.optional(v.nullable(v.string())),
   phoneNumber: v.optional(v.nullable(v.string())),
+  // REQ-003: FAX(省略時は変更しない)
+  faxNumber: v.optional(v.nullable(v.string())),
   status: v.optional(v.string(), "temporary"),
   memo: v.optional(v.nullable(v.string())),
 });

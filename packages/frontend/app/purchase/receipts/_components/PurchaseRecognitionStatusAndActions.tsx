@@ -43,7 +43,8 @@ export function PurchaseRecognitionStatusAndActions({
     (status === "PENDING_APPROVAL" || status === "PENDING_DELETION");
   const isApprovedEdit =
     status === "APPROVED" && isPurchaseRecognitionWfEnabled;
-  const badge = getDocumentLifecycleStatus(status);
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する
+  const badge = getDocumentLifecycleStatus(status, { approvalEnabled: isPurchaseRecognitionWfEnabled });
   const canEditStatusDirectly = !isPurchaseRecognitionWfEnabled && !isLocked;
 
   return (

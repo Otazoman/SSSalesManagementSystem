@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { SalesOrderRepository } from "./sales-order.repository";
+import { assertQuoteNotLost } from "../quotes/quote-lost.service";
 import { SalesOrderPayload } from "./sales-order.schema";
 import { RESOURCE_KEY } from "./sales-order-constants";
 import {
@@ -201,6 +202,10 @@ export class SalesOrderCrudService {
 
   async createOrder(c: Context, formData: FormData, body: SalesOrderPayload) {
     await assertPartnerNotSuspended(c.env.DB, body.partnerId);
+    // REQ-015: 失注の見積からは受注を作れない
+    if (body.sourceQuoteId) {
+      assertQuoteNotLost(await this.repo.findQuoteForOrderCreation(body.sourceQuoteId), "受注にすることは");
+    }
     // BUG-042: 保存する合計・消費税は、明細から計算し直す(会社設定の端数処理。画面の計算は表示用)
     body = await recalculateDocumentTotals(c.env.COMPANY_SETTINGS, body, await this.repo.findTaxCategoryRates());
     const opId = await this.repo.getFallbackOperatorId(c);
@@ -846,6 +851,8 @@ export class SalesOrderCrudService {
   async getQuoteOrderProgress(quoteId: string) {
     const quote = await this.repo.findQuoteForOrderCreation(quoteId);
     if (!quote) throw new NotFoundError("対象の見積が見つかりません");
+    // REQ-015: 失注の見積からは受注を作れない
+    assertQuoteNotLost(quote, "受注にすることは");
     const quoteItems = await this.repo.findQuoteItemsForOrderCreation(quoteId);
     const ordered = await this.repo.getOrderedQuantitiesByQuoteItemIds(quoteItems.map((i) => i.id));
     return quoteItems.map((item) => {

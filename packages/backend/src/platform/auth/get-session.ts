@@ -20,15 +20,32 @@ async function readSessionSecret(env: Env): Promise<string | null> {
   }
 }
 
-// 署名付きセッションcookieを検証し、有効であればペイロードを返す。
-// auth機能に限らず、リクエストの実行者を必要とするあらゆる場所(監査ログ等)から呼び出せる共通口。
-export async function getSession(
+// PERF-05: 同じリクエストの中では、cookieの検証結果を使い回す(sessionGuard・adminGuard・各APIが
+// それぞれ呼ぶため、以前は1リクエストで2〜3回、秘密鍵の読み取りと署名の検証をしていた)。
+// 検証の対象はリクエストのcookieで、リクエストの途中で変わらないため、結果は毎回検証した場合と同じ。
+// キーはリクエストごとのContextで、リクエストが終われば一緒に破棄される。
+const sessionByRequest = new WeakMap<object, Promise<SessionPayload | null>>();
+
+async function verifyRequestSession(
   c: Context<{ Bindings: Env }>,
 ): Promise<SessionPayload | null> {
   const token = getCookie(c, SESSION_COOKIE_NAME);
   const secret = await readSessionSecret(c.env);
   if (!secret) return null;
   return verifySessionToken(token, secret);
+}
+
+// 署名付きセッションcookieを検証し、有効であればペイロードを返す。
+// auth機能に限らず、リクエストの実行者を必要とするあらゆる場所(監査ログ等)から呼び出せる共通口。
+export async function getSession(
+  c: Context<{ Bindings: Env }>,
+): Promise<SessionPayload | null> {
+  let pending = sessionByRequest.get(c);
+  if (!pending) {
+    pending = verifyRequestSession(c);
+    sessionByRequest.set(c, pending);
+  }
+  return pending;
 }
 
 export async function setSessionCookie(

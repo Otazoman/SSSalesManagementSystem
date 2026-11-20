@@ -1,6 +1,8 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { InstructionMailButton } from "./InstructionMailButton";
+import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
@@ -26,6 +28,7 @@ import {
 import { ApplicantDepartmentSelect } from "../../../_shared/ui/ApplicantDepartmentSelect";
 import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletionControl";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { issueReportPdf, issueReportPdfs } from "../../../_shared/report-pdf/issue-report-pdf";
 
 const STATUS_OPTIONS = [
   { value: "", label: "🌐 すべて" },
@@ -107,15 +110,24 @@ export function ReceiptInstructionPanel({
     setMessageState({});
     setBulkSending(true);
     try {
-      const result = await apiFetch<{ message: string }>(
-        "/api/receipt-instructions/bulk-generate-pdf",
-        {
-          method: "POST",
-          json: { ids: Array.from(selectedIds) },
-          defaultErrorMessage: "一括PDF発行・送信に失敗しました",
-        },
-      );
-      setMessageState({ message: result.message });
+      const result = await issueReportPdfs("/api/receipt-instructions", Array.from(selectedIds), { defaultErrorMessage: "一括PDF発行・送信に失敗しました" });
+      // BUG-113: REQ-012 で PDF の発行ではメールを送らなくなったため、発行できた指示書を倉庫の登録済みの担当者へ送る
+      const issuedIds = result.results.filter((r) => r.success).map((r) => r.id);
+      const issued = `${result.results.length}件中${issuedIds.length}件のPDFを発行しました。`;
+      if (issuedIds.length === 0) {
+        setMessageState({ error: `${issued}${result.results.map((r) => r.message).filter(Boolean).join(" / ")}` });
+      } else {
+        const mail = await apiFetch<{ message?: string; results?: Array<{ id: string; status: string; error?: string }> }>(
+          "/api/receipt-instructions/bulk-send-email",
+          { method: "POST", json: { ids: issuedIds }, defaultErrorMessage: "メールの一括送信に失敗しました" },
+        );
+        const failures = (mail.results ?? []).filter((r) => r.status === "FAILED").map((r) => `${r.id}: ${r.error}`);
+        setMessageState(
+          failures.length > 0
+            ? { message: `${issued}${mail.message ?? ""}`, error: failures.join(" / ") }
+            : { message: `${issued}${mail.message ?? ""}` },
+        );
+      }
       setSelectedIds(new Set());
       void history.refetch();
     } catch (err: unknown) {
@@ -134,13 +146,7 @@ export function ReceiptInstructionPanel({
     setMessageState({});
     setGeneratingPdfId(id);
     try {
-      const result = await apiFetch<{ message: string }>(
-        `/api/receipt-instructions/${id}/generate-pdf`,
-        {
-          method: "POST",
-          defaultErrorMessage: "入荷指示書PDFの生成に失敗しました",
-        },
-      );
+      const result = await issueReportPdf<{ message: string }>("/api/receipt-instructions", id, { defaultErrorMessage: "入荷指示書PDFの生成に失敗しました" });
       setMessageState({ message: result.message });
       void history.refetch();
     } catch (err: unknown) {
@@ -222,6 +228,7 @@ export function ReceiptInstructionPanel({
       setEditTarget({
         headerId: id,
         partnerId: detail.header.partnerId,
+        orderId: detail.header.orderId,
         warehouseId: detail.header.warehouseId,
         instructedReceiveDate: detail.header.instructedReceiveDate,
         memo: detail.header.memo,
@@ -259,13 +266,13 @@ export function ReceiptInstructionPanel({
         )}
 
         <h3 className="text-sm font-bold text-slate-800">
-          📦 入荷指示の新規登録(外部倉庫向け)
+          📦 入荷指示の新規登録
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {!editTarget && (
             <div>
-              <label className="text-sm text-slate-600 block mb-1">
+              <label className="text-sm text-slate-700 block mb-1">
                 管理番号(任意・未入力なら自動採番)
               </label>
               <input
@@ -278,11 +285,15 @@ export function ReceiptInstructionPanel({
             </div>
           )}
           <div>
-            <label className="text-sm text-slate-600 block mb-1">仕入先</label>
+            <label className="text-sm text-slate-700 block mb-1">
+              {/* BUG-071: 発注から作った入荷指示は、仕入先を発注の仕入先に固定する */}
+              {form.orderId ? `仕入先(発注 ${form.orderId} の仕入先)` : "仕入先"}
+            </label>
             <select
               value={form.partnerId}
               onChange={(e) => form.setPartnerId(e.target.value)}
-              className={`${inputClass} cursor-pointer`}
+              disabled={!!form.orderId}
+              className={`${inputClass} cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
             >
               <option value="">選択してください</option>
               {form.partners.map((p) => (
@@ -293,8 +304,8 @@ export function ReceiptInstructionPanel({
             </select>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
-              外部倉庫
+            <label className="text-sm text-slate-700 block mb-1">
+              倉庫
             </label>
             <select
               value={form.warehouseId}
@@ -304,13 +315,13 @@ export function ReceiptInstructionPanel({
               <option value="">選択してください</option>
               {form.warehouses.map((w) => (
                 <option key={w.id} value={w.id}>
-                  {w.id} ({w.name})
+                  {w.id} ({w.name}){w.warehouseType === "EXTERNAL" ? "・外部" : "・自社"}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               入荷予定日
             </label>
             <input
@@ -323,7 +334,7 @@ export function ReceiptInstructionPanel({
         </div>
 
         <div>
-          <label className="text-sm text-slate-600 block mb-1">
+          <label className="text-sm text-slate-700 block mb-1">
             備考(指示書全体・任意)
           </label>
           <textarea
@@ -349,7 +360,7 @@ export function ReceiptInstructionPanel({
             </p>
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               ロット番号(任意)
             </label>
             <input
@@ -360,7 +371,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">数量</label>
+            <label className="text-sm text-slate-700 block mb-1">数量</label>
             <input
               type="number"
               value={form.quantity}
@@ -369,7 +380,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               備考(明細・任意)
             </label>
             <input
@@ -469,7 +480,7 @@ export function ReceiptInstructionPanel({
       <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               日付(From)
             </label>
             <input
@@ -480,7 +491,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">
+            <label className="text-sm text-slate-700 block mb-1">
               日付(To)
             </label>
             <input
@@ -491,7 +502,7 @@ export function ReceiptInstructionPanel({
             />
           </div>
           <div>
-            <label className="text-sm text-slate-600 block mb-1">作成者</label>
+            <label className="text-sm text-slate-700 block mb-1">作成者</label>
             <select
               value={history.createdBy}
               onChange={(e) => history.setCreatedBy(e.target.value)}
@@ -555,7 +566,7 @@ export function ReceiptInstructionPanel({
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
-              className="text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer underline"
+              className="text-xs font-bold text-slate-700 hover:text-slate-900 cursor-pointer underline"
             >
               選択解除
             </button>
@@ -613,7 +624,7 @@ export function ReceiptInstructionPanel({
               <td className="px-4 py-2">
                 <StatusBadge {...getInstructionStatus(i.status)} />
               </td>
-              <td className="px-4 py-2 text-slate-600">{i.createdBy}</td>
+              <td className="px-4 py-2 text-slate-700">{displayUserName(history.users, i.createdBy)}</td>
               <td className="px-4 py-2 text-right space-x-2 whitespace-nowrap">
                 {eligibleForPdf(i.status) && (
                   <Button size="sm" onClick={() => void toggleExpand(i.id)}>
@@ -642,6 +653,15 @@ export function ReceiptInstructionPanel({
                   >
                     📄 PDFを表示
                   </Button>
+                )}
+                {/* REQ-012: 案内メールは PDF の発行と同時に送らず、この操作で送る */}
+                {i.instructionDocumentR2Path && (
+                  <InstructionMailButton
+                    kind="receipt"
+                    instructionId={i.id}
+                    warehouseId={i.warehouseId}
+                    onResult={(result) => setMessageState(result)}
+                  />
                 )}
                 <Button
                   size="sm"
@@ -692,11 +712,11 @@ export function ReceiptInstructionPanel({
                     documentId={i.id}
                   />
                   {expandLoading ? (
-                    <p className="text-xs text-slate-500">読み込み中...</p>
+                    <p className="text-xs text-slate-600">読み込み中...</p>
                   ) : (
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-slate-500">
+                        <tr className="text-slate-700">
                           <th className="text-left py-1 font-bold">品目</th>
                           <th className="text-left py-1 font-bold">ロット</th>
                           <th className="text-right py-1 font-bold">

@@ -2,6 +2,7 @@ import { Context } from "hono";
 import * as v from "valibot";
 import { Env } from "../../../types/env";
 import { ReceiptsRepository } from "./receipts.repository";
+import { ShipmentsRepository } from "../shipments/shipments.repository";
 import { CreateReceiptInput, GetReceiptsQuery, createReceiptSchema } from "./receipts.schema";
 import { parseCsv } from "../../../platform/csv/csv-parser";
 import { PaginationParams, buildPaginationMeta } from "../../../platform/http/pagination";
@@ -29,6 +30,7 @@ import {
 } from "../../../workflow-engine/settings";
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { SortQuery } from "../../../platform/http/sort";
+import { assertTransferReceiptLine, assignTransferItemsToReceiptLines, recalculateTransfersOfReceipt } from "../transfers/transfers.ledger";
 
 const RESOURCE_KEY = "inventory_stock";
 
@@ -216,6 +218,8 @@ export class ReceiptsService {
     // 入荷指示を指定した場合、発行済み(APPROVED/PARTIALLY_FULFILLED)の指示であることを検証し、
     // partnerId未指定なら指示側の仕入先を自動コピーする(明細内容の一致までは強制しない)
     let effectivePartnerId = input.partnerId || null;
+    // BUG-071: 発注から作った入荷指示から入庫する場合、入庫の発注は入荷指示の発注にする(未指定の場合)
+    let effectiveOrderId = input.orderId || null;
     if (input.receiptInstructionId) {
       const db = createDb(c.env.DB);
       const instructionsRepo = ReceiptInstructionsRepository.fromDb(db);
@@ -231,6 +235,26 @@ export class ReceiptsService {
       if (!effectivePartnerId) {
         effectivePartnerId = instruction.partnerId;
       }
+      if (!effectiveOrderId && instruction.orderId) {
+        effectiveOrderId = instruction.orderId;
+      }
+    }
+
+    // BUG-070: 発注を指定した場合、仕入先は発注の仕入先とする(未指定なら発注からコピーする)。
+    // 仕入先が空のままだと、検収書・入庫の仕入先での検索・仕入計上の対象検収に出てこないため。
+    // 仕入先・移動元倉庫と同じく、発注と移動元倉庫は同時に指定できない(BUG-078)
+    if (effectiveOrderId) {
+      if (input.sourceWarehouseId) {
+        throw new BadRequestError("発注と移動元倉庫は同時に指定できません");
+      }
+      const order = await PurchaseOrderRepository.fromDb(createDb(c.env.DB)).findOrderById(effectiveOrderId);
+      if (!order) throw new NotFoundError(`発注が見つかりません: ${effectiveOrderId}`);
+      if (input.partnerId && input.partnerId !== order.partnerId) {
+        throw new BadRequestError(
+          `入庫の仕入先[${input.partnerId}]が、発注[${effectiveOrderId}]の仕入先[${order.partnerId}]と異なります`,
+        );
+      }
+      effectivePartnerId = order.partnerId;
     }
 
     // Item9: 「発注から選ぶ」で紐付けた明細は、発注数量の残数量を超えていないか検証する
@@ -245,6 +269,15 @@ export class ReceiptsService {
     for (const item of input.items) {
       if (item.orderItemId) {
         await purchaseOrderReceiptService.validateRemainingQuantity(item.orderItemId, item.quantity);
+      }
+      // REQ-006: 倉庫間移動の入庫は、輸送中の残りを超えないこと
+      if (item.stockTransferItemId) {
+        await assertTransferReceiptLine(createDb(c.env.DB), {
+          stockTransferItemId: item.stockTransferItemId,
+          itemId: item.itemId,
+          warehouseId: item.warehouseId,
+          quantity: item.quantity,
+        });
       }
 
       const product = await productsRepo.findProductById(item.itemId);
@@ -287,16 +320,26 @@ export class ReceiptsService {
       resolvedItems,
       warehouseType: warehouseType || "INTERNAL",
       effectivePartnerId,
+      effectiveOrderId,
     };
   }
 
-  async createReceipt(c: Context<{ Bindings: Env }>, input: CreateReceiptInput) {
+  async createReceipt(c: Context<{ Bindings: Env }>, rawInput: CreateReceiptInput) {
     const db = createDb(c.env.DB);
-    const { resolvedItems, warehouseType, effectivePartnerId } = await this.validateAndResolveItems(
+    // REQ-006: 倉庫間移動の入荷指示の実績なら、明細に移動の明細を付ける(輸送中の残りの確認・消し込みに使う)
+    const input: CreateReceiptInput = {
+      ...rawInput,
+      items: await assignTransferItemsToReceiptLines(db, rawInput.receiptInstructionId, rawInput.items),
+    };
+    const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(
       c,
       input,
     );
-    const persistedInput: CreateReceiptInput = { ...input, partnerId: effectivePartnerId };
+    const persistedInput: CreateReceiptInput = {
+      ...input,
+      partnerId: effectivePartnerId,
+      orderId: effectiveOrderId,
+    };
 
     const operatorId = await resolveOperatorEmployeeNumber(c, db);
     const headerId = await resolveConfiguredDocumentId(
@@ -344,6 +387,8 @@ export class ReceiptsService {
         const instructionsRepo = ReceiptInstructionsRepository.fromDb(db);
         await instructionsRepo.recalculateFulfillment(input.receiptInstructionId);
       }
+      // REQ-006: 倉庫間移動の入庫なら、移動の入庫済み数・状態を計算し直す
+      await recalculateTransfersOfReceipt(db, headerId, now);
 
       c.executionCtx.waitUntil(
         logAuditEvent(c, "CONFIRM_STOCK_RECEIPT_DIRECT", RESOURCE_KEY, headerId, null, {
@@ -412,12 +457,24 @@ export class ReceiptsService {
     if (header.status !== "REMANDED") {
       throw new BadRequestError("差戻し状態の入庫のみ修正して再申請できます");
     }
+    // REQ-005: 直送完了の入庫は、出庫と対のため修正して再提出しない(発注の画面から直送完了をやり直す)
+    if (await ShipmentsRepository.fromDb(db).findHeaderByDirectReceiptId(headerId)) {
+      throw new BadRequestError("直送完了の入庫は修正して再提出できません。発注の画面から直送完了をやり直してください");
+    }
+    // REQ-006: 倉庫間移動の入庫は、移動の明細とのつながりを保つため修正して再提出しない
+    if ((await this.repo.findItemsByHeaderId(headerId)).some((item: any) => item.stockTransferItemId)) {
+      throw new BadRequestError("倉庫間移動の入庫は修正して再提出できません。申請を取り下げて、倉庫間移動の画面から入庫し直してください");
+    }
 
-    const { resolvedItems, warehouseType, effectivePartnerId } = await this.validateAndResolveItems(
+    const { resolvedItems, warehouseType, effectivePartnerId, effectiveOrderId } = await this.validateAndResolveItems(
       c,
       input,
     );
-    const persistedInput: CreateReceiptInput = { ...input, partnerId: effectivePartnerId };
+    const persistedInput: CreateReceiptInput = {
+      ...input,
+      partnerId: effectivePartnerId,
+      orderId: effectiveOrderId,
+    };
     const operatorId = await resolveOperatorEmployeeNumber(c, db);
     const now = new Date();
 

@@ -42,7 +42,8 @@ export function SalesInvoiceStatusAndActions({
     isSalesInvoiceWfEnabled &&
     (status === "PENDING_APPROVAL" || status === "PENDING_DELETION");
   const isApprovedEdit = status === "APPROVED" && isSalesInvoiceWfEnabled;
-  const badge = getDocumentLifecycleStatus(status);
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する
+  const badge = getDocumentLifecycleStatus(status, { approvalEnabled: isSalesInvoiceWfEnabled });
   const canEditStatusDirectly = !isSalesInvoiceWfEnabled && !isLocked;
 
   return (

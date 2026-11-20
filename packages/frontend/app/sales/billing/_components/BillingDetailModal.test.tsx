@@ -138,3 +138,209 @@ describe("BillingDetailModal: BUG-051 未発行の請求・請求額を超える
     expect(onRecord).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BillingDetailModal: BUG-087 記録した後の✕", () => {
+  function renderWith(saved: boolean) {
+    const onClose = vi.fn();
+    render(
+      <BillingDetailModal
+        detail={{ ...DETAIL, status: "ISSUED" }}
+        onClose={onClose}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={vi.fn(async () => saved)}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return onClose;
+  }
+
+  it("入金の記録に成功した後は、✕で確認を出さずに閉じる", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const onClose = renderWith(true);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("記録に失敗した時は、入力が残るため✕で確認する", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onClose = renderWith(false);
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: "入金を記録する" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+
+    expect(confirmSpy).toHaveBeenCalledWith("保存していない編集を破棄しますか？");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("BillingDetailModal: BUG-094 0円の請求", () => {
+  function renderDetail(detail: BillingDetail, onRecordPaymentReceipt = vi.fn(async () => true)) {
+    render(
+      <BillingDetailModal
+        detail={detail}
+        onClose={vi.fn()}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={onRecordPaymentReceipt}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return onRecordPaymentReceipt;
+  }
+
+  it("発行済みで請求額が0円・未完了なら「0円で消込を完了する」を出し、0円で記録する", async () => {
+    const onRecord = renderDetail({ ...DETAIL, status: "ISSUED", totalAmount: 0, taxAmount: 0 });
+    fireEvent.click(screen.getByRole("button", { name: "0円で消込を完了する" }));
+    await flush();
+    expect(onRecord).toHaveBeenCalledWith("BL-1", expect.objectContaining({ amount: 0 }));
+  });
+
+  it("未発行(下書き)・未消込額がある時は出さない", () => {
+    renderDetail({ ...DETAIL, status: "DRAFT", totalAmount: 0, taxAmount: 0 });
+    expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
+  });
+
+  it("未消込額がある時は出さない", () => {
+    renderDetail({ ...DETAIL, status: "ISSUED" });
+    expect(screen.queryByRole("button", { name: "0円で消込を完了する" })).not.toBeInTheDocument();
+  });
+});
+
+describe("BillingDetailModal: REQ-017 請求の承認", () => {
+  function renderApproval(detail: BillingDetail, approvalEnabled: boolean, onSubmitForApproval = vi.fn()) {
+    const onGeneratePDF = vi.fn();
+    render(
+      <BillingDetailModal
+        detail={detail}
+        onClose={vi.fn()}
+        onGeneratePDF={onGeneratePDF}
+        approvalEnabled={approvalEnabled}
+        onSubmitForApproval={onSubmitForApproval}
+        onRecordPaymentReceipt={vi.fn(async () => true)}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    return { onGeneratePDF, onSubmitForApproval };
+  }
+
+  it("承認が ON の下書きは、PDF の発行・送信ができず、承認申請のボタンで申請する", () => {
+    const { onSubmitForApproval } = renderApproval(DETAIL, true);
+    expect(screen.getByRole("button", { name: /請求書PDFを発行する/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /請求書を送信/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /承認を申請する/ }));
+    expect(onSubmitForApproval).toHaveBeenCalledWith("BL-1");
+  });
+
+  it("承認申請中は、申請のボタンを出さず、承認待ちであることを出す", () => {
+    renderApproval({ ...DETAIL, status: "PENDING_APPROVAL" }, true);
+    expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/承認申請中です/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /請求書PDFを発行する/ })).toBeDisabled();
+  });
+
+  it("承認済みなら PDF を発行できる(入金は発行の後)", () => {
+    const { onGeneratePDF } = renderApproval({ ...DETAIL, status: "APPROVED" }, true);
+    fireEvent.click(screen.getByRole("button", { name: /請求書PDFを発行する/ }));
+    expect(onGeneratePDF).toHaveBeenCalledWith("BL-1");
+    expect(screen.getByRole("button", { name: "入金を記録する" })).toBeDisabled();
+  });
+
+  it("承認が OFF の時は、今までどおり下書きから PDF を発行でき、申請のボタンは出さない", () => {
+    renderApproval(DETAIL, false);
+    expect(screen.getByRole("button", { name: /請求書PDFを発行する/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("BillingDetailModal: REQ-018 入金の承認", () => {
+  it("承認待ちの入金は行に「承認待ち」を出し、合計を消込額とは別に出す。差戻しも行に出す", () => {
+    render(
+      <BillingDetailModal
+        detail={{
+          ...DETAIL,
+          status: "ISSUED",
+          paymentReceipts: [
+            { id: "R-1", billingHeaderId: "BL-1", receivedDate: "2026-11-15", amount: 3000, method: "BANK_TRANSFER", reconciledById: "E", reconciledAt: "2026-11-15", approvalStatus: "PENDING" },
+            { id: "R-2", billingHeaderId: "BL-1", receivedDate: "2026-11-15", amount: 1000, method: "CASH", reconciledById: "E", reconciledAt: "2026-11-15", approvalStatus: "REMANDED" },
+          ],
+        }}
+        onClose={vi.fn()}
+        onGeneratePDF={vi.fn()}
+        onRecordPaymentReceipt={vi.fn(async () => true)}
+        showMailModal={false}
+        setShowMailModal={vi.fn()}
+        recipientEmail=""
+        setRecipientEmail={vi.fn()}
+        partnerContacts={[]}
+        selectedContactId=""
+        onContactSelect={vi.fn()}
+        onSendEmail={vi.fn()}
+        isMailSending={false}
+      />,
+    );
+    expect(screen.getByText("承認待ち ¥3,000")).toBeInTheDocument();
+    expect(screen.getByText("🟡 承認待ち")).toBeInTheDocument();
+    expect(screen.getByText("差戻し(消込に入れない)")).toBeInTheDocument();
+  });
+});
+
+// BUG-120(BUG-114 の調べで見つけたもの): 発行・送信の結果を詳細画面の中に出す。送信のエラーは送信モーダルの中にも出す
+describe("BillingDetailModal: 結果の表示(BUG-120)", () => {
+  const props = {
+    detail: DETAIL,
+    onClose: vi.fn(),
+    onGeneratePDF: vi.fn(),
+    onRecordPaymentReceipt: vi.fn(async () => true),
+    setShowMailModal: vi.fn(),
+    recipientEmail: "",
+    setRecipientEmail: vi.fn(),
+    partnerContacts: [],
+    selectedContactId: "",
+    onContactSelect: vi.fn(),
+    onSendEmail: vi.fn(),
+    isMailSending: false,
+  };
+
+  it("成功のメッセージを詳細画面の中に出す", () => {
+    render(<BillingDetailModal {...props} showMailModal={false} message="📧 メールの送信を予約しました" />);
+    expect(screen.getByText("📧 メールの送信を予約しました")).toBeInTheDocument();
+  });
+
+  it("送信のエラーを、送信モーダルの中にも出す", () => {
+    render(<BillingDetailModal {...props} showMailModal error="メール送信に失敗しました" />);
+    expect(screen.getAllByText(/メール送信に失敗しました/).length).toBeGreaterThanOrEqual(2);
+  });
+});

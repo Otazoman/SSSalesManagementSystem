@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../../_shared/hooks/use-api-fetch";
 import {
   PurchaseOrderRecord,
   PurchaseOrderItemRecord,
@@ -25,6 +25,7 @@ import { useTaxRoundingMode } from "../../../_shared/hooks/use-tax-rounding-mode
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
 import { fetchPartnersOfTypes } from "../../../_shared/partner-options";
+import { issueReportPdf, sendWithIssuedPdf, bulkSendWithIssuedPdf } from "../../../_shared/report-pdf/issue-report-pdf";
 
 interface CompanySettingsResponse {
   is_otp_download_restricted_to_contacts?: boolean;
@@ -103,7 +104,7 @@ export function usePurchaseOrderOperations({
   const [isEmailRestrictedToContacts, setIsEmailRestrictedToContacts] = useState(false);
 
   useEffect(() => {
-    apiFetch<CompanySettingsResponse>("/api/company-settings")
+    apiFetchShared<CompanySettingsResponse>("/api/company-settings")
       .then((data) => {
         setIsEmailRestrictedToContacts(data.is_otp_download_restricted_to_contacts === true);
       })
@@ -117,6 +118,9 @@ export function usePurchaseOrderOperations({
   const [requestId, setRequestId] = useState<string | null>(null);
   const [orderDate, setOrderDate] = useState(() => todayJst());
   const [projectId, setProjectId] = useState("");
+  // REQ-005: 直送(仕入先から得意先へ直接納品)の指定と、直送する受注。受注から作成した時に設定する
+  const [isDirectShipment, setIsDirectShipment] = useState(false);
+  const [directSalesOrderId, setDirectSalesOrderId] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [items, setItems] = useState<PurchaseOrderItemRecord[]>([]);
   const [purchasePersonEmployeeNumber, setPurchasePersonEmployeeNumber] = useState("");
@@ -128,6 +132,8 @@ export function usePurchaseOrderOperations({
   const [companyFax, setCompanyFax] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [deliveryPlace, setDeliveryPlace] = useState("");
+  // REQ-009: 納品場所の所在地
+  const [deliveryPlaceAddress, setDeliveryPlaceAddress] = useState("");
   const [deliveryLocationId, setDeliveryLocationId] = useState("");
   const [deliveryWarehouseId, setDeliveryWarehouseId] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
@@ -280,6 +286,8 @@ export function usePurchaseOrderOperations({
     setRequestId(null);
     setOrderDate(todayJst());
     setProjectId("");
+    setIsDirectShipment(false);
+    setDirectSalesOrderId(null);
     setMemo("");
     setItems([]);
     setPurchasePersonEmployeeNumber(currentUserEmployeeNumber || "");
@@ -291,6 +299,7 @@ export function usePurchaseOrderOperations({
     setCompanyFax("");
     setDeliveryDate("");
     setDeliveryPlace("");
+    setDeliveryPlaceAddress("");
     setDeliveryLocationId("");
     setDeliveryWarehouseId("");
     setPaymentTerms("");
@@ -301,6 +310,24 @@ export function usePurchaseOrderOperations({
     setSelectedFiles({});
     setError("");
   }, [currentUserEmployeeNumber]);
+
+  // REQ-008: 保存に成功した時の要約(仕入の画面と同じ SavedSummaryModal で出す)。閉じると null
+  const [savedSummary, setSavedSummary] = useState<{ id: string; title: string; partnerName: string; totalAmount: number } | null>(null);
+
+  // BUG-101: 一覧の「内容確認」。一覧の行は明細を含まないため、詳細を取得してから参照用パネルに出す
+  const [previewOrder, setPreviewOrder] = useState<PurchaseOrderRecord | null>(null);
+  const handleOpenPreview = useCallback(async (record: PurchaseOrderRecord) => {
+    setError("");
+    try {
+      setPreviewOrder(
+        await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${record.id}`, {
+          defaultErrorMessage: "発注詳細の取得に失敗しました",
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "発注詳細の取得に失敗しました");
+    }
+  }, []);
 
   // 一覧の検索結果(searchOrders)は明細を含まないため、必ず詳細取得(GET /api/purchase-orders/:id)
   // でヘッダー・明細・添付を取り直してからフォームへ反映する(sales/quotesのhandleOpenEditFormと同じ方針)。
@@ -325,6 +352,8 @@ export function usePurchaseOrderOperations({
     setRequestId(detail.requestId || null);
     setOrderDate(detail.orderDate ? detail.orderDate.split("T")[0] : todayJst());
     setProjectId(detail.projectId || "");
+    setIsDirectShipment(detail.isDirectShipment === true);
+    setDirectSalesOrderId(detail.directSalesOrderId || null);
     setMemo(detail.memo || "");
     setItems(detail.items || []);
     setPurchasePersonEmployeeNumber(detail.purchasePersonEmployeeNumber || "");
@@ -336,6 +365,7 @@ export function usePurchaseOrderOperations({
     setCompanyFax(detail.companyFax || "");
     setDeliveryDate(detail.deliveryDate || "");
     setDeliveryPlace(detail.deliveryPlace || "");
+    setDeliveryPlaceAddress(detail.deliveryPlaceAddress || "");
     setDeliveryLocationId(detail.deliveryLocationId || "");
     setDeliveryWarehouseId(detail.deliveryWarehouseId || "");
     setPaymentTerms(detail.paymentTerms || "");
@@ -393,6 +423,7 @@ export function usePurchaseOrderOperations({
       setCompanyTel(detail.companyTel || "");
       setCompanyFax(detail.companyFax || "");
       setDeliveryPlace(detail.deliveryPlace || "");
+      setDeliveryPlaceAddress(detail.deliveryPlaceAddress || "");
       setDeliveryLocationId(detail.deliveryLocationId || "");
       setDeliveryWarehouseId(detail.deliveryWarehouseId || "");
       setPaymentTerms(detail.paymentTerms || "");
@@ -416,6 +447,11 @@ export function usePurchaseOrderOperations({
       setItems(data.items);
       // 追加要望対応: 購買申請・過去の発注からのプロジェクト引き継ぎ
       setProjectId(data.projectId || "");
+      // REQ-005: 受注から作成した直送の指定・直送先(購買申請から作成した場合は購買申請の指定)
+      setIsDirectShipment(data.isDirectShipment === true);
+      setDirectSalesOrderId(data.isDirectShipment ? data.directSalesOrderId || null : null);
+      if (data.deliveryPlace) setDeliveryPlace(data.deliveryPlace);
+      if (data.deliveryPlaceAddress) setDeliveryPlaceAddress(data.deliveryPlaceAddress);
       setViewMode("FORM");
     },
     [handleClearForm],
@@ -435,6 +471,8 @@ export function usePurchaseOrderOperations({
         memo: "",
         // 新規要望(2026-10-18): 発注書印字納期が日付なら、追加した行の希望納期にもセットする
         requestedDeliveryDate: parseDeliveryDateText(deliveryDate),
+        // REQ-020: 受注とつながらない明細は、希望納期を回答納期にも入れる(変更できる)
+        answeredDeliveryDate: parseDeliveryDateText(deliveryDate),
       },
     ]);
   }, [deliveryDate]);
@@ -656,6 +694,8 @@ export function usePurchaseOrderOperations({
     requestId: requestId || null,
     orderDate,
     projectId: projectId || null,
+    isDirectShipment,
+    directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
     purchasePersonEmployeeNumber: purchasePersonEmployeeNumber || null,
     inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
     companyName: companyName || null,
@@ -665,6 +705,7 @@ export function usePurchaseOrderOperations({
     companyFax: companyFax || null,
     deliveryDate: deliveryDate || null,
     deliveryPlace: deliveryPlace || null,
+    deliveryPlaceAddress: deliveryPlaceAddress || null,
     deliveryLocationId: deliveryLocationId || null,
     deliveryWarehouseId: deliveryWarehouseId || null,
     paymentTerms: paymentTerms || null,
@@ -740,6 +781,8 @@ export function usePurchaseOrderOperations({
                 partnerId: partnerId || null,
                 requestId: requestId || null,
                 projectId: projectId || null,
+                isDirectShipment,
+                directSalesOrderId: isDirectShipment ? directSalesOrderId : null,
                 purchasePersonEmployeeNumber: purchasePersonEmployeeNumber || null,
                 inputPersonEmployeeNumber: inputPersonEmployeeNumber || null,
                 companyName: companyName || null,
@@ -749,6 +792,7 @@ export function usePurchaseOrderOperations({
                 companyFax: companyFax || null,
                 deliveryDate: deliveryDate || null,
                 deliveryPlace: deliveryPlace || null,
+                deliveryPlaceAddress: deliveryPlaceAddress || null,
                 deliveryLocationId: deliveryLocationId || null,
                 deliveryWarehouseId: deliveryWarehouseId || null,
                 paymentTerms: paymentTerms || null,
@@ -821,6 +865,12 @@ export function usePurchaseOrderOperations({
       // 「納期のみ保存」ができるよう保存後の明細(ID込み)を取り直す
       const savedId = editingId || data.id;
       if (savedId) {
+        setSavedSummary({
+          id: savedId,
+          title: title || "(件名なし)",
+          partnerName: suppliers.find((s) => s.id === partnerId)?.name ?? partnerId ?? "(未設定)",
+          totalAmount: Number(totalAmount) || 0,
+        });
         try {
           const saved = await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${savedId}`);
           setItems(saved.items || []);
@@ -966,10 +1016,7 @@ export function usePurchaseOrderOperations({
     setIsSubmitting(true);
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>(`/api/purchase-orders/${editingId}/generate-pdf`, {
-        method: "POST",
-        defaultErrorMessage: "発注書PDFの生成に失敗しました",
-      });
+      const data = await issueReportPdf<{ message?: string }>("/api/purchase-orders", editingId, { defaultErrorMessage: "発注書PDFの生成に失敗しました" });
       setMessage(data.message || "発注書PDFを生成しました");
       const detail = await apiFetch<PurchaseOrderRecord>(`/api/purchase-orders/${editingId}`);
       setAttachments(detail.attachments || []);
@@ -1016,11 +1063,13 @@ export function usePurchaseOrderOperations({
     setIsMailSending(true);
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>(`/api/purchase-orders/${mailModalOrderId}/send-email`, {
+      const data = await sendWithIssuedPdf("/api/purchase-orders", mailModalOrderId, () =>
+        apiFetch<{ message?: string }>(`/api/purchase-orders/${mailModalOrderId}/send-email`, {
         method: "POST",
         json: { recipientEmail },
         defaultErrorMessage: "メール送信に失敗しました",
-      });
+      }),
+      );
       setMessage(data.message || "📧 メールの送信を予約しました");
       setMailModalOrderId(null);
     } catch (err) {
@@ -1035,11 +1084,13 @@ export function usePurchaseOrderOperations({
     setIsMailSending(true);
     setError("");
     try {
-      const data = await apiFetch<{ message?: string }>("/api/purchase-orders/bulk-send-email", {
+      const data = await bulkSendWithIssuedPdf("/api/purchase-orders", selectedOrderIds, (targetIds) =>
+        apiFetch<{ message?: string }>("/api/purchase-orders/bulk-send-email", {
         method: "POST",
-        json: { orderIds: selectedOrderIds },
+        json: { orderIds: targetIds },
         defaultErrorMessage: "一括送信リレーに失敗しました",
-      });
+      }),
+      );
       setMessage(data.message || "一括送信を予約しました");
       setSelectedOrderIds([]);
     } catch (err) {
@@ -1064,6 +1115,11 @@ export function usePurchaseOrderOperations({
     total,
     totalPages,
     orders,
+    savedSummary,
+    setSavedSummary,
+    previewOrder,
+    setPreviewOrder,
+    handleOpenPreview,
     sortBy: sortKeys[0]?.key ?? null,
     sortDirection: sortKeys[0]?.direction ?? "asc",
     sortKeys,
@@ -1083,6 +1139,9 @@ export function usePurchaseOrderOperations({
     requestId,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     purchasePersonEmployeeNumber,
     setPurchasePersonEmployeeNumber,
     inputPersonEmployeeNumber,
@@ -1101,6 +1160,8 @@ export function usePurchaseOrderOperations({
     setDeliveryDate: handleDeliveryDateChange,
     deliveryPlace,
     setDeliveryPlace,
+    deliveryPlaceAddress,
+    setDeliveryPlaceAddress,
     deliveryLocationId,
     setDeliveryLocationId,
     deliveryWarehouseId,

@@ -190,6 +190,23 @@ export class SalesOrderRepository {
       .orderBy(asc(schema.salesOrderItems.sortOrder));
   }
 
+  // BUG-109: 直送の発注(isDirectShipment)の明細とつながる受注明細の id。直送は発注の「直送完了」で出荷するため、
+  // 出荷指示・出庫の対象にしない
+  async findDirectShipmentOrderItemIds(salesOrderItemIds: string[]): Promise<Set<string>> {
+    if (salesOrderItemIds.length === 0) return new Set();
+    const rows = await this.db
+      .selectDistinct({ salesOrderItemId: schema.orderItems.salesOrderItemId })
+      .from(schema.orderItems)
+      .innerJoin(schema.orders, eq(schema.orders.id, schema.orderItems.orderId))
+      .where(
+        and(
+          inArray(schema.orderItems.salesOrderItemId, salesOrderItemIds),
+          eq(schema.orders.isDirectShipment, true),
+        ),
+      );
+    return new Set(rows.map((r) => r.salesOrderItemId).filter((id): id is string => !!id));
+  }
+
   async findOrderItemById(id: string) {
     const res = await this.db
       .select()

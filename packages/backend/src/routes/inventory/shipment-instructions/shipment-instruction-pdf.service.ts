@@ -2,7 +2,6 @@ import { Context } from "hono";
 import { Env } from "../../../types/env";
 import { ShipmentInstructionsRepository } from "./shipment-instructions.repository";
 import { WarehousesRepository } from "../../master/warehouses/warehouses.repository";
-import { WarehouseContactsRepository } from "../../master/warehouse-contacts/warehouse-contacts.repository";
 import { PartnersRepository } from "../../master/partners/partners.repository";
 import { ProductsRepository } from "../../master/products/products.repository";
 import { UnitsRepository } from "../../master/units/units.repository";
@@ -10,15 +9,12 @@ import { UserRepository } from "../../admin/users/user.repository";
 import { NotFoundError, BadRequestError } from "../../../platform/http/http-error";
 import { getCompanySettings } from "../../../platform/kv/company-settings-cache";
 import { generateAttachmentKey } from "../../../platform/r2/generate-attachment-key";
-import {
-  generateInstructionPdf,
-  InstructionPdfData,
-} from "../../../platform/report-templates/generate-instruction-pdf";
-import { tryRenderInstructionPdfFromCustomTemplate } from "../../../platform/report-templates/try-render-instruction-pdf";
+import { type ReportPdfSource, type InstructionPdfData } from "report-renderer";
+import { loadCustomLayoutSource } from "../../../platform/report-templates/load-custom-layout";
+import { resolveInstructionPlaceholders } from "../../../platform/report-templates/resolve-instruction-placeholders";
 import { resolveOperatorEmployeeNumber } from "../../../platform/repository/fallback-operator";
 import { createDb } from "../../../platform/db/create-db";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
-import { enqueueNotification } from "../../../platform/notifications/enqueue-notification";
 import { resolveDocumentFileName } from "../../../platform/documents/document-file-name";
 import { todayJst } from "../../../platform/date/format-jst-date";
 
@@ -31,7 +27,9 @@ const REPORT_TEMPLATE_CATEGORY = "shipping_instruction";
 export class ShipmentInstructionPdfService {
   constructor(private repo: ShipmentInstructionsRepository) {}
 
-  async generatePdf(c: Context<{ Bindings: Env }>, instructionId: string) {
+  // PERF-07 B-3: PDF を作るためのデータ(GET /:id/pdf-source)。対象が無い・発行できない状態ならエラー。
+  // withLayout が false の時(受け取った PDF の保存の時)は、Excel テンプレートのレイアウトを読まない
+  async buildPdfSource(c: Context<{ Bindings: Env }>, instructionId: string, withLayout = true) {
     const header = await this.repo.findHeaderById(instructionId);
     if (!header) throw new NotFoundError("対象の出荷指示が見つかりません");
     if (header.status === "UNAPPROVED" || header.status === "REMANDED") {
@@ -75,16 +73,6 @@ export class ShipmentInstructionPdfService {
 
     const systemConfig = (await getCompanySettings(c.env.COMPANY_SETTINGS)) ?? {};
 
-    const [fontRes, logoRes, sealRes] = await Promise.all([
-      c.env.SYSTEM_BUCKET.get("fonts/company_fonts.ttf"),
-      c.env.SYSTEM_BUCKET.get("company/company_logo.png"),
-      c.env.SYSTEM_BUCKET.get("company/company_seal.png"),
-    ]);
-    if (!fontRes) throw new Error("日本語フォントファイルがR2に見つかりません");
-    const fontBuffer = await fontRes.arrayBuffer();
-    const logoBuffer = logoRes ? await logoRes.arrayBuffer() : null;
-    const sealBuffer = sealRes ? await sealRes.arrayBuffer() : null;
-
     const instructionData: InstructionPdfData = {
       documentTitle: "出荷指示書",
       code: instructionId,
@@ -111,15 +99,26 @@ export class ShipmentInstructionPdfService {
       deliveryPhone: partner.phone || null,
     };
 
-    const customPdf = await tryRenderInstructionPdfFromCustomTemplate(
-      c.env,
-      REPORT_TEMPLATE_CATEGORY,
-      instructionData,
-      fontBuffer,
-    );
-    const pdfBinary =
-      customPdf ??
-      (await generateInstructionPdf(instructionData, { fontBuffer, logoBuffer, sealBuffer }));
+    const customLayout = !withLayout
+      ? null
+      : await loadCustomLayoutSource(c.env, REPORT_TEMPLATE_CATEGORY, () => resolveInstructionPlaceholders(instructionData));
+    const source: ReportPdfSource = {
+      documentType: REPORT_TEMPLATE_CATEGORY,
+      customLayout,
+      fallback: { kind: "instruction", data: instructionData },
+    };
+    return { source, header, systemConfig, warehouse };
+  }
+
+  // PERF-07 B-4: できた PDF を保存し、記録・監査ログを残す(REQ-012: 案内メールは送らない)(generate-pdf と、ブラウザから受け取った PDF の両方)
+  async storePdf(
+    c: Context<{ Bindings: Env }>,
+    instructionId: string,
+    pdfBinary: Uint8Array,
+    built: Omit<Awaited<ReturnType<ShipmentInstructionPdfService["buildPdfSource"]>>, "source">,
+    uploadedBy?: { userId: string; size: number },
+  ) {
+    const { header } = built;
 
     const r2Path = generateAttachmentKey(
       `shipment-instructions/${instructionId}`,
@@ -145,55 +144,14 @@ export class ShipmentInstructionPdfService {
     });
     await this.repo.updateInstructionDocumentPath(instructionId, r2Path);
 
-    // Item6 Phase6-4: 倉庫の登録済み連絡先(未登録時は倉庫マスタ.emailへフォールバック)へ、
-    // 発行と同時にダウンロードページへのリンクを自動送信する。見積のように送信操作を
-    // 別途挟まない(生成完了時点で自動送信するのが自然)。複数連絡先が登録されていれば全員へ送信する
-    const contactsRepo = new WarehouseContactsRepository(c.env.DB);
-    const contacts = await contactsRepo.findActiveContactsForDocument(header.warehouseId, "shipment_instruction");
-    const recipientEmails =
-      contacts.length > 0
-        ? Array.from(
-            new Set(
-              contacts
-                .map((ct) => ct.email?.trim().toLowerCase())
-                .filter((email): email is string => !!email),
-            ),
-          )
-        : warehouse.email
-          ? [warehouse.email.trim().toLowerCase()]
-          : [];
-
-    if (recipientEmails.length > 0) {
-      const siteUrl = String((systemConfig as any).site_url || "http://localhost:3000").replace(
-        /\/$/,
-        "",
-      );
-      const downloadLink = `${siteUrl}/shipment-instruction-download?instructionId=${encodeURIComponent(instructionId)}&attachmentId=${encodeURIComponent(attachmentId)}`;
-      for (const recipientEmail of recipientEmails) {
-        c.executionCtx.waitUntil(
-          enqueueNotification({
-            dbLog: c.env.DB_LOG,
-            category: "shipment_instruction_issued",
-            documentId: instructionId,
-            recipientTo: recipientEmail,
-            subject: "【出荷指示書発行】ダウンロードのご案内",
-            body: [
-              `${warehouse.name} 御中`,
-              "",
-              "出荷指示書を発行いたしました。以下のリンクよりダウンロードをお願いいたします。",
-              downloadLink,
-              "(リンクを開いた後、本メール宛に送信される確認コードの入力が必要です)",
-            ].join("\n"),
-          }),
-        );
-      }
-    }
+    // REQ-012: 以前はここで倉庫の登録済み連絡先へ案内メールを自動で送っていた。今は画面の「メール送信」(POST /:id/send-email)で送る
 
     c.executionCtx.waitUntil(
       logAuditEvent(c, "GENERATE_SHIPMENT_INSTRUCTION_PDF", RESOURCE_KEY, instructionId, null, {
         attachmentId,
         warehouseId: header.warehouseId,
         partnerId: header.partnerId,
+        ...(uploadedBy ? { generatedIn: "browser", uploadedBy: uploadedBy.userId, pdfBytes: uploadedBy.size } : {}),
       }),
     );
 

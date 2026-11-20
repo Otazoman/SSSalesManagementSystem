@@ -205,3 +205,38 @@ describe("useDiscardGuard(ページ内のフォーム)", () => {
     expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+// BUG-081: 保存した後もモーダルを開いたままにする画面(商談)で、保存の成功のたびに discardResetKey を変えると、
+// それまでの編集は「未保存」に数えない(保存後に✕で閉じても確認を出さない)。保存後にまた編集すれば確認を出す
+describe("Modal(discardResetKey): 保存後に閉じる", () => {
+  function SavingModal({ onClose }: { onClose: () => void }) {
+    const [savedVersion, setSavedVersion] = useState(0);
+    return (
+      <Modal title="商談" onClose={onClose} warnOnDiscard discardResetKey={savedVersion}>
+        <input aria-label="名称" defaultValue="初期値" />
+        <button type="button" onClick={() => setSavedVersion((v) => v + 1)}>
+          保存
+        </button>
+      </Modal>
+    );
+  }
+
+  it("編集して保存した後に✕で閉じても確認しない。保存後にまた編集すれば確認する", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onClose = vi.fn();
+    render(<SavingModal onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "変更後" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "さらに変更" } });
+    fireEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

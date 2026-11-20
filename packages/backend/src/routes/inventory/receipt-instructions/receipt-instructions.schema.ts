@@ -9,6 +9,8 @@ export const receiptInstructionItemInputSchema = v.object({
     v.minValue(0.001, "数量は0より大きい値を指定してください"),
   ),
   memo: v.optional(v.nullable(v.string())),
+  // BUG-071: 元の発注明細(任意。発注から作った明細のみ)
+  orderItemId: v.optional(v.nullable(v.string())),
 });
 
 export const createReceiptInstructionSchema = v.object({
@@ -24,6 +26,8 @@ export const createReceiptInstructionSchema = v.object({
   memo: v.optional(v.nullable(v.string())),
   // 追加要望F: 申請者が複数部門に所属する場合に選択した申請部門(任意)
   applicantDepartmentSurrogateId: v.optional(v.nullable(v.string())),
+  // BUG-071: 「発注から選ぶ」で作った場合の元の発注(任意)
+  orderId: v.optional(v.nullable(v.string())),
 });
 
 export type ReceiptInstructionItemInput = v.InferOutput<
@@ -59,8 +63,3 @@ export type VerifyInstructionDownloadOtpInput = v.InferOutput<
   typeof VerifyInstructionDownloadOtpSchema
 >;
 
-// Item6 Phase6-4: 複数選択して一括PDF発行・送信するための入力
-export const BulkGeneratePdfSchema = v.object({
-  ids: v.pipe(v.array(v.string()), v.minLength(1, "対象を1件以上選択してください")),
-});
-export type BulkGeneratePdfInput = v.InferOutput<typeof BulkGeneratePdfSchema>;

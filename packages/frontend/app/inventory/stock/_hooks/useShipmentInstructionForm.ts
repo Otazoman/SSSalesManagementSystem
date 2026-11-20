@@ -61,6 +61,7 @@ interface ShipmentProgressItemForSuggestion {
   itemId: string | null;
   itemName: string | null;
   remainingQuantity: number;
+  isDirectShipment?: boolean;
 }
 
 export function useShipmentInstructionForm(
@@ -177,7 +178,8 @@ export function useShipmentInstructionForm(
           `/api/sales-orders/${encodeURIComponent(fromSalesOrderId)}/shipment-progress`,
         );
         const suggestions = progress
-          .filter((item) => item.remainingQuantity > 0 && !!item.itemId)
+          // BUG-109: 直送の明細は出荷指示の対象外
+          .filter((item) => item.remainingQuantity > 0 && !!item.itemId && !item.isDirectShipment)
           .map((item) => ({
             salesOrderItemId: item.salesOrderItemId,
             itemId: item.itemId as string,

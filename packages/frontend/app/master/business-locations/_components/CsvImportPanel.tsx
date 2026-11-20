@@ -9,7 +9,7 @@ interface CsvImportPanelProps {
   onImport: (file: File) => Promise<void>;
 }
 
-const HEADER_FORMAT = "id,name,postalCode,address,phoneNumber,status,memo";
+const HEADER_FORMAT = "id,name,postalCode,address,phoneNumber,faxNumber,status,memo";
 
 export default function CsvImportPanel({
   canCreate,

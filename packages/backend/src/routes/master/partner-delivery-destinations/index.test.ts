@@ -1,8 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
+import type { Env } from "../../../types/env";
+import { signSessionToken } from "../../../platform/auth/session-token";
+import { WorkflowTasksService } from "../../workflow/workflow-tasks/workflow-tasks.service";
 import { partnerDeliveryDestinationsRouter } from "./index";
+
+vi.mock("../../../workflow-engine/notifier", () => ({
+  sendWorkflowMail: vi.fn(async () => {}),
+  notifyApprovalRequestSubmitted: vi.fn(async () => {}),
+}));
 
 /**
  * 新規要望(2026-09-23): 取引先ごとの複数納品先(受注の納品先選択で使う)。
@@ -149,5 +159,142 @@ describe("PUT /:id, POST /:id/suspend, DELETE /:id", () => {
   it("存在しないIDの無効化は404を返す", async () => {
     const res = await request("/NOPE/suspend", { method: "POST" });
     expect(res.status).toBe(404);
+  });
+});
+
+// BUG-112: 取引先の承認が有効な時は、納品先の追加・無効化も取引先マスタの承認フローで承認する
+describe("BUG-112: 取引先の承認が有効な時の納品先", () => {
+  async function cookie(userId: string) {
+    const token = await signSessionToken(
+      {
+        userId,
+        employeeNumber: userId,
+        name: "テストユーザー",
+        role: "user",
+        deptName: "テスト部署",
+        companyName: "テスト会社",
+        isAuditEnabled: true,
+      },
+      await env.SESSION_SECRET.get(),
+      3600,
+    );
+    return `session_token=${token}`;
+  }
+  async function send(path: string, init: RequestInit) {
+    return request(path, {
+      ...init,
+      headers: { "Content-Type": "application/json", Cookie: await cookie("applicant-1"), ...(init.headers ?? {}) },
+    });
+  }
+  async function approve() {
+    const [log] = await db.select().from(schema.workflowLogs).where(eq(schema.workflowLogs.status, "PENDING"));
+    const app = new Hono<{ Bindings: Env }>();
+    app.post("/approve", async (c) => c.json(await WorkflowTasksService.approveTask(c, db, await c.req.json())));
+    const ctx = createExecutionContext();
+    const res = await app.request(
+      "/approve",
+      {
+        method: "POST",
+        headers: { Cookie: await cookie("approver-1"), "Content-Type": "application/json" },
+        body: JSON.stringify({ logId: log.id, requestId: log.requestId, userId: "approver-1" }),
+      },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  beforeEach(async () => {
+    await db.delete(schema.workflowLogs);
+    await db.delete(schema.masterApprovalContexts);
+    await db.delete(schema.masterApprovalRequests);
+    await db.delete(schema.approvalFlowSteps);
+    await db.delete(schema.approvalFlows);
+    await db.delete(schema.userRoles);
+    await db.delete(schema.roles);
+    await db.delete(schema.users);
+    for (const id of ["applicant-1", "approver-1"]) {
+      await db.insert(schema.users).values({
+        id,
+        employeeNumber: id,
+        email: `${id}@example.com`,
+        name: id,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    await db.insert(schema.roles).values({ id: "approver_role", name: "approver_role", createdAt: now });
+    await db.insert(schema.userRoles).values({ userId: "approver-1", roleId: "approver_role", departmentSurrogateId: null });
+    await env.COMPANY_SETTINGS.put("config", JSON.stringify({ is_partner_approval_enabled: true }));
+  });
+  afterEach(async () => {
+    await env.COMPANY_SETTINGS.put("config", JSON.stringify({}));
+  });
+
+  async function seedPartnerFlow() {
+    await db.insert(schema.approvalFlows).values({
+      id: "flow-partners",
+      name: "取引先",
+      requestType: "master_partners",
+      minAmount: 0,
+      maxAmount: 999999999,
+      isActive: true,
+    });
+    await db.insert(schema.approvalFlowSteps).values({
+      id: "flow-partners-step-1",
+      flowId: "flow-partners",
+      stepOrder: 1,
+      approverRoleId: "approver_role",
+    });
+  }
+
+  it("追加は仮登録になり、取引先マスタの承認フローで申請され、承認で有効になる", async () => {
+    await seedPartnerFlow();
+
+    const res = await send("/register", { method: "POST", body: JSON.stringify({ partnerId: "PARTNER-1", name: "名古屋支店" }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; status: string };
+    expect(body.status).toBe("temporary");
+
+    const [requestRow] = await db.select().from(schema.masterApprovalRequests);
+    expect(requestRow).toMatchObject({ targetType: "master_delivery_destinations", targetId: body.id, flowId: "flow-partners" });
+    const [pending] = await db.select().from(schema.partnerDeliveryDestinations);
+    expect(pending.status).toBe("temporary");
+
+    expect((await approve()).status).toBe(200);
+    const [approved] = await db.select().from(schema.partnerDeliveryDestinations);
+    expect(approved.status).toBe("active");
+  });
+
+  it("承認フローが無ければ申請できず、仮登録の行も残らない", async () => {
+    const res = await send("/register", { method: "POST", body: JSON.stringify({ partnerId: "PARTNER-1", name: "名古屋支店" }) });
+    expect(res.status).toBe(400);
+    expect(await db.select().from(schema.partnerDeliveryDestinations)).toHaveLength(0);
+  });
+
+  it("無効化は申請になり(承認待ちの間は操作できない)、承認で無効になる", async () => {
+    await seedPartnerFlow();
+    await db.insert(schema.partnerDeliveryDestinations).values({
+      id: "DD-1",
+      partnerId: "PARTNER-1",
+      name: "東京支店",
+      status: "active",
+      createdBy: "system",
+      createdAt: now,
+      updatedBy: "system",
+      updatedAt: now,
+    });
+
+    const res = await send("/DD-1/suspend", { method: "POST" });
+    expect(res.status).toBe(200);
+    const [pending] = await db.select().from(schema.partnerDeliveryDestinations);
+    expect(pending.status).toBe("temporary");
+    expect((await send("/DD-1/suspend", { method: "POST" })).status).toBe(400);
+
+    expect((await approve()).status).toBe(200);
+    const [suspended] = await db.select().from(schema.partnerDeliveryDestinations);
+    expect(suspended.status).toBe("suspended");
   });
 });

@@ -5,6 +5,8 @@ import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 
 interface OrderTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   orders: OrderRecord[];
   partners: PartnerMaster[];
   userMaster: UserOption[];
@@ -95,6 +97,7 @@ function SortableTh({
 // Item7: quotes/_components/QuoteTable.tsxと同じ方針。見積の改定(Ver.UP)に相当する
 // バージョン管理が受注には無いため、baseIdによるグルーピングは行わず1受注=1行で表示する
 export function OrderTable({
+  approvalEnabled,
   orders,
   partners,
   userMaster,
@@ -289,7 +292,7 @@ export function OrderTable({
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
                       <StatusBadge
-                        {...getDocumentLifecycleStatus(order.status)}
+                        {...getDocumentLifecycleStatus(order.status, { approvalEnabled })}
                       />
                     </td>
                     <td

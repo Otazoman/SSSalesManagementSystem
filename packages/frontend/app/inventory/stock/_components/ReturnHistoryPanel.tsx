@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { displayUserName } from "../../../_shared/user-name";
 import { Button } from "../../../_shared/ui/Button";
 import { usePagePermissions } from "../../../hooks/use-page-permission";
 import { usePaginationSetting } from "../../../_shared/hooks/use-pagination-setting";
@@ -297,7 +298,7 @@ export function ReturnHistoryPanel({ onEdit }: ReturnHistoryPanelProps) {
             <td className="px-4 py-2">
               <StatusBadge {...getApprovalResultStatus(r.status)} />
             </td>
-            <td className="px-4 py-2 text-slate-600">{r.createdBy}</td>
+            <td className="px-4 py-2 text-slate-700">{displayUserName(history.users, r.createdBy)}</td>
             <td className="px-4 py-2 text-right">
               {r.status === "REMANDED" && onEdit && (
                 <Button

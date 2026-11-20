@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "../../../_shared/ui/Button";
 import { Modal } from "../../../_shared/ui/Modal";
+import { MessageBanner } from "../../../_shared/ui/MessageBanner";
 import { BillingDetail } from "../_types";
 import { PartnerContactOption } from "../_hooks/useBillingActions";
 import { BillingMailModal } from "./BillingMailModal";
@@ -8,11 +9,15 @@ import { DocumentCompletionControl } from "../../../_shared/ui/DocumentCompletio
 import { METHOD_LABELS } from "../../../_shared/payment-method-labels";
 import { todayJst } from "../../../_shared/jst-date";
 import { useConfirm } from "../../../_shared/hooks/use-confirm";
+import { ReconciliationApprovalBadge, pendingApprovalAmount } from "../../../_shared/ui/ReconciliationApprovalBadge";
 
 interface BillingDetailModalProps {
   detail: BillingDetail | null;
   onClose: () => void;
   onGeneratePDF: (id: string) => void;
+  // REQ-017: 請求の承認が ON の時は、承認済みになるまで PDF の発行・送信をできなくし、承認申請のボタンを出す
+  approvalEnabled?: boolean;
+  onSubmitForApproval?: (id: string) => void;
   onRecordPaymentReceipt: (
     billingHeaderId: string,
     payload: {
@@ -33,6 +38,9 @@ interface BillingDetailModalProps {
   onContactSelect: (contactId: string) => void;
   onSendEmail: () => void;
   isMailSending: boolean;
+  // BUG-120(BUG-114 の調べで見つけたもの): 発行・送信・入金の記録の結果を詳細画面の中に出す(以前は裏の一覧の上にしか出なかった)
+  message?: string;
+  error?: string;
 }
 
 // Item8 Phase4: 請求内容の確認・PDF発行・手動消込入力を行う詳細モーダル
@@ -40,6 +48,8 @@ export function BillingDetailModal({
   detail,
   onClose,
   onGeneratePDF,
+  approvalEnabled = false,
+  onSubmitForApproval,
   onRecordPaymentReceipt,
   showMailModal,
   setShowMailModal,
@@ -51,6 +61,8 @@ export function BillingDetailModal({
   onContactSelect,
   onSendEmail,
   isMailSending,
+  message = "",
+  error = "",
 }: BillingDetailModalProps) {
   const [receivedDate, setReceivedDate] = useState(
     todayJst(),
@@ -58,6 +70,8 @@ export function BillingDetailModal({
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("BANK_TRANSFER");
   const [memo, setMemo] = useState("");
+  // BUG-087: 記録に成功するたびに増やし、Modal の「未保存の編集」の印を消す(商談の BUG-081 と同じ形)
+  const [savedVersion, setSavedVersion] = useState(0);
   // K-4-2: 対象売上明細の展開表示状態
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Set<string>>(
     new Set(),
@@ -67,8 +81,16 @@ export function BillingDetailModal({
   if (!detail) return null;
 
   const remaining = Math.max(detail.totalAmount - detail.reconciledAmount, 0);
+  // REQ-018: 承認待ちの入金(消込額にはまだ入っていない)
+  const pendingAmount = pendingApprovalAmount(detail.paymentReceipts);
   // BUG-051: 未発行(下書き)の請求には入金を記録できない(請求書を発行するとISSUEDになる)
-  const isDraft = detail.status === "DRAFT";
+  // REQ-017: 承認申請中・承認済み(まだ発行していない)の請求も、入金を記録できない
+  const isDraft = detail.status === "DRAFT" || detail.status === "PENDING_APPROVAL" || detail.status === "APPROVED";
+  // REQ-017: 承認が ON の時、承認済み(または発行済み)になるまで PDF の発行・送信はできない
+  const awaitingApproval = approvalEnabled && (detail.status === "DRAFT" || detail.status === "PENDING_APPROVAL");
+  // BUG-094: 請求額が0円(相殺・赤伝など)で未完了の請求は、金額を入力せずに0円で完了にできる
+  const canCompleteWithZero =
+    !isDraft && remaining === 0 && pendingAmount === 0 && detail.reconciliationStatus !== "RECONCILED";
 
   const toggleExpanded = (itemId: string) => {
     setExpandedInvoiceIds((prev) => {
@@ -100,6 +122,20 @@ export function BillingDetailModal({
     if (success) {
       setAmount("");
       setMemo("");
+      setSavedVersion((v) => v + 1);
+    }
+  };
+
+  const handleCompleteWithZero = async () => {
+    const success = await onRecordPaymentReceipt(detail.id, {
+      receivedDate,
+      amount: 0,
+      method,
+      memo: memo || undefined,
+    });
+    if (success) {
+      setMemo("");
+      setSavedVersion((v) => v + 1);
     }
   };
 
@@ -117,9 +153,12 @@ export function BillingDetailModal({
         size="2xl"
         onClose={onClose}
         warnOnDiscard
+        discardResetKey={savedVersion}
       >
         {/* 進捗確認(閲覧専用)に表示される完了/進行中の手動設定。この画面の更新権限がある場合のみ変更できる */}
         <DocumentCompletionControl stageKey="billing" documentId={detail.id} />
+
+        <MessageBanner message={message || undefined} error={error ? `⚠️ ${error}` : undefined} />
 
         <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-lg p-3.5 border border-slate-200/80 text-xs">
           <div>
@@ -150,6 +189,11 @@ export function BillingDetailModal({
               ¥{detail.reconciledAmount.toLocaleString()} / ¥
               {remaining.toLocaleString()}
             </span>
+            {pendingAmount > 0 && (
+              <span className="block font-mono font-bold text-amber-800">
+                承認待ち ¥{pendingAmount.toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -262,6 +306,21 @@ export function BillingDetailModal({
           </div>
         </div>
 
+        {awaitingApproval && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-bold">
+              {detail.status === "PENDING_APPROVAL"
+                ? "🟡 承認申請中です。承認されると請求書PDFを発行・送信できます"
+                : "承認機能が有効なため、請求書PDFを発行・送信する前に承認の申請が必要です"}
+            </span>
+            {detail.status === "DRAFT" && onSubmitForApproval && (
+              <Button variant="primary" onClick={() => onSubmitForApproval(detail.id)}>
+                📨 承認を申請する
+              </Button>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2">
           {detail.status === "ISSUED" && (
             <a
@@ -276,14 +335,15 @@ export function BillingDetailModal({
           <button
             type="button"
             onClick={() => onGeneratePDF(detail.id)}
-            className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors"
+            disabled={awaitingApproval}
+            className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             🧾{" "}
             {detail.status === "ISSUED"
               ? "請求書PDFを再発行する"
               : "請求書PDFを発行する"}
           </button>
-          <Button onClick={() => setShowMailModal(true)}>
+          <Button onClick={() => setShowMailModal(true)} disabled={awaitingApproval}>
             {/* 追加要望: PDF未発行の場合も送信時にサーバー側で自動生成されるため、
                 ISSUED状態を問わず常に送信ボタンを表示する(初回送信・再送付を区別しない) */}
             📧 {detail.status === "ISSUED" ? "請求書を再送付" : "請求書を送信"}
@@ -351,7 +411,12 @@ export function BillingDetailModal({
               ⚠️ 請求書を発行してから入金を記録できます(未発行の請求には入金を記録できません)。
             </p>
           )}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {canCompleteWithZero && (
+              <Button variant="secondary" onClick={handleCompleteWithZero}>
+                0円で消込を完了する
+              </Button>
+            )}
             <Button
               variant="success"
               onClick={handleSubmitReceipt}
@@ -379,7 +444,8 @@ export function BillingDetailModal({
                   <span className="text-slate-600">
                     {METHOD_LABELS[r.method] || r.method}
                   </span>
-                  <span className="font-mono font-bold text-slate-800">
+                  <span className="flex items-center gap-1.5 font-mono font-bold text-slate-800">
+                    <ReconciliationApprovalBadge status={r.approvalStatus} />
                     ¥{r.amount.toLocaleString()}
                   </span>
                 </div>
@@ -401,6 +467,7 @@ export function BillingDetailModal({
           onClose={() => setShowMailModal(false)}
           onSend={onSendEmail}
           isMailSending={isMailSending}
+          error={error}
         />
       )}
     </>

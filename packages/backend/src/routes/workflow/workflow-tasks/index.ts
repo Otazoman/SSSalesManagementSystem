@@ -23,6 +23,9 @@ import {
 
 const workflowTasksRouter = new Hono<{ Bindings: Env }>();
 
+// PERF-02: 申請履歴(GET /history)の1ページの上限(他の一覧 API の上限 500 より小さくする)
+const HISTORY_MAX_LIMIT = 50;
+
 // BUG-013: 操作する人(承認者・申請者)は、ブラウザから送られた userId ではなく、ログイン情報
 // (署名付きのセッション cookie)から決める。送られた userId は、API の形を変えないため受け取るが使わない。
 async function getSessionUserId(c: Context<{ Bindings: Env }>): Promise<string | null> {
@@ -166,12 +169,11 @@ workflowTasksRouter.get(
     const query = { ...parseResult.output, userId };
 
     const db = createWorkflowTasksDb(c.env.DB);
-    const rawQuery = c.req.query();
-    if (rawQuery.page === undefined && rawQuery.limit === undefined) {
-      const result = await WorkflowTasksService.getHistory(db, query);
-      return c.json(result);
-    }
-    const paginationParams = parsePaginationParams(rawQuery);
+    // PERF-02: ページ指定なしの古い形({histories, isAdmin}。全件を組み立てて返す)は、呼ぶ画面が無いため廃止し、
+    // 常にページ単位で返す。1ページの上限はこの API だけ 50 件(1ページ分の名前・プレビュー・承認の進み具合を
+    // 組み立てる処理を、無料プランの CPU 時間・D1 の問い合わせ回数の上限に収めるため)
+    const paginationParams = parsePaginationParams(c.req.query());
+    paginationParams.limit = Math.min(paginationParams.limit, HISTORY_MAX_LIMIT);
     const result = await WorkflowTasksService.getHistoryPage(
       db,
       query,
@@ -182,6 +184,27 @@ workflowTasksRouter.get(
     return respondError(c, err, "履歴情報の取得に失敗しました");
   }
 });
+
+/** BUG-119: 申請履歴の行を開いた時の中身(プレビュー・承認の進み具合)。一覧には中身を付けない */
+workflowTasksRouter.get(
+  "/history/:logId/detail",
+  describeApiRoute({
+    summary: "申請履歴の1行の中身(プレビュー・承認の進み具合)",
+    tags: ["workflow-tasks"],
+    responses: { 200: { description: "申請履歴の行(中身つき)" }, 401: { description: "未ログイン" }, 404: { description: "見られる行に無い" } },
+  }),
+  async (c) => {
+    try {
+      const userId = await getSessionUserId(c);
+      if (!userId) return unauthorized(c);
+      const db = createWorkflowTasksDb(c.env.DB);
+      const item = await WorkflowTasksService.getHistoryDetail(db, { userId, status: "", applicantId: "", startDate: "", endDate: "" }, c.req.param("logId"));
+      return c.json(item);
+    } catch (err) {
+      return respondError(c, err, "申請履歴の中身の取得に失敗しました");
+    }
+  },
+);
 
 /** 一括承認処理 */
 workflowTasksRouter.post(

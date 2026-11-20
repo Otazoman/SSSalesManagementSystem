@@ -36,6 +36,15 @@ export const UpdateCompanySettingsSchema = v.object({
   // 新規要望: 営業拠点マスタ(2026-09-23新設)
   is_business_location_approval_enabled: v.optional(booleanTransform, false),
   is_tax_category_approval_enabled: v.optional(booleanTransform, false),
+  // BUG-097・BUG-098
+  is_project_approval_enabled: v.optional(booleanTransform, false),
+  is_item_reorder_setting_approval_enabled: v.optional(booleanTransform, false),
+  // REQ-017
+  is_billing_approval_enabled: v.optional(booleanTransform, false),
+  is_cash_receipt_approval_enabled: v.optional(booleanTransform, false),
+  is_payment_disbursement_approval_enabled: v.optional(booleanTransform, false),
+  // REQ-026: 支払の作成の承認
+  is_payment_approval_enabled: v.optional(booleanTransform, false),
   // Item4-e: 伝票単位の承認トグル(旧is_document_approval_enabledという単一グローバルフラグを廃止し、
   // 伝票種別ごとに置き換え)。現時点で実際に機能を持つのはis_quote_approval_enabledのみ。
   // 他7項目は将来のItem7-10実装時に使う想定で、値の保存先だけ先に用意しておく。
@@ -106,6 +115,27 @@ export const UpdateCompanySettingsSchema = v.object({
     v.optional(v.union([v.string(), v.number()]), "5"),
     v.transform((val) => String(val).trim()),
     v.regex(/^\d{1,3}$/, "ログインの失敗回数の上限は、0〜999の数字で入力してください"),
+  ),
+  // REQ-004: ログイン時の OTP(帳票ダウンロード用の otp_* とは別の設定)。桁数・有効期限(分)・入力の試行回数の上限・再送の間隔(秒)
+  login_otp_digit_count: v.pipe(
+    v.optional(v.union([v.string(), v.number()]), "6"),
+    v.transform((val) => String(val).trim()),
+    v.check((val) => /^\d$/.test(val) && Number(val) >= 4 && Number(val) <= 8, "ログインOTPの桁数は、4〜8の数字で入力してください"),
+  ),
+  login_otp_expiry_minutes: v.pipe(
+    v.optional(v.union([v.string(), v.number()]), "10"),
+    v.transform((val) => String(val).trim()),
+    v.check((val) => /^\d{1,2}$/.test(val) && Number(val) >= 1 && Number(val) <= 60, "ログインOTPの有効期限は、1〜60(分)の数字で入力してください"),
+  ),
+  login_otp_max_attempts: v.pipe(
+    v.optional(v.union([v.string(), v.number()]), "5"),
+    v.transform((val) => String(val).trim()),
+    v.check((val) => /^\d{1,2}$/.test(val) && Number(val) >= 1 && Number(val) <= 10, "ログインOTPの試行回数の上限は、1〜10の数字で入力してください"),
+  ),
+  login_otp_resend_interval_seconds: v.pipe(
+    v.optional(v.union([v.string(), v.number()]), "60"),
+    v.transform((val) => String(val).trim()),
+    v.check((val) => /^\d{1,4}$/.test(val) && Number(val) <= 3600, "ログインOTPの再送の間隔は、0〜3600(秒)の数字で入力してください"),
   ),
   // BUG-046: パスワードのルール。本人が設定する時(変更・再設定)に確かめ、管理者がユーザー管理で設定する時は確かめない
   password_min_length: v.pipe(

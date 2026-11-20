@@ -8,6 +8,8 @@ import { usePermissionContext } from "../../context/permissioncontext";
 import { usePurchaseRequisitionOperations } from "./_hooks/usePurchaseRequisitionOperations";
 import { PurchaseRequisitionForm } from "./_components/PurchaseRequisitionForm";
 import { PurchaseRequisitionTable } from "./_components/PurchaseRequisitionTable";
+import { PurchaseRequisitionPreview } from "./_components/PurchaseRequisitionPreview";
+import { SavedSummaryModal } from "../../_shared/ui/SavedSummaryModal";
 import { PurchaseRequisitionSearchForm } from "./_components/PurchaseRequisitionSearchForm";
 import { SalesOrderPickerModal } from "./_components/SalesOrderPickerModal";
 import { PurchaseOrderPickerModal } from "./_components/PurchaseOrderPickerModal";
@@ -86,12 +88,13 @@ export default function PurchaseRequisitionsPage() {
     accounts,
     partnerId,
     partnerName,
-    setPartnerName,
     partnerInputType,
-    onPartnerTypeChange,
     onSupplierMasterSelect,
     projectId,
     setProjectId,
+    isDirectShipment,
+    setIsDirectShipment,
+    directSalesOrderId,
     applicantId,
     setApplicantId,
     inputPersonEmployeeNumber,
@@ -119,6 +122,11 @@ export default function PurchaseRequisitionsPage() {
     isSubmitting,
     handleClearForm,
     handleSelectEdit,
+    previewRequisition,
+    setPreviewRequisition,
+    handleOpenPreview,
+    savedSummary,
+    setSavedSummary,
     handlePrefillFromSalesOrder,
     handlePrefillFromPurchaseOrder,
     handlePrefillFromReorderSuggestion,
@@ -213,7 +221,7 @@ export default function PurchaseRequisitionsPage() {
                     { value: "all", label: "🌐 すべて" },
                     { value: "DRAFT", label: "⚪ 下書き" },
                     { value: "PENDING_APPROVAL", label: "🟡 承認申請中" },
-                    { value: "APPROVED", label: "🟢 承認済み" },
+                    { value: "APPROVED", label: "🟢 承認済み・確定" },
                     { value: "PENDING_DELETION", label: "🔴 削除申請中" },
                   ]}
                   value={filterStatus}
@@ -270,7 +278,7 @@ export default function PurchaseRequisitionsPage() {
                   disabled={!canCreate}
                   className="text-xs border border-slate-300 px-3 py-1.5 rounded font-bold text-slate-700 bg-white hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  🔗 受注の欠品から購買申請を作成
+                  🔗 受注から購買申請を作成
                 </button>
                 <button
                   type="button"
@@ -308,6 +316,7 @@ export default function PurchaseRequisitionsPage() {
           </div>
 
           <PurchaseRequisitionTable
+            approvalEnabled={isPurchaseRequisitionWfEnabled}
             requisitions={requisitions}
             canCreate={canCreate}
             canUpdate={canUpdate}
@@ -316,10 +325,18 @@ export default function PurchaseRequisitionsPage() {
             onSelectEdit={handleSelectEdit}
             onDeleteLink={handleDeleteLink}
             onCopyToNewDraft={handleCopyToNewDraft}
+            onPreview={handleOpenPreview}
+            userMaster={userMaster}
             sortBy={sortBy}
             sortDirection={sortDirection}
             sortKeys={sortKeys}
             onSortChange={setSort}
+          />
+          <PurchaseRequisitionPreview
+            requisition={previewRequisition}
+            suppliers={suppliers}
+            allItems={allItems}
+            onClose={() => setPreviewRequisition(null)}
           />
           {/* BUG-032: 会社設定の「一覧のページ分割」に従う */}
           <Pagination
@@ -375,13 +392,14 @@ export default function PurchaseRequisitionsPage() {
             moveItemDown={moveItemDown}
             partnerId={partnerId}
             partnerName={partnerName}
-            setPartnerName={setPartnerName}
             partnerInputType={partnerInputType}
-            onPartnerTypeChange={onPartnerTypeChange}
             onSupplierMasterSelect={onSupplierMasterSelect}
             suppliers={suppliers}
             projectId={projectId}
             setProjectId={setProjectId}
+            isDirectShipment={isDirectShipment}
+            setIsDirectShipment={setIsDirectShipment}
+            directSalesOrderId={directSalesOrderId}
             applicantId={applicantId}
             setApplicantId={setApplicantId}
             inputPersonEmployeeNumber={inputPersonEmployeeNumber}
@@ -425,6 +443,33 @@ export default function PurchaseRequisitionsPage() {
             }}
           />
         </div>
+      )}
+      {/* REQ-008: 保存した後の確認(仕入の画面と同じ) */}
+      {savedSummary && (
+        <SavedSummaryModal
+          title="購買申請を保存しました"
+          codeLabel="購買申請番号"
+          partnerLabel="仕入先名"
+          summary={savedSummary}
+          previewLabel="👁️ 保存した購買申請を内容確認で見る"
+          approveLabel={isPurchaseRequisitionWfEnabled ? "🚀 このまま承認を申請する" : "✅ このまま確定する"}
+          onPreview={() => {
+            const targetId = savedSummary.id;
+            setSavedSummary(null);
+            void handleOpenPreview({ id: targetId } as PurchaseRequisitionRecord);
+          }}
+          // BUG-108: 承認機能が無効の時も、保存の後にそのまま確定できる(発注と同じ)
+          onApprove={() => {
+            setSavedSummary(null);
+            void handleSubmitForApproval();
+          }}
+          onContinue={() => setSavedSummary(null)}
+          onBackToList={() => {
+            setSavedSummary(null);
+            handleClearForm();
+            setViewMode("LIST");
+          }}
+        />
       )}
     </div>
   );

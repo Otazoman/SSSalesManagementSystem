@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-type Step = "email" | "otp" | "done";
+// REQ-007: メールアドレスの入力をやめた。"request"=「確認コードを送信」ボタンだけ → "otp"=コード入力 → "done"
+type Step = "request" | "otp" | "done";
 
 export interface UseOtpDownloadOptions {
   /** 例: "/api/sales-orders"(下に /download-request/:id[/:attachmentId] と /download-verify/... を持つAPI) */
@@ -17,7 +18,8 @@ export interface UseOtpDownloadOptions {
 }
 
 /**
- * メールアドレス入力→確認コード(OTP)→ダウンロード、の公開ダウンロード画面の共通ロジック。
+ * 確認コード(OTP)の発行→コードの入力→ダウンロード、の公開ダウンロード画面の共通ロジック。
+ * REQ-007: 以前は最初にメールアドレスを入力させていた。今は入荷指示書と同じく、登録済みの宛先の全員にコードを送る(メールアドレスは送らない)。
  * 見積書・注文請書・発注書・検収書・売上関連書類・請求書のダウンロード画面で共通(差はAPIの場所・ID名・ファイル名のみ)。
  */
 export function useOtpDownload({
@@ -32,8 +34,7 @@ export function useOtpDownload({
     ? searchParams.get("attachmentId") || ""
     : "";
 
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<Step>("request");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -61,14 +62,13 @@ export function useOtpDownload({
       const res = await fetch(`${apiBasePath}/download-request/${idPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({}),
       });
       const data = (await res.json()) as { message?: string };
       if (!res.ok) throw new Error(data.message || "送信に失敗しました");
 
       setMessage(
-        data.message ||
-          "入力されたメールアドレスが有効な場合、確認コードを送信しました。",
+        data.message || "登録されているメールアドレスに確認コードを送信しました。",
       );
       setStep("otp");
     } catch (err) {
@@ -87,7 +87,7 @@ export function useOtpDownload({
       const res = await fetch(`${apiBasePath}/download-verify/${idPath}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp }),
+        body: JSON.stringify({ otp }),
       });
 
       if (!res.ok) {
@@ -113,8 +113,9 @@ export function useOtpDownload({
     }
   };
 
-  const handleBackToEmail = () => {
-    setStep("email");
+  // 確認コードを送り直す画面に戻る
+  const handleBackToRequest = () => {
+    setStep("request");
     setOtp("");
     setError("");
     setMessage("");
@@ -123,8 +124,6 @@ export function useOtpDownload({
   return {
     missingParams,
     step,
-    email,
-    setEmail,
     otp,
     setOtp,
     error,
@@ -134,6 +133,6 @@ export function useOtpDownload({
     fileName,
     handleRequestOtp,
     handleVerifyOtp,
-    handleBackToEmail,
+    handleBackToRequest,
   };
 }

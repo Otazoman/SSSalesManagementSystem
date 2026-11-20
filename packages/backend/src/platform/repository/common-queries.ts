@@ -99,3 +99,9 @@ export async function findActiveContactsByPartnerId(
       ),
     );
 }
+
+// BUG-092: 帳票の担当者名。社員番号1人分の氏名(引けない時・未指定の時は空欄)
+export async function findUserName(db: AppDb, employeeNumber: string | null | undefined): Promise<string> {
+  if (!employeeNumber) return "";
+  return (await findUserNames(db, [employeeNumber])).get(employeeNumber) ?? "";
+}

@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "../../../_shared/ui/Button";
+import { withRequestedDeliveryDate } from "../_hooks/parse-delivery-date-text";
 import {
   PurchaseOrderItemRecord,
   ItemMaster,
@@ -82,6 +83,13 @@ export function PurchaseOrderItemsTable({
       {items.length === 0 && (
         <p className="text-[11px] text-slate-600">
           明細行がありません。「行を追加」から入力してください。
+        </p>
+      )}
+
+      {items.length > 0 && (
+        // REQ-020: 希望納期と回答納期の関係の説明
+        <p className="text-[11px] text-slate-700">
+          受注とつながらない明細は、希望納期が回答納期に入ります(変更できます)。受注とつながる明細の回答納期は、受注の納期に反映できます。
         </p>
       )}
 
@@ -278,9 +286,8 @@ export function PurchaseOrderItemsTable({
                               value={item.requestedDeliveryDate || ""}
                               disabled={isLocked}
                               onChange={(e) =>
-                                onItemChange(idx, {
-                                  requestedDeliveryDate: e.target.value || null,
-                                })
+                                // REQ-020: 受注とつながらない明細は、回答納期も希望納期に合わせる(回答納期を手で変えた後は合わせない)
+                                onItemChange(idx, withRequestedDeliveryDate(item, e.target.value || null))
                               }
                             />
                           </label>

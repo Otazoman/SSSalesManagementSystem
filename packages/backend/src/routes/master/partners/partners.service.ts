@@ -21,6 +21,10 @@ import { determineInitialStatus } from "../../../workflow-engine/settings";
 import { generateUniqueMasterCode } from "../../../platform/id/resolve-master-id";
 import { SortQuery } from "../../../platform/http/sort";
 import { csvField } from "../../../platform/csv/csv-writer";
+import { assertNotWarehousePartner } from "../../../platform/partners/warehouse-partner";
+import { createDb } from "../../../platform/db/create-db";
+import * as schema from "../../../db/schema";
+import { eq } from "drizzle-orm";
 
 const RESOURCE_KEY = "master_partners";
 
@@ -57,6 +61,8 @@ export class PartnersService {
       (await generateUniqueMasterCode(this.c, "partners", (id) =>
         this.repo.findById(id).then((r) => !!r),
       ));
+    // REQ-006: 種類「倉庫」・倉庫コードと同じ番号の取引先は、取引先マスタからは登録しない(倉庫マスタに合わせて自動で作る)
+    await assertNotWarehousePartner(createDb(this.c.env.DB), resolvedId, data.type);
 
     const existing = await this.repo.findById(resolvedId);
     if (existing) {
@@ -92,6 +98,8 @@ export class PartnersService {
     if (!oldSnapshot) {
       throw new NotFoundError("更新対象の取引先が存在しません");
     }
+    // REQ-006: 倉庫の取引先は倉庫マスタで直す
+    await assertNotWarehousePartner(createDb(this.c.env.DB), id, data.type);
 
     // ➕ 【R2クリーンアップ】不要になった旧R2ファイルをバケットから削除
     const oldAttachments = await this.repo.findAttachmentsByPartnerId(id);
@@ -121,6 +129,8 @@ export class PartnersService {
     if (!oldSnapshot) {
       throw new NotFoundError("対象の取引先が存在しません");
     }
+    // REQ-006: 倉庫の取引先は倉庫マスタで直す
+    await assertNotWarehousePartner(createDb(this.c.env.DB), id);
 
     await this.repo.updateStatus(id, "suspended", operatorId);
 
@@ -140,6 +150,8 @@ export class PartnersService {
     if (!oldSnapshot) {
       throw new NotFoundError("削除対象の取引先が存在しません");
     }
+    // REQ-006: 倉庫の取引先は倉庫マスタで直す
+    await assertNotWarehousePartner(createDb(this.c.env.DB), id);
 
     if (oldSnapshot.status !== "suspended") {
       throw new BadRequestError(
@@ -306,6 +318,15 @@ export class PartnersService {
         throw new BadRequestError(`${cols[0]}: 法人番号は13桁の数字で指定してください`);
       }
     }
+    // REQ-006: 倉庫コードと同じ番号の新しい取引先は登録しない(倉庫の取引先の番号のため)
+    const db = createDb(this.c.env.DB);
+    for (const cols of allRows.slice(1)) {
+      if (cols.length <= 1 || !cols[0] || !cols[1] || cols[2]?.trim() === "WAREHOUSE") continue;
+      const existing = await this.repo.findById(cols[0]);
+      if (existing) continue;
+      const [warehouse] = await db.select({ id: schema.warehouses.id }).from(schema.warehouses).where(eq(schema.warehouses.id, cols[0])).limit(1);
+      if (warehouse) throw new BadRequestError(`${cols[0]}: 倉庫コードと同じ番号のため、取引先として登録できません`);
+    }
 
     for (const cols of allRows.slice(1)) {
       const [
@@ -328,6 +349,8 @@ export class PartnersService {
       ] = cols;
 
       if (!id || !name) continue;
+      // REQ-006: 倉庫の取引先(CSV に出力された行も)は取り込まない(倉庫マスタに合わせて自動で作るため)
+      if (type?.trim() === "WAREHOUSE" || (await this.repo.findById(id))?.type === "WAREHOUSE") continue;
 
       // 追加要望L-4-a: 番号列(末尾2列)がある新形式CSVのみ反映する(検証は上の事前ループで実施済み)。
       // 旧形式CSVでは既存の番号を変更しない

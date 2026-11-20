@@ -5,6 +5,8 @@ export const GetWarehousesQuerySchema = v.object({
   id: v.optional(v.string()),
   name: v.optional(v.string()),
   status: v.optional(v.string()),
+  // REQ-005: "true" の時だけ、直送用の倉庫(区分「直送」)も含める(倉庫マスタの一覧など)
+  includeDirect: v.optional(v.string()),
   sortBy: v.optional(v.string()),
   sortOrder: v.optional(v.string()),
 });
@@ -44,7 +46,8 @@ export const warehouseUpsertSchema = v.object({
   businessStartTime: v.optional(v.nullable(v.string())),
   businessEndTime: v.optional(v.nullable(v.string())),
   storageRestrictions: v.optional(v.nullable(v.string())),
-  warehouseType: v.optional(v.picklist(["INTERNAL", "EXTERNAL"]), "INTERNAL"),
+  // REQ-005: DIRECT(直送)は直送完了の記録用。システムが自動で作る(倉庫マスタでの名前の変更などのため受け付ける)
+  warehouseType: v.optional(v.picklist(["INTERNAL", "EXTERNAL", "DIRECT"]), "INTERNAL"),
   status: v.optional(v.string(), "temporary"),
   memo: v.optional(v.nullable(v.string())),
   availableDays: v.optional(v.array(warehouseAvailableDaySchema)),

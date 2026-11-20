@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { OutsideInventoryNote, type OutsideInventoryLine } from "../../../_shared/ui/OutsideInventoryNote";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { ShipmentProgressItem } from "../_types";
 
 interface OrderShipmentProgressProps {
   orderId: string;
+  // REQ-011(1): 品目マスタに無い明細(直接入力)。出荷の対象外として表の下に灰色で出す
+  outsideInventoryLines?: OutsideInventoryLine[];
 }
 
 // Item7残課題6: 承認済み受注の出荷状況(明細ごとの出荷済/残数量・倉庫別引当内訳)を表示し、
@@ -14,7 +17,7 @@ interface OrderShipmentProgressProps {
 // 実際の作成フォームは/inventory/shipping側の既存フォームをクエリパラメータ経由でprefillする
 // (このコンポーネント自体は作成処理を持たない。画面構成再編フェーズ7により旧
 // /inventory/instructions・/inventory/stockは廃止され、出荷指示・出庫とも/inventory/shippingに統合)
-export function OrderShipmentProgress({ orderId }: OrderShipmentProgressProps) {
+export function OrderShipmentProgress({ orderId, outsideInventoryLines = [] }: OrderShipmentProgressProps) {
   const router = useRouter();
   const [items, setItems] = useState<ShipmentProgressItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +44,9 @@ export function OrderShipmentProgress({ orderId }: OrderShipmentProgressProps) {
 
   // Item7残課題8: 出荷指示/出庫の業務フロー統一により、倉庫種別を問わず出荷指示を起点とする
   // (自社倉庫向けの出荷指示も作成できるようになったため、個別の出庫画面への導線は廃止した)
-  const hasRemaining = items.some((item) => item.remainingQuantity > 0);
+  // BUG-109: 直送の明細は発注の「直送完了」で出荷するため、出荷指示を作る対象に数えない
+  const hasRemaining = items.some((item) => item.remainingQuantity > 0 && !item.isDirectShipment);
+  const hasDirectRemaining = items.some((item) => item.remainingQuantity > 0 && item.isDirectShipment);
 
   if (loading) {
     return <p className="text-xs text-slate-600">出荷状況を読み込み中...</p>;
@@ -72,7 +77,14 @@ export function OrderShipmentProgress({ orderId }: OrderShipmentProgressProps) {
         <tbody className="divide-y divide-slate-100 text-slate-700">
           {items.map((item) => (
             <tr key={item.salesOrderItemId}>
-              <td className="p-2 font-semibold text-slate-800">{item.itemName || item.itemId || "-"}</td>
+              <td className="p-2 font-semibold text-slate-800">
+                {item.itemName || item.itemId || "-"}
+                {item.isDirectShipment && (
+                  <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded bg-violet-50 border border-violet-200 text-violet-800 text-[10px] font-bold">
+                    直送
+                  </span>
+                )}
+              </td>
               <td className="p-2 text-right font-mono">{item.quantity}</td>
               <td className="p-2 text-right font-mono">{item.shippedQuantity}</td>
               <td
@@ -93,6 +105,25 @@ export function OrderShipmentProgress({ orderId }: OrderShipmentProgressProps) {
           ))}
         </tbody>
       </table>
+
+      {/* REQ-011(2): 直接入力の明細は「一時保管から払出」で、一時保管の台帳から払い出す */}
+      <OutsideInventoryNote
+        lines={outsideInventoryLines.map((line) =>
+          line.key.startsWith("direct-")
+            ? line
+            : {
+                ...line,
+                href: `/inventory/audit?tab=holdings&releaseSo=${encodeURIComponent(orderId)}&releaseSoItem=${encodeURIComponent(line.key)}`,
+                actionLabel: "一時保管から払出",
+              },
+        )}
+      />
+
+      {hasDirectRemaining && (
+        <p className="text-[11px] text-slate-700">
+          「直送」の明細は出荷指示に含めません。発注の画面の「直送完了にする」で、得意先への納品を記録してください。
+        </p>
+      )}
 
       {hasRemaining && (
         <div className="flex flex-col sm:flex-row gap-2">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { apiFetch } from "../../_shared/hooks/use-api-fetch";
+import { apiFetch, apiFetchShared } from "../../_shared/hooks/use-api-fetch";
+import { APPROVAL_ONLY_REQUEST_TYPES } from "./approval-only-request-types";
 
 export interface WorkflowUserRelation {
   roleId: string;
@@ -20,6 +21,24 @@ export interface WorkflowScreenEntry {
 }
 
 /**
+ * targetType+targetIdから、対応する伝票・マスタの画面のパスを解決する(バックエンドの resolveEditPath)。
+ * 「修正して再申請」と、プレビューの「伝票を開く」(REQ-016)で使う。
+ */
+export async function fetchTargetEditPath(
+  targetType: string,
+  targetId: string,
+): Promise<string | null> {
+  try {
+    const result = await apiFetch<{ path: string | null }>(
+      `/api/workflow-tasks/edit-path/${encodeURIComponent(targetId)}?targetType=${encodeURIComponent(targetType)}`,
+    );
+    return result.path;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 申請履歴・承認タスク両画面で共通して必要な「画面マスタ(targetType→日本語名/編集画面パス)」
  * 「ユーザーマスタ(承認候補者の解決用)」の取得と、それを使った変換関数群をまとめた共有hook。
  * 以前はhistories/page.tsxにのみ実装されていたロジックを、tasks画面でも承認フロー進捗
@@ -34,7 +53,7 @@ export function useWorkflowScreensAndUsers(enabled: boolean) {
     async function loadMasters() {
       try {
         const [resScreens, resUsers] = await Promise.all([
-          apiFetch<WorkflowScreenEntry[]>("/api/permissions/screens"),
+          apiFetchShared<WorkflowScreenEntry[]>("/api/permissions/screens"),
           apiFetch<WorkflowUserMasterEntry[]>("/api/users"),
         ]);
         setScreens(resScreens);
@@ -50,26 +69,16 @@ export function useWorkflowScreensAndUsers(enabled: boolean) {
     const matched = screens.find(
       (s) => s.resource.toLowerCase() === targetType.toLowerCase(),
     );
-    return matched ? matched.name : targetType;
+    if (matched) return matched.name;
+    // REQ-018: 画面を持たない申請の種類(入金・支払の消込)
+    return APPROVAL_ONLY_REQUEST_TYPES.find((t) => t.resource === targetType)?.name ?? targetType;
   };
 
   // 💡 targetType+targetIdから、対応する編集画面のパスを解決する(差戻し履歴からの
   // 「修正して再提出」ボタンで使う)。画面構成再編フェーズ5: 1つのtargetTypeが複数の画面に
   // 分散しているケース(入出庫/出荷指示・入荷指示)ではDB参照による動的解決が必要なため、
   // バックエンドの一元的な解決API(screens.tsの静的マッピングへのフォールバックも含む)を呼ぶ。
-  const resolveTargetTypeEditPath = async (
-    targetType: string,
-    targetId: string,
-  ): Promise<string | null> => {
-    try {
-      const result = await apiFetch<{ path: string | null }>(
-        `/api/workflow-tasks/edit-path/${encodeURIComponent(targetId)}?targetType=${encodeURIComponent(targetType)}`,
-      );
-      return result.path;
-    } catch {
-      return null;
-    }
-  };
+  const resolveTargetTypeEditPath = fetchTargetEditPath;
 
   const getEligibleApprovers = (
     roleId: string,

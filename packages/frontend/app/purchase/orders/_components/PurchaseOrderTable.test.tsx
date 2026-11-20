@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PurchaseOrderTable } from "./PurchaseOrderTable";
+import { PurchaseOrderPreview } from "./PurchaseOrderPreview";
 import { PurchaseOrderRecord } from "../_types";
 
 function order(overrides: Partial<PurchaseOrderRecord> = {}): PurchaseOrderRecord {
@@ -65,5 +67,83 @@ describe("PurchaseOrderTable: 複写ボタン", () => {
   it("複写できない場合(承認機能が有効など)は押せない", () => {
     render(<PurchaseOrderTable {...baseProps({ onCopy: vi.fn(), canCopy: false })} />);
     expect(screen.getByRole("button", { name: "複写" })).toBeDisabled();
+  });
+});
+
+describe("PurchaseOrderTable: BUG-095 発注日・BUG-101 内容確認", () => {
+  it("発注日(日本時間の日付)と内容確認の列を出す", () => {
+    render(<PurchaseOrderTable {...baseProps({ orders: [order({ orderDate: "2026-11-14T23:00:00.000Z" })] })} />);
+    expect(screen.getByRole("columnheader", { name: /発注日/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /内容確認/ })).toBeInTheDocument();
+    expect(within(screen.getAllByRole("row")[1]).getByText("2026-11-15")).toBeInTheDocument();
+  });
+
+  it("発注日は入力者の後に並ぶ(BUG-104。見積の一覧と同じ順)", () => {
+    render(<PurchaseOrderTable {...baseProps()} />);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const input = headers.findIndex((h) => h.includes("入力者"));
+    expect(headers.findIndex((h) => h.includes("発注日"))).toBe(input + 1);
+  });
+
+  it("合計金額の後にステータスが並ぶ(見積の一覧と同じ順)", () => {
+    render(<PurchaseOrderTable {...baseProps()} />);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const total = headers.findIndex((h) => h.includes("合計金額"));
+    expect(headers.findIndex((h) => h.includes("ステータス"))).toBe(total + 1);
+  });
+
+  it("内容確認を押すと onPreview を呼び、行の編集は開かない", async () => {
+    const onPreview = vi.fn();
+    const onSelectEdit = vi.fn();
+    render(<PurchaseOrderTable {...baseProps({ onPreview, onSelectEdit })} />);
+    await userEvent.click(screen.getByRole("button", { name: "確認" }));
+    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ id: "PO-1" }));
+    expect(onSelectEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe("PurchaseOrderPreview(BUG-101)", () => {
+  it("件名・仕入先・発注日・納期・元の購買申請・明細・添付・合計を出す", () => {
+    render(
+      <PurchaseOrderPreview
+        order={order({
+          orderDate: "2026-11-01",
+          deliveryDate: "2026-11-20",
+          requestId: "PR-9",
+          totalAmount: 2200,
+          items: [{ itemId: "ITEM1", quantity: 2, unitPrice: 1000 }],
+          attachments: [{ id: "A1", fileName: "仕様書.pdf", storageType: "R2", downloadUrl: "https://example.com/s" }],
+        })}
+        suppliers={[{ id: "PARTNER-1", name: "部品商事" }]}
+        allItems={[{ id: "ITEM1", name: "ネジ" }]}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("テスト発注")).toBeInTheDocument();
+    expect(screen.getByText("部品商事")).toBeInTheDocument();
+    expect(screen.getByText("2026-11-01 / 2026-11-20")).toBeInTheDocument();
+    expect(screen.getByText("PR-9")).toBeInTheDocument();
+    expect(screen.getByText("ネジ")).toBeInTheDocument();
+    expect(screen.getByText("¥2,000")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /仕様書\.pdf/ })).toHaveAttribute("href", "https://example.com/s");
+    expect(screen.getByText("¥2,200")).toBeInTheDocument();
+  });
+});
+
+describe("PurchaseOrderTable: BUG-102 発注担当者・入力者", () => {
+  it("発注担当者・入力者をユーザーの名前で出す(ユーザーが見つからなければ従業員番号)", () => {
+    render(
+      <PurchaseOrderTable
+        {...baseProps({
+          orders: [order({ purchasePersonEmployeeNumber: "E001", inputPersonEmployeeNumber: "E999" })],
+          userMaster: [{ id: "u1", name: "購買太郎", employeeNumber: "E001" }],
+        })}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /発注担当者/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /入力者/ })).toBeInTheDocument();
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("購買太郎")).toBeInTheDocument();
+    expect(within(row).getByText("E999")).toBeInTheDocument();
   });
 });

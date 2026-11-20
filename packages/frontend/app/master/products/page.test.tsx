@@ -130,7 +130,7 @@ describe("AdminProductsPage", () => {
     expect(productsCalls).toHaveLength(1);
   });
 
-  it("「新規品目個別登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規品目個別登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(basePermissions());
     const fetchSpy = vi.fn();
     mockAllFetches(fetchSpy);
@@ -145,7 +145,7 @@ describe("AdminProductsPage", () => {
     );
     expect(screen.getByText("新規個別品目登録")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規個別品目登録")).not.toBeInTheDocument();
   });
 });

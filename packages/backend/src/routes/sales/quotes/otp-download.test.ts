@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { env } from "cloudflare:test";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+
+// PERF-08: 確認コードのメールを登録の直後に送るため、実際の SMTP の代わりに送信の境界(sendEmail)を差し替える
+vi.mock("../../../utils/mailer", () => ({
+  sendEmail: vi.fn(async () => {}),
+}));
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../../db/schema";
@@ -15,6 +20,7 @@ const R2_PATH = "quotes/QT-OTP-TEST/generated_quote.pdf";
 const REGISTERED_EMAIL = "registered@example.com";
 const UNREGISTERED_EMAIL = "unregistered@example.com";
 const RATE_LIMIT_EMAIL = "rate-limit-target@example.com";
+const SEND_NOW_EMAIL = "send-now@example.com";
 
 async function seedQuoteWithAttachment() {
   const db = drizzle(env.DB, { schema });
@@ -47,6 +53,18 @@ async function seedQuoteWithAttachment() {
     partnerId: PARTNER_ID,
     contactType: "SECONDARY",
     email: RATE_LIMIT_EMAIL,
+    isEmailTarget: true,
+    status: "active",
+    createdBy: "SYSTEM",
+    createdAt: now,
+    updatedBy: "SYSTEM",
+    updatedAt: now,
+  });
+  await db.insert(schema.partnerContacts).values({
+    id: "PC-OTP-SEND-NOW",
+    partnerId: PARTNER_ID,
+    contactType: "SECONDARY",
+    email: SEND_NOW_EMAIL,
     isEmailTarget: true,
     status: "active",
     createdBy: "SYSTEM",
@@ -110,6 +128,30 @@ async function getLatestOtpCode(email: string): Promise<string> {
 describe("Item4-c: OTPダウンロード", () => {
   beforeAll(async () => {
     await seedQuoteWithAttachment();
+  });
+
+  it("PERF-08: 確認コードのメールは、定期処理を待たずに応答の直後に送られる", async () => {
+    const ctx = createExecutionContext();
+    const res = await quotesRouter.request(
+      `/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: SEND_NOW_EMAIL }),
+      },
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    await waitOnExecutionContext(ctx);
+
+    const dbLog = drizzle(env.DB_LOG, { schema: auditSchema });
+    const mailRows = await dbLog
+      .select()
+      .from(auditSchema.mailDeliveryLogs)
+      .where(eq(auditSchema.mailDeliveryLogs.recipientTo, SEND_NOW_EMAIL));
+    expect(mailRows).toHaveLength(1);
+    expect(mailRows[0]).toMatchObject({ category: "quote_download_otp", status: "SUCCESS" });
   });
 
   it("登録済み連絡先のメールアドレスならOTPが発行・記録される", async () => {
@@ -210,35 +252,38 @@ describe("Item4-c: OTPダウンロード", () => {
     expect(res.status).toBe(400);
   });
 
-  it("同一組み合わせへの短時間の連続リクエストはレート制限され、上限を超えた分は新たなOTPを発行しない", async () => {
+  // REQ-007: メールアドレスを入力せず、確認コードだけで照合できる
+  it("メールアドレスを送らずに発行・照合でき、PDF を受け取れる", async () => {
     const dbOtp = drizzle(env.DB_OTP, { schema: otpSchema });
-
-    // 上限(5回)ちょうどまではOTPが発行される
-    for (let i = 0; i < 5; i++) {
-      const res = await postJson(
-        `/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`,
-        { email: RATE_LIMIT_EMAIL },
-      );
-      expect(res.status).toBe(200);
-    }
-
-    const rowsAtLimit = await dbOtp
-      .select()
-      .from(otpSchema.otpChallenges)
-      .where(eq(otpSchema.otpChallenges.email, RATE_LIMIT_EMAIL));
-    expect(rowsAtLimit.length).toBe(5);
-
-    // 6回目は成功メッセージは返すが、実際には新しいOTPを発行しない
-    const res = await postJson(
-      `/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`,
-      { email: RATE_LIMIT_EMAIL },
-    );
+    await dbOtp.delete(otpSchema.otpChallenges);
+    expect((await postJson(`/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`, {})).status).toBe(200);
+    const [row] = await dbOtp.select().from(otpSchema.otpChallenges).where(eq(otpSchema.otpChallenges.documentId, QUOTE_ID));
+    const res = await postJson(`/download-verify/${QUOTE_ID}/${ATTACHMENT_ID}`, { otp: row.otpCode });
     expect(res.status).toBe(200);
+    expect(await res.text()).toBe("dummy-pdf-content");
+  });
 
-    const rowsAfterLimit = await dbOtp
-      .select()
-      .from(otpSchema.otpChallenges)
-      .where(eq(otpSchema.otpChallenges.email, RATE_LIMIT_EMAIL));
-    expect(rowsAfterLimit.length).toBe(5);
+  // REQ-007: 入力なしで、登録済みの宛先の全員に同じコードを送る。回数制限は帳票の単位(メールアドレスでは数えない)
+  it("入力なしで発行でき、登録済みの宛先の全員に同じコードが届く。短時間の連続の発行は帳票の単位で制限される", async () => {
+    const dbOtp = drizzle(env.DB_OTP, { schema: otpSchema });
+    const rowsOf = () =>
+      dbOtp.select().from(otpSchema.otpChallenges).where(eq(otpSchema.otpChallenges.documentId, QUOTE_ID));
+    await dbOtp.delete(otpSchema.otpChallenges);
+
+    const first = await postJson(`/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`, {});
+    expect(first.status).toBe(200);
+    const firstRows = await rowsOf();
+    expect(firstRows.length).toBeGreaterThan(0);
+    // 1回の発行では、全員に同じコード
+    expect(new Set(firstRows.map((r) => r.otpCode)).size).toBe(1);
+    expect(firstRows.some((r) => r.email === REGISTERED_EMAIL)).toBe(true);
+
+    for (let i = 0; i < 10; i++) {
+      expect((await postJson(`/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`, {})).status).toBe(200);
+    }
+    const atLimit = (await rowsOf()).length;
+    // 上限を超えた分は、成功の文言は返すが新しいコードを発行しない
+    expect((await postJson(`/download-request/${QUOTE_ID}/${ATTACHMENT_ID}`, {})).status).toBe(200);
+    expect((await rowsOf()).length).toBe(atLimit);
   });
 });

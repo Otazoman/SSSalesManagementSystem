@@ -1,7 +1,8 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
+import { useDeepLinkId } from "../../_shared/hooks/use-deep-link-id";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
 import { usePagePermissions } from "../../hooks/use-page-permission";
@@ -23,8 +24,11 @@ import { useConfirm } from "../../_shared/hooks/use-confirm";
 
 export default function ItemReorderSettingsPage() {
   const confirm = useConfirm();
-  const { canCreate, canRead, canUpdate, canDelete, loading } =
+  const { canCreate, canRead, canUpdate, canDelete, loading, isItemReorderSettingWfEnabled, departments = [] } =
     usePagePermissions();
+  // BUG-098: 申請部門(複数の部門に所属する時に選ぶ。選ぶまでは所属部門の先頭。単位マスタと同じ)
+  const [selectedDepartmentId, setApplicantDepartmentSurrogateId] = useState<string | null>(null);
+  const applicantDepartmentSurrogateId = selectedDepartmentId ?? departments[0]?.surrogateId ?? null;
 
   const [showForm, setShowForm] = useState(false);
   const [items, setItems] = useState<ItemLookup[]>([]);
@@ -70,10 +74,20 @@ export default function ItemReorderSettingsPage() {
     setShowForm(false);
   };
 
-  const guard = useDiscardGuard(showForm);
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
+  // BUG-098: 承認履歴の「修正して再申請」・承認のプレビューの「伝票を開く」(?editId=xxx)で、その設定の編集フォームを開く
+  // (他画面からの ID 指定の共通の入口 useDeepLinkId を使う。一覧を読み込んだ後に1回だけ開く)
+  useDeepLinkId(
+    "editId",
+    (id) => {
+      const target = settings.find((s) => s.id === id);
+      if (target) {
+        setEditingData(target);
+        setShowForm(true);
+      }
+    },
+    !loading && canRead && settings.length > 0,
+  );
+
 
   const handleDelete = async (s: ItemReorderSettingRecord) => {
     if (!canDelete) return;
@@ -201,24 +215,29 @@ export default function ItemReorderSettingsPage() {
           件
         </span>
         <button
-          onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-          disabled={!canCreate && !showForm}
+          onClick={() => setShowForm(true)}
+          disabled={!canCreate}
           className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-            canCreate || showForm
+            canCreate
               ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
         >
-          {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+          ➕ 新規個別登録・CSVインポート
         </button>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート(他マスタと揃えた2列グリッド) */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingData ? "発注点/安全在庫の編集" : "発注点/安全在庫の新規登録・CSVインポート"}
+          onClose={handleCloseForm}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <>
           <ItemReorderSettingForm
             initialData={editingData}
             items={items}
@@ -231,14 +250,21 @@ export default function ItemReorderSettingsPage() {
               void loadSettings();
             }}
             onError={(msg) => setError(msg)}
-            onClear={requestCloseForm}
+            onClear={() => void requestClose()}
+            isWfEnabled={isItemReorderSettingWfEnabled}
+            departments={departments}
+            applicantDepartmentSurrogateId={applicantDepartmentSurrogateId}
+            setApplicantDepartmentSurrogateId={setApplicantDepartmentSurrogateId}
           />
           <ItemReorderSettingCsvImport
             canCreate={canCreate}
             isSubmitting={isSubmitting}
             onImportCsv={handleImportCsv}
+            isWfEnabled={isItemReorderSettingWfEnabled}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル(全幅表示) */}

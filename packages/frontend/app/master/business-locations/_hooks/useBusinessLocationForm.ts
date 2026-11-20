@@ -12,6 +12,7 @@ export const initialBusinessLocationFormState = {
   postalCode: "",
   address: "",
   phoneNumber: "",
+  faxNumber: "",
   status: "temporary",
   memo: "",
 };
@@ -104,6 +105,7 @@ export function useBusinessLocationForm({
       postalCode: loc.postalCode || "",
       address: loc.address || "",
       phoneNumber: loc.phoneNumber || "",
+      faxNumber: loc.faxNumber || "",
       status: loc.status,
       memo: loc.memo || "",
     });
@@ -117,6 +119,7 @@ export function useBusinessLocationForm({
       postalCode: merged.postalCode || null,
       address: merged.address || null,
       phoneNumber: merged.phoneNumber || null,
+      faxNumber: merged.faxNumber || null,
       status: merged.status,
       memo: merged.memo || null,
     };
@@ -149,6 +152,7 @@ export function useBusinessLocationForm({
               postalCode: editingRecord?.postalCode ?? null,
               address: editingRecord?.address ?? null,
               phoneNumber: editingRecord?.phoneNumber ?? null,
+              faxNumber: editingRecord?.faxNumber ?? null,
               memo: editingRecord?.memo ?? null,
               status: "temporary" as const,
             },
@@ -237,6 +241,7 @@ export function useBusinessLocationForm({
             postalCode: loc.postalCode,
             address: loc.address,
             phoneNumber: loc.phoneNumber,
+            faxNumber: loc.faxNumber ?? null,
             memo: loc.memo,
             status: "temporary",
           },
@@ -254,6 +259,7 @@ export function useBusinessLocationForm({
               postalCode: loc.postalCode,
               address: loc.address,
               phoneNumber: loc.phoneNumber,
+              faxNumber: loc.faxNumber ?? null,
               memo: loc.memo,
               status: "suspended",
             },

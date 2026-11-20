@@ -37,6 +37,8 @@ export const users = sqliteTable("users", {
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   slackUserId: text("slack_user_id"), // Item0: SlackメンバーID。BotがこのIDへDM送信する(channel指定にuser IDをそのまま使える)。未設定ならemailのみ通知
   notificationChannel: text("notification_channel").notNull().default("email"), // Item0: 通知方法('email'|'slack')。プロフィール画面で本人が選択。slack選択でもslack_user_id未設定ならemailにフォールバック
+  // REQ-004: ログイン時の OTP を使うか(管理者がユーザー管理・CSV取込で設定する)。OTP は通知方法(メール/Slack)に従って送る
+  loginOtpEnabled: integer("login_otp_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
@@ -457,6 +459,8 @@ export const businessLocations = sqliteTable("business_locations", {
   postalCode: text("postal_code"),
   address: text("address"),
   phoneNumber: text("phone_number"),
+  // REQ-003: 見積・受注・売上の帳票に印字する自社の FAX(営業拠点を選んだ時に展開する)
+  faxNumber: text("fax_number"),
   status: text("status").notNull().default("temporary"),
   memo: text("memo"),
   ...withAuditColumns(),
@@ -616,6 +620,9 @@ export const itemReorderSettings = sqliteTable(
     reorderPoint: real("reorder_point").notNull().default(0),
     safetyStock: real("safety_stock").notNull().default(0),
     memo: text("memo"),
+    // BUG-098(2026-11-15 ユーザー承認済み): 承認の状態。承認 OFF の間・今ある行は active(今と同じ動き)。
+    // 承認 ON の時の新規登録は temporary(仮登録)で保存し、承認で active にする。temporary の行は発注点の提案に使わない
+    status: text("status").notNull().default("active"),
     ...withAuditColumns(),
   },
   (table) => [

@@ -1,6 +1,5 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState, useEffect } from "react";
 import { PageHeader } from "../../_shared/ui/PageHeader";
 import { Button } from "../../_shared/ui/Button";
@@ -15,6 +14,7 @@ import { AccessDeniedInline } from "../../_shared/ui/AccessDeniedInline";
 import { MessageBanner } from "../../_shared/ui/MessageBanner";
 import { StatusTabs } from "../../_shared/ui/StatusTabs";
 import { Pagination } from "../../_shared/ui/Pagination";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 
 export default function AdminUnitsPage() {
   const {
@@ -104,10 +104,6 @@ export default function AdminUnitsPage() {
     setShowForm(false);
   };
 
-  const guard = useDiscardGuard(showForm);
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
 
   if (permsLoading) {
     return <LoadingGate />;
@@ -165,55 +161,66 @@ export default function AdminUnitsPage() {
           <span className="text-sm font-black text-indigo-600">{total}</span> 件
         </span>
         <button
-          onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-          disabled={!canCreate && !showForm}
+          onClick={() => setShowForm(true)}
+          disabled={!canCreate}
           className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-            canCreate || showForm
+            canCreate
               ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
         >
-          {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+          ➕ 新規個別登録・CSVインポート
         </button>
       </div>
 
-      {/* 登録・編集フォーム & CSVインポート(取引先マスタスタイルの2列グリッド) */}
+      {/* REQ-024: 登録・編集フォーム & CSVインポートはモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingUnit ? `📐 単位の編集 [${editingUnit.code}]` : "📐 単位の新規登録・CSVインポート"}
+          onClose={handleCloseForm}
+          error={error}
         >
-          <UnitForm
-            code={code}
-            name={name}
-            status={status}
-            editingUnit={editingUnit}
-            canCreate={canCreate}
-            canUpdate={canUpdate}
-            isSubmitting={isSubmitting}
-            isUnitWfEnabled={isUnitWfEnabled}
-            isUnitCurrentlyLocked={isUnitCurrentlyLocked}
-            departments={departments}
-            applicantDepartmentSurrogateId={applicantDepartmentSurrogateId}
-            setApplicantDepartmentSurrogateId={
-              setApplicantDepartmentSurrogateId
-            }
-            setCode={setCode}
-            setName={setName}
-            setStatus={setStatus}
-            onSubmit={(e) => {
-              handleSubmit(e);
-            }}
-            onCancel={requestCloseForm}
-          />
-          <UnitCsvImport
-            canCreate={canCreate}
-            editingUnit={editingUnit}
-            isSubmitting={isSubmitting}
-            isUnitWfEnabled={isUnitWfEnabled}
-            onImportCsv={handleImportCsv}
-          />
-        </div>
+          {(requestClose) => (
+            <>
+              <UnitForm
+                code={code}
+                name={name}
+                status={status}
+                editingUnit={editingUnit}
+                canCreate={canCreate}
+                canUpdate={canUpdate}
+                isSubmitting={isSubmitting}
+                isUnitWfEnabled={isUnitWfEnabled}
+                isUnitCurrentlyLocked={isUnitCurrentlyLocked}
+                departments={departments}
+                applicantDepartmentSurrogateId={applicantDepartmentSurrogateId}
+                setApplicantDepartmentSurrogateId={
+                  setApplicantDepartmentSurrogateId
+                }
+                setCode={setCode}
+                setName={setName}
+                setStatus={setStatus}
+                onSubmit={(e) => {
+                  void handleSubmit(e).then((ok) => {
+                    if (ok) handleCloseForm();
+                  });
+                }}
+                onCancel={() => void requestClose()}
+              />
+              <UnitCsvImport
+                canCreate={canCreate}
+                editingUnit={editingUnit}
+                isSubmitting={isSubmitting}
+                isUnitWfEnabled={isUnitWfEnabled}
+                onImportCsv={(e) => {
+                  void handleImportCsv(e).then((ok) => {
+                    if (ok) handleCloseForm();
+                  });
+                }}
+              />
+            </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル(全幅表示) */}

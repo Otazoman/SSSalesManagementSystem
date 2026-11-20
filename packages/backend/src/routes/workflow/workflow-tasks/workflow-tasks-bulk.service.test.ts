@@ -472,3 +472,76 @@ describe("WorkflowTasksBulkService.bulkRemand", () => {
     );
   });
 });
+
+// REQ-023: 一括承認の結果に、次の段の承認待ちになった件数と、その段のロール名(ロールマスタの名称。無ければロール ID)を出す
+describe("REQ-023: 一括承認の結果の次の段", () => {
+  async function seedTwoRequests() {
+    await seedUser("applicant-1");
+    await seedUser("approver-1");
+    await seedRole("role1");
+    await db.insert(schema.roles).values({ id: "role-manager", name: "課長", createdAt: now });
+    await seedUserRole("approver-1", "role1", null);
+    await seedPartner("partner-1", "取引先1", "applicant-1");
+    await seedPartner("partner-2", "取引先2", "applicant-1");
+    await seedApprovalFlow("flow-1", "master_partners", [
+      { order: 1, roleId: "role1" },
+      { order: 2, roleId: "role-manager" },
+    ]);
+    for (const n of [1, 2]) {
+      await db.insert(schema.masterApprovalRequests).values({
+        id: `req-${n}`,
+        targetType: "master_partners",
+        targetId: `partner-${n}`,
+        requestType: "REGISTER",
+        status: "PENDING",
+        applicantId: "applicant-1",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    // partner-1 は1段目、partner-2 は2段目(最後の段)の承認待ち
+    await db.insert(schema.workflowLogs).values({
+      id: "log-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      approverRoleId: "role1",
+      layer: 1,
+      status: "PENDING",
+    });
+    await seedUserRole("approver-1", "role-manager", null);
+    await db.insert(schema.workflowLogs).values({
+      id: "log-2",
+      targetType: "master_partners",
+      targetId: "partner-2",
+      approverRoleId: "role-manager",
+      layer: 2,
+      status: "PENDING",
+    });
+  }
+
+  it("1段目の承認は次の段のロール名つきで数え、最後の段の承認は数えない", async () => {
+    await seedTwoRequests();
+
+    const res = await callBulkApprove({ logIds: ["log-1", "log-2"], userId: "approver-1" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      message: string;
+      completedCount: number;
+      nextStepCount: number;
+      nextStepRoles: Array<{ roleId: string; roleName: string; count: number }>;
+    };
+    expect(body.message).toBe("2 件を承認しました(うち1件は次の段「課長」の承認待ちになりました)。");
+    expect(body.completedCount).toBe(1);
+    expect(body.nextStepCount).toBe(1);
+    expect(body.nextStepRoles).toEqual([{ roleId: "role-manager", roleName: "課長", count: 1 }]);
+  });
+
+  it("ロールの名称が無い時はロール ID で出す。失敗の件数の表示は今までどおり", async () => {
+    await seedTwoRequests();
+    await db.update(schema.roles).set({ name: "" }).where(eq(schema.roles.id, "role-manager"));
+
+    const res = await callBulkApprove({ logIds: ["log-1", "log-missing"], userId: "approver-1" });
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe("1 件を承認しました(うち1件は次の段「role-manager」の承認待ちになりました)。(失敗: 1件)");
+  });
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { clearSharedApiCache } from "../../../_shared/hooks/use-api-fetch";
 import { SystemSettings, UserProfile } from "../_types";
 
 export function useCompanySettings() {
@@ -23,6 +24,8 @@ export function useCompanySettings() {
     is_warehouse_approval_enabled: false,
     is_location_approval_enabled: false,
     is_business_location_approval_enabled: false,
+    is_project_approval_enabled: false,
+    is_item_reorder_setting_approval_enabled: false,
     is_tax_category_approval_enabled: false,
     is_quote_approval_enabled: false,
     is_sales_order_approval_enabled: false,
@@ -30,6 +33,10 @@ export function useCompanySettings() {
     is_purchase_order_approval_enabled: false,
     is_sales_approval_enabled: false,
     is_purchase_approval_enabled: false,
+    is_billing_approval_enabled: false,
+    is_cash_receipt_approval_enabled: false,
+    is_payment_disbursement_approval_enabled: false,
+    is_payment_approval_enabled: false,
     is_sales_invoice_requires_shipment: false,
     is_purchase_recognition_requires_receipt: false,
     is_receiving_approval_enabled: false,
@@ -49,6 +56,10 @@ export function useCompanySettings() {
     otp_expiry_minutes: "10",
     otp_max_attempts: "5",
     login_max_failed_attempts: "5",
+    login_otp_digit_count: "6",
+    login_otp_expiry_minutes: "10",
+    login_otp_max_attempts: "5",
+    login_otp_resend_interval_seconds: "60",
     password_min_length: "8",
     password_require_uppercase: false,
     password_require_lowercase: false,
@@ -151,6 +162,8 @@ export function useCompanySettings() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "更新に失敗しました");
+      // PERF-06: 会社設定と、それから決まるプロフィールの承認のスイッチを、各画面が取り直すようにする
+      clearSharedApiCache();
 
       setMessage("Cloudflare KVマスタ設定を上書き更新しました");
     } catch (err) {

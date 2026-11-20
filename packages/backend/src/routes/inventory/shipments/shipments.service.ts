@@ -17,7 +17,6 @@ import {
   WarehouseStockReservationRepository,
   releaseReservationForShippedQuantity,
 } from "../../../platform/inventory/warehouse-stock-reservation.repository";
-import { DeliveryNotePdfService } from "./delivery-note-pdf.service";
 import { NotFoundError, BadRequestError, ConflictError } from "../../../platform/http/http-error";
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { resolveOperatorEmployeeNumber } from "../../../platform/repository/fallback-operator";
@@ -32,6 +31,7 @@ import {
 import { withBom, buildCsvContent, csvField } from "../../../platform/csv/csv-writer";
 import { resolveConfiguredDocumentId } from "../../../platform/id/resolve-document-id";
 import { SortQuery } from "../../../platform/http/sort";
+import { recalculateTransfersOfShipment } from "../transfers/transfers.ledger";
 
 const RESOURCE_KEY = "inventory_stock";
 
@@ -444,11 +444,10 @@ export class ShipmentsService {
       if (input.shipmentInstructionId) {
         const instructionsRepo = ShipmentInstructionsRepository.fromDb(db);
         await instructionsRepo.recalculateFulfillment(input.shipmentInstructionId);
+        // REQ-006: 倉庫間移動の出荷指示の実績なら、移動に結び付けて「輸送中」にする
+        await recalculateTransfersOfShipment(db, headerId, now);
       }
-      if (effectivePartnerId) {
-        const deliveryNotePdfService = new DeliveryNotePdfService(this.repo);
-        c.executionCtx.waitUntil(deliveryNotePdfService.generateAndStore(c, headerId));
-      }
+      // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
 
       c.executionCtx.waitUntil(
         logAuditEvent(c, "CONFIRM_STOCK_SHIPMENT_DIRECT", RESOURCE_KEY, headerId, null, {
@@ -517,6 +516,14 @@ export class ShipmentsService {
     if (header.status !== "REMANDED") {
       throw new BadRequestError("差戻し状態の出庫のみ修正して再申請できます");
     }
+    // REQ-005: 直送完了の出庫は、入庫の承認に合わせて確定するため、出庫だけで再提出しない
+    if (header.directReceiptHeaderId) {
+      throw new BadRequestError("直送完了の出庫は修正して再提出できません。発注の画面から直送完了をやり直してください");
+    }
+    // REQ-006: 倉庫間移動の出庫は、移動の明細と数量を合わせるため修正して再提出しない
+    if (await this.repo.isTransferShipment(headerId)) {
+      throw new BadRequestError("倉庫間移動の出庫は修正して再提出できません。申請を取り下げて、倉庫間移動の画面から作り直してください");
+    }
 
     const { resolvedItems, warehouseType, effectivePartnerId, destinationWarehouseId, salesOrderId } =
       await this.resolveShipmentItems(c, input);
@@ -542,10 +549,7 @@ export class ShipmentsService {
       const stocksService = StocksService.fromDb(db);
       await stocksService.applyShipmentItems(resolvedItems, headerId, operatorId, now);
       await this.releaseReservationsForShippedItems(db, resolvedItems, now);
-      if (effectivePartnerId) {
-        const deliveryNotePdfService = new DeliveryNotePdfService(this.repo);
-        c.executionCtx.waitUntil(deliveryNotePdfService.generateAndStore(c, headerId));
-      }
+      // PERF-07 B-6: 納品書 PDF は自動では作らない(サーバーで作ると無料プランの CPU 時間の上限を超えるため)。出荷の画面の「納品書PDFを作成」でブラウザが作る
 
       c.executionCtx.waitUntil(
         logAuditEvent(c, "CONFIRM_STOCK_SHIPMENT_DIRECT", RESOURCE_KEY, headerId, null, {

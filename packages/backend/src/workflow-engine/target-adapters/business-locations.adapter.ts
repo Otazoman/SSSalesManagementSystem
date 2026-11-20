@@ -8,6 +8,7 @@
 import { BusinessLocationsRepository } from "../../routes/master/business-locations/business-locations.repository";
 import { WorkflowTasksRepository } from "../../routes/workflow/workflow-tasks/workflow-tasks.repository";
 import { resolveEmployeeNumberByUserId } from "../../platform/repository/fallback-operator";
+import { resolveMasterPreview } from "./master-pending-change";
 import type {
   TargetAdapter,
   ApplyApprovedParams,
@@ -49,6 +50,8 @@ async function applyApproved({
             postalCode: snapshot.postalCode ?? null,
             address: snapshot.address ?? null,
             phoneNumber: snapshot.phoneNumber ?? null,
+            // REQ-003: FAX を含まない以前の変更申請では undefined(変えない)
+            faxNumber: snapshot.faxNumber,
             status: finalStatus,
             memo: snapshot.memo ?? null,
           },
@@ -73,26 +76,31 @@ async function applyApproved({
 
 async function getTaskPreview({
   db,
+  requestId,
   targetId,
 }: TaskPreviewParams): Promise<TaskPreviewResult> {
   const repo = BusinessLocationsRepository.fromDb(db);
   const businessLocation = await repo.findById(targetId);
   return {
     targetName: businessLocation ? businessLocation.name : "不明な営業拠点",
-    previewData: businessLocation,
+    previewData: (await resolveMasterPreview(db, requestId, businessLocation)).newData,
   };
 }
 
 async function getHistoryPreview({
   db,
+  requestId,
   targetId,
+  requestType,
 }: HistoryPreviewParams): Promise<HistoryPreviewResult> {
   const repo = BusinessLocationsRepository.fromDb(db);
   const businessLocation = await repo.findById(targetId);
+  // BUG-089: 変更申請は、退避した変更後の内容を新しい内容、今の行を変更前の内容として出す
+  const pending = await resolveMasterPreview(db, requestId, businessLocation);
   return {
     targetName: businessLocation ? businessLocation.name : "不明な営業拠点",
-    snapshotNew: businessLocation,
-    snapshotOld: null,
+    snapshotNew: pending.newData,
+    snapshotOld: requestType === "UPDATE" ? pending.oldData : null,
   };
 }
 

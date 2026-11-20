@@ -113,6 +113,8 @@ export function useSalesInvoiceSaveActions({
       companyTel: payload.companyTel,
       companyFax: payload.companyFax,
       paymentTerms: payload.paymentTerms,
+      // BUG-074: プロジェクトを保存する(以前は送っておらず保存されなかった)
+      projectId: payload.projectId || null,
     };
 
     const formData = new FormData();
@@ -187,6 +189,8 @@ export function useSalesInvoiceSaveActions({
       companyTel: payload.companyTel,
       companyFax: payload.companyFax,
       paymentTerms: payload.paymentTerms,
+      // BUG-074: プロジェクトを保存する(以前は送っておらず保存されなかった)
+      projectId: payload.projectId || null,
     };
 
     const items = payload.items.map((item: any) => ({

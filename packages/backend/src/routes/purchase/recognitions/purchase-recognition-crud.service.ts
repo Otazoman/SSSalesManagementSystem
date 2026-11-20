@@ -133,7 +133,8 @@ export class PurchaseRecognitionCrudService {
     // BUG-065: サービス品目(役務)は入荷しないため、設定に関わらず発注数量を基準にする
     const serviceItemIds = await this.repo.findServiceItemIds(items.map((item: any) => item.itemId));
     return items.map((item: any) => {
-      const usesFulfilled = requiresReceipt && !serviceItemIds.has(item.itemId);
+      // REQ-011(1): 品目マスタに無い明細(直接入力)も、入荷しないため発注数量を基準にする
+      const usesFulfilled = requiresReceipt && item.inputType !== "DIRECT" && !serviceItemIds.has(item.itemId);
       const basisQuantity = usesFulfilled
         ? receivedByOrderItem.get(item.id) || 0
         : item.quantity;
@@ -223,7 +224,10 @@ export class PurchaseRecognitionCrudService {
       }
 
       // BUG-065: サービス品目(役務)は設定に関わらず発注数量を基準にする
-      const usesFulfilled = requiresReceipt && !(await this.repo.findServiceItemIds([orderItem.itemId])).has(orderItem.itemId ?? "");
+      const usesFulfilled =
+        requiresReceipt &&
+        orderItem.inputType !== "DIRECT" &&
+        !(await this.repo.findServiceItemIds([orderItem.itemId])).has(orderItem.itemId ?? "");
       const basisQuantity = usesFulfilled
         ? receivedByOrderItem.get(orderItemId) || 0
         : orderItem.quantity;

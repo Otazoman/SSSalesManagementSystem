@@ -27,12 +27,14 @@ import {
 import {
   ReceiptItemRecord,
   ReceiptHeaderRecord,
+  WarehouseRecord,
   ReceiptInstructionHeaderRecord,
   ReceiptInstructionItemRecord,
 } from "../stock/_types";
 
+import { StockTransferPanel } from "../stock/_components/transfers/StockTransferPanel";
 type Tab =
-  "instruction" | "receipt" | "actual" | "history" | "stocks" | "acceptance";
+  "instruction" | "receipt" | "actual" | "history" | "stocks" | "acceptance" | "transfer";
 
 interface PurchaseOrderReceiptProgressItem {
   orderItemId: string;
@@ -50,6 +52,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "history", label: "📜 入庫入荷実績履歴" },
   { key: "stocks", label: "🗂️ 在庫照会" },
   { key: "acceptance", label: "📄 検収書発行" },
+  // REQ-006: 倉庫間移動(輸送中の物を入庫する)
+  { key: "transfer", label: "🔁 倉庫間移動" },
 ];
 
 const CREATE_REQUIRED_TABS: Tab[] = ["instruction", "receipt", "actual"];
@@ -84,13 +88,12 @@ export default function InventoryReceivingPage() {
   const urlFromPurchaseOrderId = urlSearchParams.get("fromPurchaseOrderId");
 
   // Item9: 発注の残数量から入荷指示フォームへ自動prefillする(shipping/page.tsxの
-  // fromSalesOrderIdと同じロジック。発注には受注のような倉庫引当が無いため、warehouseIdは
-  // prefillせずユーザーに選択させる)。発注画面の「入荷指示を作成する」からの
+  // fromSalesOrderIdと同じロジック。BUG-091: 倉庫は、発注の納品場所に指定した倉庫(deliveryWarehouseId)があれば初期値にする)。発注画面の「入荷指示を作成する」からの
   // ?fromPurchaseOrderId=遷移と、この画面内「発注から選ぶ」モーダルの両方から呼ばれる
   const applyPurchaseOrderPrefill = async (orderId: string) => {
     try {
       const [order, progress] = await Promise.all([
-        apiFetch<{ partnerId: string | null }>(
+        apiFetch<{ partnerId: string | null; deliveryWarehouseId?: string | null }>(
           `/api/purchase-orders/${encodeURIComponent(orderId)}`,
         ),
         apiFetch<PurchaseOrderReceiptProgressItem[]>(
@@ -104,10 +107,14 @@ export default function InventoryReceivingPage() {
       if (remaining.length > 0 && order.partnerId) {
         setReceiptInstructionCreatePrefill({
           partnerId: order.partnerId,
+          orderId,
+          // BUG-091: 発注の納品場所に指定した倉庫を、入荷指示の倉庫の初期値にする
+          warehouseId: order.deliveryWarehouseId ?? null,
           lines: remaining.map((item) => ({
             itemId: item.itemId as string,
             itemName: item.itemName || (item.itemId as string),
             instructedQuantity: item.remainingQuantity,
+            orderItemId: item.orderItemId,
           })),
         });
       }
@@ -146,6 +153,7 @@ export default function InventoryReceivingPage() {
             setReceiptInstructionEditTarget({
               headerId: urlEditId,
               partnerId: receiptInstructionDetail.header.partnerId,
+              orderId: receiptInstructionDetail.header.orderId,
               warehouseId: receiptInstructionDetail.header.warehouseId,
               instructedReceiveDate:
                 receiptInstructionDetail.header.instructedReceiveDate,
@@ -168,13 +176,27 @@ export default function InventoryReceivingPage() {
 
         if (receiptDetail) {
           if (receiptDetail.header.status === "REMANDED") {
-            setReceiptEditTarget({
+            const target = {
               headerId: urlEditId,
               items: receiptDetail.items,
               orderId: receiptDetail.header.orderId,
               sourceWarehouseId: receiptDetail.header.sourceWarehouseId,
-            });
-            setTab("receipt");
+              partnerId: receiptDetail.header.partnerId,
+            };
+            // BUG-085: 明細の倉庫が外部倉庫なら、入荷実績入力タブで修正する
+            const warehouses = await apiFetch<WarehouseRecord[]>("/api/warehouses").catch(
+              () => [] as WarehouseRecord[],
+            );
+            const warehouseType = warehouses.find(
+              (w) => w.id === receiptDetail.items[0]?.warehouseId,
+            )?.warehouseType;
+            if (warehouseType === "EXTERNAL") {
+              setReceiptActualEditTarget(target);
+              setTab("actual");
+            } else {
+              setReceiptEditTarget(target);
+              setTab("receipt");
+            }
           } else {
             setMessage(
               "この入庫は現在差戻し状態ではないため、修正して再申請できません",
@@ -324,16 +346,26 @@ export default function InventoryReceivingPage() {
       {tab === "history" && (
         <InventoryHistoryPanel
           lockedType="receipt"
-          onEdit={(_type, headerId, items, partnerId, transferWarehouseId) => {
+          onEdit={(_type, headerId, items, partnerId, transferWarehouseId, meta) => {
             // lockedType="receipt"のため、items は常に ReceiptItemRecord[] で渡ってくる
             const receiptItems = items as ReceiptItemRecord[];
             // 新規要望(2026-09-23): 倉庫間移動の移動元倉庫も修正フォームへ引き継ぐ
             const sourceWarehouseId = transferWarehouseId;
-            if (partnerId) {
-              setReceiptActualEditTarget({ headerId, items: receiptItems, sourceWarehouseId });
+            // BUG-084: 発注・仕入先も引き継ぐ(再申請の保存でヘッダーが上書きされるため)
+            const target = {
+              headerId,
+              items: receiptItems,
+              sourceWarehouseId,
+              partnerId,
+              orderId: meta?.orderId ?? null,
+            };
+            // BUG-085: 明細の倉庫の種類で開くタブを分ける(外部倉庫は入荷実績入力タブ)。
+            // 自社倉庫の入庫にも仕入先が入るため(BUG-070)、仕入先の有無では分けない
+            if (meta?.warehouseType === "EXTERNAL") {
+              setReceiptActualEditTarget(target);
               setTab("actual");
             } else {
-              setReceiptEditTarget({ headerId, items: receiptItems, sourceWarehouseId });
+              setReceiptEditTarget(target);
               setTab("receipt");
             }
           }}
@@ -351,6 +383,7 @@ export default function InventoryReceivingPage() {
       )}
 
       {tab === "acceptance" && <AcceptanceInspectionPanel />}
+      {tab === "transfer" && <StockTransferPanel mode="receive" canCreate={canCreate} />}
     </div>
   );
 }

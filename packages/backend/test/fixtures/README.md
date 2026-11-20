@@ -31,7 +31,7 @@
 ### シナリオ
 | 名前 | 内容 | 使うテスト |
 |---|---|---|
-| `inventory-approval` | 申請者`applicant-1`・承認者`approver-1`(ロール`approver_role`)、承認フロー2本(`inventory_stock` / `inventory_audit`、金額0〜999,999,999、1段) | 在庫の承認ワークフロー(`inventory/*/*-workflow-lifecycle.test.ts` 5本) |
+| `inventory-approval` | 申請者`applicant-1`・承認者`approver-1`(ロール`approver_role`)、承認フロー3本(メニュー単位: `inventory_receiving` / `inventory_shipping` / `inventory_audit`、金額0〜999,999,999、1段。BUG-103) | 在庫の承認ワークフロー(`inventory/*/*-workflow-lifecycle.test.ts` 5本) |
 
 ## 2. sampledata/ のCSV(`importSampleCsv`)
 

@@ -274,6 +274,7 @@ export function DealFormModal({
       size="4xl"
       onClose={f.close}
       warnOnDiscard
+      discardResetKey={f.savedVersion}
       footer={
         <FormActions
           mode={!canEdit ? "view" : isNew ? "create" : "edit"}

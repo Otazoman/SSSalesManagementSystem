@@ -7,6 +7,14 @@ import { useD1Explorer } from "./_hooks/useD1Explorer";
 import { LoadingGate } from "../../_shared/ui/LoadingGate";
 import { AccessDeniedInline } from "../../_shared/ui/AccessDeniedInline";
 import { MessageBanner } from "../../_shared/ui/MessageBanner";
+import { StorageUsagePanel } from "../../_shared/ui/StorageUsagePanel";
+import { useStorageUsage } from "../../_shared/hooks/use-storage-usage";
+
+// REQ-001: DB ごとの大きさと総容量(/api/d1-explorer/usage)
+interface D1Usage {
+  databases: { key: string; label: string; sizeBytes: number | null; sharedWith: string[]; error?: string }[];
+  totalBytes: number;
+}
 
 const INPUT_CLASS =
   "border border-slate-400 rounded px-2 py-1.5 bg-white text-slate-900 placeholder-slate-500";
@@ -57,6 +65,7 @@ export default function D1ExplorerPage() {
     cancelDelete,
     confirmDelete,
   } = useD1Explorer(canRead);
+  const usage = useStorageUsage<D1Usage>("/api/d1-explorer/usage", { autoLoad: true, enabled: canRead });
 
   if (permsLoading) return <LoadingGate />;
   if (!canRead) {
@@ -87,6 +96,27 @@ export default function D1ExplorerPage() {
       />
 
       <MessageBanner message={message} error={error} />
+
+      <StorageUsagePanel
+        title="📊 使用容量"
+        description="データベースごとの大きさと総容量です。Cloudflare のプランの上限は、Cloudflare のダッシュボードで確認してください。"
+        rows={
+          usage.data?.databases.map((d) => ({
+            key: d.key,
+            label: d.label,
+            sizeBytes: d.sizeBytes,
+            error: d.error,
+            note:
+              d.sharedWith.length > 0
+                ? `同じデータベースを共有: ${d.sharedWith.map((k) => usage.data?.databases.find((x) => x.key === k)?.label ?? k).join("・")}`
+                : undefined,
+          })) ?? null
+        }
+        totalBytes={usage.data?.totalBytes ?? null}
+        totalNote="同じデータベースを共有しているものは1回だけ数えています"
+        loading={usage.loading}
+        error={usage.error}
+      />
 
       <div className="flex flex-wrap items-end gap-3 text-xs">
         <label className="space-y-1">

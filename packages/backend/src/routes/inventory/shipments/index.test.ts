@@ -927,7 +927,7 @@ describe("Item7残課題6: 承認機能ON時、最終承認確定(在庫が実�
     await db.insert(schema.approvalFlows).values({
       id: "flow-inventory-stock",
       name: "flow-inventory-stock",
-      requestType: "inventory_stock",
+      requestType: "inventory_shipping", // BUG-103: 承認フローはメニュー単位
       minAmount: 0,
       maxAmount: 999999999,
       isActive: true,
@@ -1014,7 +1014,7 @@ describe("Item7残課題6: 承認機能ON時、最終承認確定(在庫が実�
     await db.insert(schema.approvalFlows).values({
       id: "flow-inventory-stock-2",
       name: "flow-inventory-stock-2",
-      requestType: "inventory_stock",
+      requestType: "inventory_shipping", // BUG-103: 承認フローはメニュー単位
       minAmount: 0,
       maxAmount: 999999999,
       isActive: true,

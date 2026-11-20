@@ -67,13 +67,15 @@ interface PurchaseRequisitionFormProps {
   moveItemDown: (index: number) => void;
   partnerId: string;
   partnerName: string;
-  setPartnerName: (v: string) => void;
   partnerInputType: "MASTER" | "DIRECT";
-  onPartnerTypeChange: (type: "MASTER" | "DIRECT") => void;
   onSupplierMasterSelect: (partnerId: string) => void;
   suppliers: PartnerLookup[];
   projectId: string;
   setProjectId: (v: string) => void;
+  // REQ-005: 直送の指定(受注から作成した時だけ設定される。外すことはできる)
+  isDirectShipment?: boolean;
+  setIsDirectShipment?: (v: boolean) => void;
+  directSalesOrderId?: string | null;
   applicantId: string;
   setApplicantId: (v: string) => void;
   inputPersonEmployeeNumber: string;
@@ -140,13 +142,14 @@ export function PurchaseRequisitionForm({
   moveItemDown,
   partnerId,
   partnerName,
-  setPartnerName,
   partnerInputType,
-  onPartnerTypeChange,
   onSupplierMasterSelect,
   suppliers,
   projectId,
   setProjectId,
+  isDirectShipment = false,
+  setIsDirectShipment,
+  directSalesOrderId = null,
   applicantId,
   setApplicantId,
   inputPersonEmployeeNumber,
@@ -184,7 +187,7 @@ export function PurchaseRequisitionForm({
   onCancel,
 }: PurchaseRequisitionFormProps) {
   const badge = editingStatus
-    ? getDocumentLifecycleStatus(editingStatus)
+    ? getDocumentLifecycleStatus(editingStatus, { approvalEnabled: isPurchaseRequisitionWfEnabled })
     : null;
   const selectedCategory = CATEGORY_OPTIONS.find(
     (c) => c.value === requestType,
@@ -266,46 +269,28 @@ export function PurchaseRequisitionForm({
           </FormField>
 
           <FormField label="仕入先" required>
-            <div className="flex gap-1.5">
-              <select
-                className="border border-slate-300 p-2 text-[11px] rounded bg-white text-slate-800 font-bold focus:outline-none disabled:bg-slate-100 disabled:text-slate-500 cursor-pointer shrink-0"
-                value={partnerInputType}
-                disabled={isLocked}
-                onChange={(e) =>
-                  onPartnerTypeChange(e.target.value as "MASTER" | "DIRECT")
-                }
-              >
-                <option value="MASTER">マスタ</option>
-                <option value="DIRECT">手入力</option>
-              </select>
-              {partnerInputType === "MASTER" ? (
-                <select
-                  required
-                  className={`${formFieldInputClass} cursor-pointer`}
-                  value={partnerId}
-                  onChange={(e) => onSupplierMasterSelect(e.target.value)}
-                  disabled={isLocked}
-                >
-                  <option value="" disabled>
-                    -- 仕入先を選択 --
-                  </option>
-                  {selectablePartners(suppliers, partnerId).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      [{s.id}] {s.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  required
-                  className={formFieldInputClass}
-                  placeholder="仕入先名(自由入力)"
-                  value={partnerName}
-                  onChange={(e) => setPartnerName(e.target.value)}
-                  disabled={isLocked}
-                />
-              )}
-            </div>
+            {/* REQ-019: 仕入先はマスタからの選択だけ(自由入力の欄をやめた) */}
+            <select
+              required
+              className={`${formFieldInputClass} cursor-pointer`}
+              value={partnerId}
+              onChange={(e) => onSupplierMasterSelect(e.target.value)}
+              disabled={isLocked}
+            >
+              <option value="" disabled>
+                -- 仕入先を選択 --
+              </option>
+              {selectablePartners(suppliers, partnerId).map((s) => (
+                <option key={s.id} value={s.id}>
+                  [{s.id}] {s.name}
+                </option>
+              ))}
+            </select>
+            {partnerInputType === "DIRECT" && !partnerId && partnerName && (
+              <p className="mt-1 text-[11px] font-bold text-amber-800">
+                以前は自由入力の仕入先「{partnerName}」で保存されています。保存する時は、仕入先マスタから選び直してください。
+              </p>
+            )}
           </FormField>
 
           <FormField label="プロジェクト" required>
@@ -326,6 +311,21 @@ export function PurchaseRequisitionForm({
               ))}
             </select>
           </FormField>
+
+          {directSalesOrderId && (
+            <FormField label="直送" hint="発注を作る時に、直送の指定と受注の得意先・納品先を引き継ぎます">
+              <label className="flex items-center gap-2 text-xs text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isDirectShipment}
+                  onChange={(e) => setIsDirectShipment?.(e.target.checked)}
+                  disabled={isLocked}
+                  className="cursor-pointer"
+                />
+                受注[{directSalesOrderId}]の得意先へ直送する
+              </label>
+            </FormField>
+          )}
 
           <FormField label="申請者">
             <select
@@ -433,6 +433,20 @@ export function PurchaseRequisitionForm({
                   onClick={onSubmitForApproval}
                 >
                   {isSubmitting ? "処理を実行中..." : "🚀 承認を申請する"}
+                </Button>
+              )}
+
+            {/* BUG-108: 承認機能が無効の時は、発注と同じく下書きから直接確定する(サーバーは申請で直接確定する) */}
+            {editingId &&
+              editingStatus === "DRAFT" &&
+              !isPurchaseRequisitionWfEnabled && (
+                <Button
+                  variant="success"
+                  className="flex-1"
+                  disabled={isSubmitting}
+                  onClick={onSubmitForApproval}
+                >
+                  {isSubmitting ? "処理を実行中..." : "✅ このまま確定する"}
                 </Button>
               )}
 

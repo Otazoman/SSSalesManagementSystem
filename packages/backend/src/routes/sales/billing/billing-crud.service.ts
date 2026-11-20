@@ -17,6 +17,7 @@ import { getTaxRoundingMode } from "../../../platform/tax/get-tax-rounding-mode"
 import { buildBillingTaxLines } from "./billing-tax-lines";
 import * as schema from "../../../db/schema";
 import { assertPartnerNotSuspended } from "../../../platform/partners/suspended-partner";
+import { assertBillingNotPendingApproval } from "./billing-approval.service";
 
 // Item8 Phase4: 既にAPPROVED確定済みのsales_invoicesを束ねて請求(billing_headers)を作成する。
 // quote-crud.service.ts等と異なり承認ワークフローは持たない(束ねる対象自体が承認済みのため)
@@ -261,6 +262,13 @@ export class BillingCrudService {
     const header = await this.repo.findHeaderById(id);
     if (!header) {
       throw new NotFoundError("対象の請求データが見つかりません");
+    }
+    // REQ-017: 承認申請中の請求は削除できない(先に申請を取り下げる)
+    assertBillingNotPendingApproval(header, "削除");
+    // REQ-018: 承認申請中の入金がある請求は削除できない(承認・差戻しの先が無くなるため)
+    const receipts = await this.repo.findPaymentReceiptsByHeaderId(id);
+    if (receipts.some((r) => r.approvalStatus === "PENDING")) {
+      throw new BadRequestError("承認申請中の入金があるため削除できません。入金の申請を取り下げてから削除してください");
     }
     if (header.reconciledAmount > 0) {
       throw new BadRequestError(

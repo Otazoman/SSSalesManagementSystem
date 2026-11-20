@@ -1,5 +1,6 @@
 export type PaymentMode = "PER_TRANSACTION" | "PERIODIC";
-export type PaymentHeaderStatus = "DRAFT" | "ISSUED";
+// REQ-026: 支払の承認が ON の時は、承認申請中(PENDING_APPROVAL)・承認済み(APPROVED)を挟む
+export type PaymentHeaderStatus = "DRAFT" | "ISSUED" | "PENDING_APPROVAL" | "APPROVED";
 export type ReconciliationStatus = "UNRECONCILED" | "PARTIALLY_RECONCILED" | "RECONCILED";
 export type PaymentDisbursementMethod = "BANK_TRANSFER" | "CASH" | "OTHER";
 
@@ -80,6 +81,8 @@ export interface PaymentDisbursementRecord {
   memo?: string | null;
   reconciledById: string;
   reconciledAt: string;
+  // REQ-018: 承認の状態(承認済みだけが消込額に入る)
+  approvalStatus?: "PENDING" | "APPROVED" | "REMANDED";
 }
 
 export interface PaymentDetail extends PaymentRecord {

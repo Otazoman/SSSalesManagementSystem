@@ -37,6 +37,7 @@ beforeEach(async () => {
   await db.delete(schema.salesOrderItemReservations);
   await db.delete(schema.salesOrderItems);
   await db.delete(schema.salesOrders);
+  await db.delete(schema.projects);
   await db.delete(schema.partners);
   await db.delete(schema.users);
   await env.COMPANY_SETTINGS.put("config", JSON.stringify({ tax_rounding_mode: "floor" }));
@@ -90,12 +91,12 @@ beforeEach(async () => {
   });
 });
 
-async function seedSnapshot(items: Record<string, unknown>[]) {
+async function seedSnapshot(items: Record<string, unknown>[], headerOverrides: Record<string, unknown> = {}) {
   await db.insert(schema.masterApprovalContexts).values({
     id: "CTX-1",
     requestId: "REQ-1",
     generalMemo: JSON.stringify({
-      header: { title: "変更後", partnerId: "P-1", totalAmount: 0, taxAmount: 0 },
+      header: { title: "変更後", partnerId: "P-1", totalAmount: 0, taxAmount: 0, ...headerOverrides },
       items,
       reservationOutcome: {
         items: [{ index: 0, itemId: "ITEM-2", backorderedQuantity: 1, reservations: [{ warehouseId: "WH-1", quantity: 2 }] }],
@@ -134,6 +135,29 @@ describe("salesOrdersAdapter.applyApproved: UPDATE(BUG-048)", () => {
     const ledger = await db.select().from(schema.salesOrderItemReservations);
     expect(ledger).toMatchObject([{ salesOrderItemId: items[0].id, warehouseId: "WH-1", reservedQuantity: 2 }]);
     expect(await db.select().from(schema.salesOrderHistoryLogs)).toHaveLength(1);
+  });
+
+  // BUG-074: 変更申請でプロジェクトを変えられる。projectId を含まない以前の申請では変えない
+  it("変更申請のプロジェクトを反映する。projectId を含まない申請ではプロジェクトを変えない", async () => {
+    await db.insert(schema.projects).values({
+      id: "PJ-1",
+      name: "テストプロジェクト",
+      createdBy: "EMP001",
+      createdAt: now,
+      updatedBy: "EMP001",
+      updatedAt: now,
+    });
+    await seedSnapshot([{ itemId: "ITEM-2", itemName: "変更後の品目", quantity: 3, unitPrice: 1005 }], { projectId: "PJ-1" });
+    await approve();
+    const [order] = await db.select().from(schema.salesOrders).where(eq(schema.salesOrders.id, "SO-1"));
+    expect(order.projectId).toBe("PJ-1");
+
+    await db.update(schema.salesOrders).set({ status: "PENDING_UPDATE" }).where(eq(schema.salesOrders.id, "SO-1"));
+    await db.delete(schema.masterApprovalContexts);
+    await seedSnapshot([{ itemId: "ITEM-2", itemName: "変更後の品目", quantity: 3, unitPrice: 1005 }]);
+    await approve();
+    const [unchanged] = await db.select().from(schema.salesOrders).where(eq(schema.salesOrders.id, "SO-1"));
+    expect(unchanged.projectId).toBe("PJ-1");
   });
 
   it("書き込みの途中で失敗した場合は何も反映せず、元の明細が残る(エラーを返す)", async () => {

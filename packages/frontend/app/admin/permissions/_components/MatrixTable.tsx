@@ -18,9 +18,50 @@ interface MatrixTableProps {
   isSaving: boolean;
   onRoleChange: (roleId: string) => void;
   onSave: () => void;
-  onToggleColumn: (actionKey: string) => void;
-  onToggleRow: (resourceKey: string) => void;
+  // BUG-082: 一括操作は「すべてON」「すべてOFF」を明示して指定する
+  onSetColumn: (actionKey: string, enabled: boolean) => void;
+  onSetRow: (resourceKey: string, enabled: boolean) => void;
   onCellChange: (permissionId: string) => void;
+}
+
+// 一括操作の「すべてON」「すべてOFF」ボタン(状態は持たず、押した時にまとめて変えるだけ)
+function BulkButtons({
+  disabled,
+  targetLabel,
+  onSet,
+  vertical = false,
+}: {
+  disabled: boolean;
+  targetLabel: string;
+  onSet: (enabled: boolean) => void;
+  vertical?: boolean;
+}) {
+  const buttonClass =
+    "px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-800 text-[10px] font-bold whitespace-nowrap hover:bg-slate-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+  return (
+    <div className={`inline-flex gap-1 ${vertical ? "flex-col" : ""}`}>
+      <button
+        type="button"
+        className={buttonClass}
+        disabled={disabled}
+        onClick={() => onSet(true)}
+        aria-label={`${targetLabel}をすべてON`}
+        title={`${targetLabel}をすべてONにします(保存するまで確定しません)`}
+      >
+        すべてON
+      </button>
+      <button
+        type="button"
+        className={buttonClass}
+        disabled={disabled}
+        onClick={() => onSet(false)}
+        aria-label={`${targetLabel}をすべてOFF`}
+        title={`${targetLabel}をすべてOFFにします(保存するまで確定しません)`}
+      >
+        すべてOFF
+      </button>
+    </div>
+  );
 }
 
 export function MatrixTable({
@@ -34,8 +75,8 @@ export function MatrixTable({
   isSaving,
   onRoleChange,
   onSave,
-  onToggleColumn,
-  onToggleRow,
+  onSetColumn,
+  onSetRow,
   onCellChange,
 }: MatrixTableProps) {
   const displayResourceKeys = screenOptions.map((s) => s.resource);
@@ -77,6 +118,13 @@ export function MatrixTable({
           </button>
         </div>
 
+        {/* BUG-082: 一括操作の説明 */}
+        <p className="px-4 py-2 text-xs text-slate-700 bg-white border-b border-slate-200">
+          「すべてON」「すべてOFF」は、画面上のチェックをまとめて付け外しします。
+          上の「すべての画面に一括適用」の行は、その権限(列)をすべての画面で、各画面の右端の「行一括」は、その画面のすべての権限を変えます。
+          <strong className="text-slate-900">「マトリクス設定を保存する」を押すまで保存されません。</strong>
+        </p>
+
         {/* 縦横スクロール可能なコンテナ(高さの上限を設定) */}
         <div className="overflow-auto max-h-[calc(100vh-220px)] relative">
           <table className="w-full text-left text-xs border-collapse">
@@ -102,6 +150,9 @@ export function MatrixTable({
                   rowSpan={2}
                 >
                   行一括
+                  <div className="text-[10px] font-medium text-slate-600">
+                    (この画面の全権限)
+                  </div>
                 </th>
               </tr>
               {/* 2段目ヘッダー */}
@@ -123,33 +174,25 @@ export function MatrixTable({
                   ⚡ すべての画面に一括適用
                 </td>
                 {dynamicHeaderActions.map((act) => {
-                  const columnPermIds = permissions
-                    .filter((p) => p.action === act.key)
-                    .map((p) => p.id);
-                  const isColumnAllChecked =
-                    columnPermIds.length > 0 &&
-                    columnPermIds.every((id) =>
-                      checkedPermissionIds.includes(id),
-                    );
-
+                  const hasColumnPerms = permissions.some((p) => p.action === act.key);
                   return (
                     <td
                       key={act.key}
                       className="px-2 py-2.5 text-center bg-indigo-50/90"
                     >
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 text-indigo-600 rounded border-slate-400 focus:ring-indigo-500 cursor-pointer disabled:opacity-40 shadow-sm"
-                        checked={isColumnAllChecked}
-                        disabled={!canUpdate}
-                        onChange={() => onToggleColumn(act.key)}
-                        title={`「${act.label}」権限をすべての画面で一括ON/OFF`}
+                      <BulkButtons
+                        vertical
+                        disabled={!canUpdate || !hasColumnPerms}
+                        targetLabel={`すべての画面の「${act.label}」`}
+                        onSet={(enabled) => onSetColumn(act.key, enabled)}
                       />
                     </td>
                   );
                 })}
-                <td className="px-4 py-2.5 bg-indigo-50/90 text-center text-[10px] text-slate-600 font-medium">
-                  一括制御
+                <td className="px-4 py-2.5 bg-indigo-50/90 text-center text-[10px] text-slate-700 font-medium">
+                  (列ごとに
+                  <br />
+                  全画面へ適用)
                 </td>
               </tr>
 
@@ -160,12 +203,7 @@ export function MatrixTable({
                 );
                 const displayName = screenConfig ? screenConfig.name : resKey;
 
-                const rowPermIds = permissions
-                  .filter((p) => p.resource === resKey)
-                  .map((p) => p.id);
-                const isRowAllChecked =
-                  rowPermIds.length > 0 &&
-                  rowPermIds.every((id) => checkedPermissionIds.includes(id));
+                const hasRowPerms = permissions.some((p) => p.resource === resKey);
 
                 return (
                   <tr
@@ -199,7 +237,7 @@ export function MatrixTable({
                               onChange={() => onCellChange(targetId)}
                             />
                           ) : (
-                            <span className="text-slate-200 select-none">
+                            <span className="text-slate-500 select-none">
                               —
                             </span>
                           )}
@@ -208,13 +246,10 @@ export function MatrixTable({
                     })}
 
                     <td className="px-4 py-3.5 text-center">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer disabled:opacity-40"
-                        checked={isRowAllChecked}
-                        disabled={!canUpdate || rowPermIds.length === 0}
-                        onChange={() => onToggleRow(resKey)}
-                        title={`「${displayName}」のすべての権限を一括ON/OFF`}
+                      <BulkButtons
+                        disabled={!canUpdate || !hasRowPerms}
+                        targetLabel={`「${displayName}」のすべての権限`}
+                        onSet={(enabled) => onSetRow(resKey, enabled)}
                       />
                     </td>
                   </tr>

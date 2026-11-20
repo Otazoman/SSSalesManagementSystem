@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { selectServiceItemIds } from "./service-items";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { DIRECT_SHIPMENT_WAREHOUSE_TYPE } from "./direct-shipment-warehouse";
 import * as schema from "../../db/schema";
 
 /**
@@ -49,7 +50,14 @@ export class WarehouseStockReservationRepository {
       })
       .from(schema.stocks)
       .innerJoin(schema.warehouses, eq(schema.warehouses.id, schema.stocks.warehouseId))
-      .where(and(eq(schema.stocks.itemId, itemId), eq(schema.stocks.qualityStatus, "NORMAL")))
+      .where(
+        and(
+          eq(schema.stocks.itemId, itemId),
+          eq(schema.stocks.qualityStatus, "NORMAL"),
+          // REQ-005: 直送用の倉庫(直送完了の記録用。在庫は常に0に戻る)からは引き当てない
+          ne(schema.warehouses.warehouseType, DIRECT_SHIPMENT_WAREHOUSE_TYPE),
+        ),
+      )
       .groupBy(schema.stocks.warehouseId, schema.warehouses.name);
 
     const reservedRows = await this.db
@@ -190,6 +198,43 @@ export class WarehouseStockReservationRepository {
       }
     }
     if (statements.length > 0) await this.db.batch(statements as [any, ...any[]]);
+  }
+
+  // REQ-005: 直送(直送用の倉庫からの出庫)では、どの倉庫の引当を消費するかが決まらないため、倉庫を問わず
+  // 古い順に quantity 分だけ ledger を消費し、倉庫ごとに消費した数量を返す(カウンタの減算は呼ぶ側)
+  async consumeReservationLedgerAnyWarehouse(
+    salesOrderItemId: string,
+    quantity: number,
+    now: Date,
+  ): Promise<WarehouseAllocationRequestLine[]> {
+    if (quantity <= 0) return [];
+
+    const rows = await this.db
+      .select()
+      .from(schema.salesOrderItemReservations)
+      .where(eq(schema.salesOrderItemReservations.salesOrderItemId, salesOrderItemId))
+      .orderBy(asc(schema.salesOrderItemReservations.createdAt));
+
+    const statements: any[] = [];
+    const consumed: WarehouseAllocationRequestLine[] = [];
+    let remaining = quantity;
+    for (const row of rows) {
+      if (remaining <= 0) break;
+      const take = Math.min(row.reservedQuantity, remaining);
+      if (take <= 0) continue;
+      statements.push(
+        take === row.reservedQuantity
+          ? this.db.delete(schema.salesOrderItemReservations).where(eq(schema.salesOrderItemReservations.id, row.id))
+          : this.db
+              .update(schema.salesOrderItemReservations)
+              .set({ reservedQuantity: row.reservedQuantity - take, updatedAt: now })
+              .where(eq(schema.salesOrderItemReservations.id, row.id)),
+      );
+      consumed.push({ warehouseId: row.warehouseId, quantity: take });
+      remaining -= take;
+    }
+    if (statements.length > 0) await this.db.batch(statements as [any, ...any[]]);
+    return consumed;
   }
 }
 
@@ -358,6 +403,29 @@ export async function releaseReservationForShippedQuantity(
   if (quantity <= 0) return;
   await repo.consumeReservationLedger(salesOrderItemId, warehouseId, quantity, now);
   await repo.release(itemId, warehouseId, quantity, now);
+}
+
+// REQ-005: 直送(仕入先から得意先へ直接納品)で出荷した数量の分、受注明細の在庫の手当てを外す。
+// 直送は欠品を補うために使うことが多いため、まず欠品数量から減らし、残りは自社倉庫の引当を外す
+// (外した引当の在庫は、他の受注で使えるようになる)。戻り値は、新しい欠品数量(呼ぶ側が受注明細へ保存する)
+export async function adjustReservationForDirectShipment(
+  repo: WarehouseStockReservationRepository,
+  salesOrderItemId: string,
+  itemId: string,
+  backorderedQuantity: number,
+  quantity: number,
+  now: Date,
+): Promise<number> {
+  if (quantity <= 0) return backorderedQuantity;
+  const fromBackorder = Math.min(Math.max(backorderedQuantity, 0), quantity);
+  const fromReservation = quantity - fromBackorder;
+  if (fromReservation > 0) {
+    const consumed = await repo.consumeReservationLedgerAnyWarehouse(salesOrderItemId, fromReservation, now);
+    for (const line of consumed) {
+      await repo.release(itemId, line.warehouseId, line.quantity, now);
+    }
+  }
+  return backorderedQuantity - fromBackorder;
 }
 
 // Item7残課題2-5フォローアップ6(2026-08-27): 承認機能ON時、在庫は「早い者勝ち」で

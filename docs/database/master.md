@@ -199,6 +199,7 @@ erDiagram
 | `postal_code` | 文字列 |  |  |  | 郵便番号 |
 | `address` | 文字列 |  |  |  | 住所 |
 | `phone_number` | 文字列 |  |  |  | 電話番号 |
+| `fax_number` | 文字列 |  |  |  | FAX番号 |
 | `status` | 文字列 | ○ | `temporary` |  | 状態 |
 | `memo` | 文字列 |  |  |  | 備考 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
@@ -267,6 +268,7 @@ erDiagram
 | `reorder_point` | 数値 | ○ | `0` |  | 発注点 |
 | `safety_stock` | 数値 | ○ | `0` |  | 安全在庫 |
 | `memo` | 文字列 |  |  |  | 備考 |
+| `status` | 文字列 | ○ | `active` |  | 状態 |
 | `created_by` | 文字列 | ○ |  |  | 作成者(従業員番号) |
 | `created_at` | 日時 | ○ |  |  | 作成日時 |
 | `updated_by` | 文字列 | ○ |  |  | 更新者(従業員番号) |

@@ -1,3 +1,4 @@
 ステップID,フローID,段,承認ロールID
 flow-inventory-stock-step-1,flow-inventory-stock,1,approver_role
+flow-inventory-shipping-step-1,flow-inventory-shipping,1,approver_role
 flow-inventory-audit-step-1,flow-inventory-audit,1,approver_role

@@ -5,6 +5,8 @@ import { StatusBadge } from "../../../_shared/ui/StatusBadge";
 import { getDocumentLifecycleStatus } from "../../../_shared/status/document-lifecycle-status";
 
 interface SalesInvoiceTableProps {
+  // BUG-080: 承認機能が無効なら、承認済み(APPROVED)を「確定」と表示する(省略時は「承認済み」)
+  approvalEnabled?: boolean;
   invoices: SalesInvoiceRecord[];
   partners: PartnerMaster[];
   userMaster: UserOption[];
@@ -99,6 +101,7 @@ function SortableTh({
 }
 
 export function SalesInvoiceTable({
+  approvalEnabled,
   invoices,
   partners,
   userMaster,
@@ -298,7 +301,7 @@ export function SalesInvoiceTable({
                     </td>
                     <td className="px-3 py-3 text-center whitespace-nowrap">
                       <StatusBadge
-                        {...getDocumentLifecycleStatus(inv.status)}
+                        {...getDocumentLifecycleStatus(inv.status, { approvalEnabled })}
                       />
                     </td>
                     <td

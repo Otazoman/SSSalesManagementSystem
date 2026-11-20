@@ -1,3 +1,4 @@
+import { BadRequestError } from "../../../platform/http/http-error";
 import { Context } from "hono";
 import { setCookie } from "hono/cookie";
 import { CompanySettingsRepository } from "./company-settings.repository";
@@ -32,6 +33,12 @@ const DEFAULT_SETTINGS: UpdateCompanySettingsInput = {
   is_location_approval_enabled: false,
   is_business_location_approval_enabled: false,
   is_tax_category_approval_enabled: false,
+  is_project_approval_enabled: false,
+  is_item_reorder_setting_approval_enabled: false,
+  is_billing_approval_enabled: false,
+  is_cash_receipt_approval_enabled: false,
+  is_payment_disbursement_approval_enabled: false,
+  is_payment_approval_enabled: false,
   is_quote_approval_enabled: false,
   is_sales_order_approval_enabled: false,
   is_purchase_requisition_approval_enabled: false,
@@ -64,6 +71,11 @@ const DEFAULT_SETTINGS: UpdateCompanySettingsInput = {
   otp_expiry_minutes: "10",
   otp_max_attempts: "5",
   login_max_failed_attempts: "5",
+  // REQ-004: ログイン時の OTP
+  login_otp_digit_count: "6",
+  login_otp_expiry_minutes: "10",
+  login_otp_max_attempts: "5",
+  login_otp_resend_interval_seconds: "60",
   password_min_length: "8",
   password_require_uppercase: false,
   password_require_lowercase: false,
@@ -160,6 +172,13 @@ export class CompanySettingsService {
         body.is_business_location_approval_enabled,
       is_tax_category_approval_enabled:
         body.is_tax_category_approval_enabled,
+      is_project_approval_enabled: body.is_project_approval_enabled,
+      is_item_reorder_setting_approval_enabled:
+        body.is_item_reorder_setting_approval_enabled,
+      is_billing_approval_enabled: body.is_billing_approval_enabled,
+      is_cash_receipt_approval_enabled: body.is_cash_receipt_approval_enabled,
+      is_payment_disbursement_approval_enabled: body.is_payment_disbursement_approval_enabled,
+      is_payment_approval_enabled: body.is_payment_approval_enabled,
       is_quote_approval_enabled: body.is_quote_approval_enabled,
       is_sales_order_approval_enabled: body.is_sales_order_approval_enabled,
       is_purchase_requisition_approval_enabled:
@@ -201,6 +220,10 @@ export class CompanySettingsService {
       otp_expiry_minutes: body.otp_expiry_minutes.trim(),
       otp_max_attempts: body.otp_max_attempts.trim(),
       login_max_failed_attempts: body.login_max_failed_attempts,
+      login_otp_digit_count: body.login_otp_digit_count,
+      login_otp_expiry_minutes: body.login_otp_expiry_minutes,
+      login_otp_max_attempts: body.login_otp_max_attempts,
+      login_otp_resend_interval_seconds: body.login_otp_resend_interval_seconds,
       password_min_length: body.password_min_length,
       password_require_uppercase: body.password_require_uppercase,
       password_require_lowercase: body.password_require_lowercase,
@@ -282,7 +305,7 @@ export class CompanySettingsService {
     const mailBody = [
       `※このメールはシステム共通マスタ設定より自動送信された接続テストメールです。`,
       ``,
-      `販売管理システムのメール送信基盤(Gmail SMTPリレー)は正常に稼働しています。`,
+      `販売管理システムのメール送信(SMTP)は正常に稼働しています。`,
       ``,
       `--------------------------------------------------`,
       `■ システム設定情報`,
@@ -293,17 +316,25 @@ export class CompanySettingsService {
       `--------------------------------------------------`,
     ].join("\n");
 
-    await sendEmail({
-      smtpHost: settings.smtp_host,
-      smtpPort: settings.smtp_port,
-      smtpUser: settings.smtp_user,
-      // BUG-011: パスワード欄が空欄(=変更なし)なら、保存済みのパスワードで送る
-      smtpPass: settings.smtp_pass || (await this.getSettings()).smtp_pass,
-      smtpFrom: settings.smtp_from,
-      to: toEmail,
-      subject: mailSubject,
-      text: mailBody,
-    });
+    // BUG-072: テスト送信は設定の確認のためのものなので、失敗した理由(接続先・サーバーの応答)を画面に返す
+    // (パスワードは含まない。通常の送信の失敗は、従来どおりメール送信ログに残す)
+    try {
+      await sendEmail({
+        smtpHost: settings.smtp_host,
+        smtpPort: settings.smtp_port,
+        smtpUser: settings.smtp_user,
+        // BUG-011: パスワード欄が空欄(=変更なし)なら、保存済みのパスワードで送る
+        smtpPass: settings.smtp_pass || (await this.getSettings()).smtp_pass,
+        smtpFrom: settings.smtp_from,
+        to: toEmail,
+        subject: mailSubject,
+        text: mailBody,
+      });
+    } catch (err) {
+      throw new BadRequestError(
+        `テストメールの送信に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     const isAuditEnabled = settings.is_audit_log_enabled !== false;
     await writeAuditLog(

@@ -72,6 +72,7 @@ describe("useApprovalFlow", () => {
     const { result } = renderHook(() => useApprovalFlow(baseArgs()));
 
     await waitFor(() => expect(result.current.flows.length).toBe(1));
+    // BUG-103: 承認フローはメニュー単位のため、画面の一覧(業務・業務マスタ)だけを出す
     expect(result.current.screens.map((s) => s.resource)).toEqual([
       "master_units",
       "workflow_tasks",

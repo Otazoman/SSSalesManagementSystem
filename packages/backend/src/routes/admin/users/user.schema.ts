@@ -67,6 +67,8 @@ export const registerUserSchema = v.object({
   // 追加要望B: 管理者によるSlack通知設定(SlackメンバーID・通知方法)。省略時は変更しない
   slackUserId: v.optional(v.nullable(v.pipe(v.string(), v.trim()))),
   notificationChannel: v.optional(v.picklist(["email", "slack"])),
+  // REQ-004: ログイン時の OTP を使うか。省略時は変更しない(登録時はOFF)
+  loginOtpEnabled: v.optional(v.boolean()),
   relations: v.optional(v.array(userRelationSchema)),
 });
 
@@ -83,6 +85,8 @@ export const updateUserSchema = v.object({
   // 追加要望B: 管理者によるSlack通知設定(SlackメンバーID・通知方法)。省略時は変更しない
   slackUserId: v.optional(v.nullable(v.pipe(v.string(), v.trim()))),
   notificationChannel: v.optional(v.picklist(["email", "slack"])),
+  // REQ-004: ログイン時の OTP を使うか。省略時は変更しない(登録時はOFF)
+  loginOtpEnabled: v.optional(v.boolean()),
   relations: v.optional(v.array(userRelationSchema)),
 });
 

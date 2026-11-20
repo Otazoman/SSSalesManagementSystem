@@ -113,6 +113,8 @@ export function useOrderSaveActions({
       deliveryPlace: payload.deliveryPlace,
       deliveryDestinationId: payload.deliveryDestinationId || null,
       paymentTerms: payload.paymentTerms,
+      // BUG-074: プロジェクト(見積から引き継いだもの・画面で選んだもの)を保存する(以前は送っておらず保存されなかった)
+      projectId: payload.projectId || null,
       isPrepaid: payload.isPrepaid || false,
       prepaidAt: payload.prepaidAt || null,
     };
@@ -191,6 +193,8 @@ export function useOrderSaveActions({
       deliveryPlace: payload.deliveryPlace,
       deliveryDestinationId: payload.deliveryDestinationId || null,
       paymentTerms: payload.paymentTerms,
+      // BUG-074: プロジェクト(見積から引き継いだもの・画面で選んだもの)を保存する(以前は送っておらず保存されなかった)
+      projectId: payload.projectId || null,
       isPrepaid: payload.isPrepaid || false,
       prepaidAt: payload.prepaidAt || null,
     };

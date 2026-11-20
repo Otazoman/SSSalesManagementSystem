@@ -54,6 +54,7 @@ interface SalesOrderItemOption {
   itemId: string | null;
   itemName: string | null;
   remainingQuantity: number;
+  isDirectShipment?: boolean;
 }
 
 // Item6 Phase6-4: 自社倉庫の出庫(/inventory/stock)と外部倉庫の実績入力(/inventory/instructions)の
@@ -246,7 +247,8 @@ export function useStockShipmentForm(
         const progress = await apiFetch<SalesOrderItemOption[]>(
           `/api/sales-orders/${salesOrderId}/shipment-progress`,
         );
-        setOrderItems(progress.filter((i) => i.remainingQuantity > 0));
+        // BUG-109: 直送の明細は出庫の対象外
+        setOrderItems(progress.filter((i) => i.remainingQuantity > 0 && !i.isDirectShipment));
       } catch {
         setOrderItems([]);
       }

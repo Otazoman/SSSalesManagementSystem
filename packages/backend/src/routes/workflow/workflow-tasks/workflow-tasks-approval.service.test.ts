@@ -17,6 +17,7 @@ vi.mock("../../../workflow-engine/notifier", () => ({
 
 import { WorkflowTasksApprovalService } from "./workflow-tasks-approval.service";
 import { sendWorkflowMail } from "../../../workflow-engine/notifier";
+import { WorkflowTasksRepository } from "./workflow-tasks.repository";
 
 const mockedSendWorkflowMail = vi.mocked(sendWorkflowMail);
 
@@ -958,6 +959,63 @@ describe("WorkflowTasksApprovalService.remandTask", () => {
   });
 });
 
+// PERF-09: 1回の承認・差戻しの中で、同じ履歴(getLogById)・同じ申請(getParentRequestById)を取得するのは1回ずつ
+describe("承認・差戻しの問い合わせ(PERF-09)", () => {
+  async function seedTwoStepRequest() {
+    await seedUser("applicant-1", { email: "applicant1@example.com" });
+    await seedUser("approver-1");
+    await seedUser("approver-2", { email: "approver2@example.com" });
+    await seedRole("role1");
+    await seedRole("role2");
+    await seedUserRole("approver-1", "role1", null);
+    await seedUserRole("approver-2", "role2", null);
+    await seedPartner("partner-1", "テスト取引先", "applicant-1");
+    await seedApprovalFlow("flow-1", "master_partners", [
+      { order: 1, roleId: "role1" },
+      { order: 2, roleId: "role2" },
+    ]);
+    await db.insert(schema.masterApprovalRequests).values({
+      id: "req-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      requestType: "REGISTER",
+      status: "PENDING",
+      applicantId: "applicant-1",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.workflowLogs).values({
+      id: "log-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      approverRoleId: "role1",
+      layer: 1,
+      status: "PENDING",
+      requestId: "req-1",
+    });
+  }
+
+  for (const [label, call] of [
+    ["承認", callApproveTask],
+    ["差戻し", callRemandTask],
+  ] as const) {
+    it(`${label}: 履歴と申請の取得は1回ずつ`, async () => {
+      await seedTwoStepRequest();
+      const logSpy = vi.spyOn(WorkflowTasksRepository, "getLogById");
+      const requestSpy = vi.spyOn(WorkflowTasksRepository, "getParentRequestById");
+      try {
+        const res = await call({ logId: "log-1", requestId: "req-1", userId: "approver-1", comment: "確認" });
+        expect(res.status).toBe(200);
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(requestSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        logSpy.mockRestore();
+        requestSpy.mockRestore();
+      }
+    });
+  }
+});
+
 describe("resolveEditPath: 承認のtargetTypeと画面resourceが異なる伝票", () => {
   it("仕入(purchase_recognitions)は仕入管理画面(/purchase/receipts)へ解決される", async () => {
     expect(await WorkflowTasksApprovalService.resolveEditPath({}, "purchase_recognitions", "PC-1")).toBe("/purchase/receipts");
@@ -967,5 +1025,59 @@ describe("resolveEditPath: 承認のtargetTypeと画面resourceが異なる伝�
     expect(await WorkflowTasksApprovalService.resolveEditPath({}, "purchase_requisitions", "X")).toBe("/purchase/requisitions");
     expect(await WorkflowTasksApprovalService.resolveEditPath({}, "purchase_orders", "X")).toBe("/purchase/orders");
     expect(await WorkflowTasksApprovalService.resolveEditPath({}, "sales_invoices", "X")).toBe("/sales/invoices");
+  });
+});
+
+// REQ-023: 個別の承認でも、次の段に回った時はその段のロール名を返し、メッセージで知らせる
+describe("REQ-023: 個別の承認の結果の次の段", () => {
+  async function seedTwoStepRequest() {
+    await seedUser("applicant-1");
+    await seedUser("approver-1");
+    await seedRole("role1");
+    await db.insert(schema.roles).values({ id: "role-director", name: "部長", createdAt: now });
+    await seedUserRole("approver-1", "role1", null);
+    await seedUserRole("approver-1", "role-director", null);
+    await seedPartner("partner-1", "テスト取引先", "applicant-1");
+    await seedApprovalFlow("flow-1", "master_partners", [
+      { order: 1, roleId: "role1" },
+      { order: 2, roleId: "role-director" },
+    ]);
+    await db.insert(schema.masterApprovalRequests).values({
+      id: "req-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      requestType: "REGISTER",
+      status: "PENDING",
+      applicantId: "applicant-1",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.workflowLogs).values({
+      id: "log-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      approverRoleId: "role1",
+      layer: 1,
+      status: "PENDING",
+    });
+  }
+
+  it("1段目を承認すると次の段のロール名を返し、最後の段を承認すると返さない", async () => {
+    await seedTwoStepRequest();
+
+    const first = await callApproveTask({ logId: "log-1", requestId: "req-1", userId: "approver-1", comment: null });
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      message: "承認しました。次の段「部長」の承認待ちになりました",
+      nextStepRoleName: "部長",
+    });
+
+    const [next] = await db
+      .select()
+      .from(schema.workflowLogs)
+      .where(eq(schema.workflowLogs.status, "PENDING"));
+    const last = await callApproveTask({ logId: next.id, requestId: "req-1", userId: "approver-1", comment: null });
+    expect(last.status).toBe(200);
+    expect(await last.json()).toMatchObject({ message: "承認処理が完了しました", nextStepRoleName: null });
   });
 });

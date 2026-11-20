@@ -1,7 +1,7 @@
 "use client";
 
-import { useDiscardGuard } from "../../_shared/ui/DiscardGuard";
 import { useState } from "react";
+import { MasterFormModal } from "../../_shared/ui/MasterFormModal";
 import { usePagePermissions } from "../../hooks/use-page-permission";
 import { useRoles } from "./_hooks/useRoles";
 import { RoleHeader } from "./_components/RoleHeader";
@@ -19,7 +19,6 @@ export default function AdminRolesPage() {
     usePagePermissions();
 
   const [showForm, setShowForm] = useState(false);
-  const guard = useDiscardGuard(showForm);
 
   const {
     roles,
@@ -70,9 +69,6 @@ export default function AdminRolesPage() {
     setEditingId(null);
   };
 
-  const requestCloseForm = async () => {
-    if ((await guard.confirmDiscard())) handleCloseForm();
-  };
 
   return (
     <div className="w-full space-y-6">
@@ -94,24 +90,29 @@ export default function AdminRolesPage() {
         </span>
 
         <button
-          onClick={() => (showForm ? requestCloseForm() : setShowForm(true))}
-          disabled={!canCreate && !showForm}
+          onClick={() => setShowForm(true)}
+          disabled={!canCreate}
           className={`text-xs px-3 py-1.5 rounded font-bold transition-colors shadow-sm ${
-            canCreate || showForm
+            canCreate
               ? "bg-indigo-600 text-white cursor-pointer hover:bg-indigo-700"
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
         >
-          {showForm ? "キャンセル" : "➕ 新規個別登録・CSVインポート"}
+          ➕ 新規個別登録・CSVインポート
         </button>
       </div>
 
       {/* 登録・編集フォーム & CSVインポート */}
+      {/* REQ-024: 登録・編集の入力欄はモーダルで開く(一覧はモーダルの後ろに残る) */}
       {showForm && (
-        <div
-          {...guard.scopeProps}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-slate-100 rounded-xl border border-slate-200"
+        <MasterFormModal
+          title={editingId ? "ロールの編集" : "ロールの新規登録"}
+          onClose={handleCloseForm}
+          error={error}
+          message={message}
         >
+          {(requestClose) => (
+            <>
           <RoleForm
             canCreate={canCreate}
             canUpdate={canUpdate}
@@ -120,7 +121,7 @@ export default function AdminRolesPage() {
             isSubmitting={isSubmitting}
             onCreate={createRole}
             onUpdate={updateRole}
-            onClose={requestCloseForm}
+            onClose={() => void requestClose()}
             setError={setError}
           />
           <CsvImportPanel
@@ -129,7 +130,9 @@ export default function AdminRolesPage() {
             isSubmitting={isSubmitting}
             onImportCsv={importCsv}
           />
-        </div>
+        </>
+          )}
+        </MasterFormModal>
       )}
 
       {/* データ一覧テーブル */}

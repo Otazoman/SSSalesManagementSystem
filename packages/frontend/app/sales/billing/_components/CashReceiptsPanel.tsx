@@ -9,6 +9,7 @@ import { Modal } from "../../../_shared/ui/Modal";
 import { FormActions } from "../../../_shared/ui/FormActions";
 import { buttonClass } from "../../../_shared/ui/Button";
 import { selectablePartners } from "../../../_shared/partner-options";
+import { ReconciliationApprovalBadge } from "../../../_shared/ui/ReconciliationApprovalBadge";
 
 const INPUT_CLASS =
   "border border-slate-400 rounded px-2 py-1.5 bg-white text-slate-900 placeholder-slate-500 text-base sm:text-xs";
@@ -178,18 +179,22 @@ export function CashReceiptsPanel({
                     {METHOD_LABELS[r.method]}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    {r.status === "LINKED" ? (
-                      <StatusBadge label="紐づけ済み" tone="emerald" />
-                    ) : (
-                      <StatusBadge label="未紐づけ" tone="amber" />
-                    )}
+                    <span className="inline-flex items-center gap-1">
+                      {r.status === "LINKED" ? (
+                        <StatusBadge label="紐づけ済み" tone="emerald" />
+                      ) : (
+                        <StatusBadge label="未紐づけ" tone="amber" />
+                      )}
+                      {/* REQ-018: 承認待ち・差戻しの入金は紐づけできない */}
+                      <ReconciliationApprovalBadge status={r.approvalStatus} />
+                    </span>
                   </td>
                   <td className="px-3 py-2 font-mono whitespace-nowrap">
                     {r.billingHeaderId ?? ""}
                   </td>
                   <td className="px-3 py-2">{r.memo ?? ""}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    {r.status === "UNLINKED" && canUpdate && (
+                    {r.status === "UNLINKED" && (r.approvalStatus ?? "APPROVED") === "APPROVED" && canUpdate && (
                       <button
                         onClick={() => void c.openLink(r)}
                         className="px-2 py-0.5 mr-1 border border-indigo-600 text-indigo-800 rounded bg-white hover:bg-indigo-50 font-semibold"
@@ -197,7 +202,7 @@ export function CashReceiptsPanel({
                         請求へ紐づけ
                       </button>
                     )}
-                    {r.status === "UNLINKED" && canDelete && (
+                    {r.status === "UNLINKED" && r.approvalStatus !== "PENDING" && canDelete && (
                       <button
                         onClick={() => void c.remove(r)}
                         className="px-2 py-0.5 border border-red-600 text-red-800 rounded bg-white hover:bg-red-50 font-semibold"

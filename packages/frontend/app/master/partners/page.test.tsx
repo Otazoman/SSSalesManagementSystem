@@ -101,7 +101,7 @@ describe("PartnersPage(partners)", () => {
     expect(screen.getByText("🏢 取引先マスタ")).toBeInTheDocument();
   });
 
-  it("「新規個別登録・CSVインポート」クリックでフォームを開閉する", async () => {
+  it("「新規個別登録・CSVインポート」クリックでフォームをモーダルで開き、✕で閉じる(REQ-024)", async () => {
     mockUsePagePermissions.mockReturnValue(basePermissions());
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
     const Page = await importPage();
@@ -114,7 +114,7 @@ describe("PartnersPage(partners)", () => {
     );
     expect(screen.getByText("新規個別取引先登録")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "キャンセル" }));
+    await userEvent.click(screen.getByRole("button", { name: "ダイアログを閉じる" }));
     expect(screen.queryByText("新規個別取引先登録")).not.toBeInTheDocument();
   });
 

@@ -28,6 +28,10 @@ export { stockDisposalsRouter as stockDisposals } from "./inventory/disposals";
 export { stockReceiptsRouter as stockReceipts } from "./inventory/receipts";
 export { stockReclassificationsRouter as stockReclassifications } from "./inventory/reclassifications";
 export { stockReturnsRouter as stockReturns } from "./inventory/returns";
+// REQ-011(2): 一時保管の台帳(/api/temporary-holdings)
+export { temporaryHoldingsRouter as temporaryHoldings } from "./inventory/temporary-holdings";
+// REQ-006: 倉庫間移動(/api/stock-transfers)
+export { stockTransfersRouter as stockTransfers } from "./inventory/transfers";
 export { stockShipmentsRouter as stockShipments } from "./inventory/shipments";
 export { stocksRouter as stocks } from "./inventory/stocks";
 export { locationsRouter as locations } from "./master/locations";
@@ -41,6 +45,7 @@ export { partnersRouter as partners } from "./master/partners"; // partners.ts �
 export { permissionsRouter as permissions } from "./admin/permissions";
 export { productPricesRouter as productPrices } from "./master/product-prices";
 export { r2ExplorerRouter as r2Explorer } from "./admin/r2-explorer";
+export { reportAssetsRouter as reportAssets } from "./report-assets"; // PERF-07 B-2: 帳票の描画に使うフォント・ロゴ・社印
 export { productsRouter as products } from "./master/products";
 export { projectsRouter as projects } from "./master/projects";
 export { purchaseRequisitionsRouter as purchaseRequisitions } from "./purchase/requisitions";

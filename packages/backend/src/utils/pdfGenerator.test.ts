@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
-import { generateDocumentPDF, PDFInvoiceData, resolveMemoBoxTopY } from "./pdfGenerator";
+import { appendPdfPages, generateDocumentPDF, PDFInvoiceData, resolveMemoBoxTopY } from "./pdfGenerator";
+import { PDFDocument } from "pdf-lib";
 
 /**
  * 画面構成再編: 納品書PDFのレンダラーを注文請書と同じgenerateDocumentPDF(pdfGenerator.ts)へ
@@ -219,5 +220,123 @@ describe("generateDocumentPDF 明細の納期列", () => {
       const pdf = await generateDocumentPDF(data, { fontBuffer });
       expect(isValidPdf(pdf)).toBe(true);
     }
+  });
+});
+
+// BUG-077: 合計欄の見出しは帳票ごとに変える(以前は帳票に関係なく「見積金額(税込)」だった)
+describe("合計欄の見出し(reportLayouts.json の totalBoxLabel)", () => {
+  it("帳票ごとの見出しを持ち、見積書以外は「見積金額」にしない", async () => {
+    const { default: layouts } = await import("report-renderer/report-layouts.json");
+    const labels = Object.fromEntries(
+      Object.entries(layouts as Record<string, { totalBoxLabel?: string }>).map(([k, v]) => [k, v.totalBoxLabel]),
+    );
+    expect(labels).toEqual({
+      QUOTATION: "見積金額(税込)",
+      INVOICE: "請求金額(税込)",
+      ORDER: "発注金額(税込)",
+      ORDER_ACKNOWLEDGMENT: "注文金額(税込)",
+      DELIVERY: "合計金額(税込)",
+      ACCEPTANCE: "合計金額(税込)",
+      PURCHASE_RECOGNITION: "計上金額(税込)",
+      SALES_RECOGNITION: "売上金額(税込)",
+      CUSTOMER_ORDER_FORM: "発注金額(税込)",
+    });
+  });
+});
+
+// REQ-002: 見積書の後ろに付けるご発注書(固定レイアウト。右上はお客様の記入・押印欄)
+describe("ご発注書(CUSTOMER_ORDER_FORM)", () => {
+  const quoteData: PDFInvoiceData = {
+    templateType: "QUOTATION",
+    code: "QT-0001",
+    date: "2026-11-08",
+    customCompanyName: "テスト株式会社",
+    customCompanyAddress: "東京都",
+    customCompanyTel: "03-0000-0000",
+    customCompanyFax: "03-0000-0001",
+    customerName: "得意先株式会社",
+    totalAmount: 1100,
+    taxAmount: 100,
+    memo: "",
+    items: [{ itemName: "テスト品目", quantity: 2, unitPrice: 500 }],
+  };
+
+  it("ご発注書を生成でき、見積書の後ろにページをつなげられる", async () => {
+    const quotePdf = await generateDocumentPDF(quoteData, { fontBuffer });
+    const orderForm = await generateDocumentPDF(
+      { ...quoteData, templateType: "CUSTOMER_ORDER_FORM", customerName: "テスト株式会社", date: "", sourceQuoteNumber: "QT-0001" },
+      { fontBuffer },
+    );
+    expect(isValidPdf(orderForm)).toBe(true);
+    const merged = await appendPdfPages(quotePdf, orderForm);
+    const [q, o, m] = await Promise.all([quotePdf, orderForm, merged].map((b) => PDFDocument.load(b)));
+    expect(m.getPageCount()).toBe(q.getPageCount() + o.getPageCount());
+  });
+});
+
+// BUG-092: 担当者名が無い時は「担当:」の行を描かない(以前は「営業担当者」)。納品書には登録番号を出さない
+describe("担当者・登録番号の行(BUG-092)", () => {
+  async function drawnTexts(data: PDFInvoiceData): Promise<string[]> {
+    // 描画は report-renderer の中の pdf-lib で行うため、そちらの PDFPage の drawText を見張る(backend の pdf-lib とは別のもの)
+    const { PDFPage } = await import("../../../report-renderer/node_modules/pdf-lib");
+    const texts: string[] = [];
+    const original = PDFPage.prototype.drawText;
+    PDFPage.prototype.drawText = function (this: InstanceType<typeof PDFPage>, text: string, options?: Parameters<typeof original>[1]) {
+      texts.push(text);
+      return original.call(this, text, options);
+    };
+    try {
+      await generateDocumentPDF(data, { fontBuffer });
+    } finally {
+      PDFPage.prototype.drawText = original;
+    }
+    return texts;
+  }
+  const base = (overrides: Partial<PDFInvoiceData>): PDFInvoiceData => ({
+    templateType: "INVOICE",
+    code: "BL-1",
+    date: "2026-11-15",
+    customCompanyName: "テスト株式会社",
+    customerName: "得意先",
+    totalAmount: 1100,
+    taxAmount: 100,
+    memo: "",
+    companyInvoiceNo: "T1234567890123",
+    items: [{ itemName: "品目", quantity: 1, unitPrice: 1000 }],
+    ...overrides,
+  } as PDFInvoiceData);
+
+  it("担当者名があれば「担当: 氏名」を描き、無ければ担当の行を描かない", async () => {
+    expect(await drawnTexts(base({ salesPersonName: "請求太郎" }))).toContain("担当: 請求太郎");
+    const texts = await drawnTexts(base({ salesPersonName: "" }));
+    expect(texts.some((t) => t.startsWith("担当:"))).toBe(false);
+  });
+
+  // REQ-009: 発注書の納品場所の所在地は、所在地がある時だけ納品場所の次の行に描く
+  it("発注書は、所在地がある時だけ「所在地」の行を描く", async () => {
+    const withAddress = await drawnTexts(
+      base({ templateType: "ORDER", deliveryPlace: "本社倉庫", deliveryPlaceAddress: "東京都千代田区1-1" }),
+    );
+    expect(withAddress).toContain("本社倉庫");
+    expect(withAddress).toContain("所在地");
+    expect(withAddress).toContain("東京都千代田区1-1");
+    const without = await drawnTexts(base({ templateType: "ORDER", deliveryPlace: "本社倉庫" }));
+    expect(without).not.toContain("所在地");
+  });
+
+  // BUG-115: 枠に収まらない長い値は、枠の中で2行に折り返す(以前は1行のまま枠の右へはみ出していた)
+  it("発注書の長い所在地は、枠の中で2行に分けて描く(元の文字は欠けない)", async () => {
+    const address = "〒000-0005 大阪府サンプル市サンプル町50-5 サンプルビル12階 物流センター受付窓口";
+    const texts = await drawnTexts(base({ templateType: "ORDER", deliveryPlace: "直送: サンプル得意先", deliveryPlaceAddress: address }));
+    expect(texts).not.toContain(address);
+    const index = texts.findIndex((t) => address.startsWith(t) && t.length > 5);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect((texts[index] + texts[index + 1]).replace(/ /g, "")).toBe(address.replace(/ /g, ""));
+  });
+
+  it("請求書には登録番号を描き、納品書には描かない", async () => {
+    expect(await drawnTexts(base({}))).toContain("登録番号: T1234567890123");
+    const delivery = await drawnTexts(base({ templateType: "DELIVERY" }));
+    expect(delivery.some((t) => t.startsWith("登録番号"))).toBe(false);
   });
 });

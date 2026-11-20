@@ -25,6 +25,8 @@ export const UpdateProjectBodySchema = v.object({
   memo: v.optional(v.nullable(v.string())),
   startDate: v.optional(v.nullable(v.string())),
   endDate: v.optional(v.nullable(v.string())),
+  // BUG-097: 承認 ON の変更申請で、今の行を仮登録(temporary)にしてロックする時だけ送る(省略時は状態を変えない)
+  status: v.optional(v.picklist(["active", "temporary"])),
 });
 
 // パラメータ (:id)
