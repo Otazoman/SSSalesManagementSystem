@@ -15,7 +15,7 @@ import {
   HOLDING_STATUS_LABELS,
   TemporaryHoldingDetail,
 } from "../_types/temporary-holdings";
-import { DirectLinePicker } from "./DirectLinePicker";
+import { HoldingLinePickerModal } from "./holding-line-pickers";
 
 // REQ-011(2): 一時保管の詳細(動きの履歴)と、払出・数量の調整。受注の直接入力の明細から開いた時は、その明細に紐づけて払い出す
 export interface SalesOrderLineTarget {
@@ -61,6 +61,7 @@ export function TemporaryHoldingDetailModal({
   // REQ-029: 受注の明細から開いていない時に、受注番号で探して選んだ受注の明細
   const [pickedTarget, setPickedTarget] = useState<SalesOrderLineTarget | null>(null);
   const lineTarget = releaseTarget ?? pickedTarget;
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,11 +205,21 @@ export function TemporaryHoldingDetailModal({
                   </p>
                 )}
                 {mode === "release" && !releaseTarget && !pickedTarget && (
-                  <DirectLinePicker
+                  <div>
+                    <Button size="sm" onClick={() => setShowPicker(true)}>
+                      📦 受注から選択
+                    </Button>
+                    <span className="ml-2 text-[11px] text-slate-600">受注の直接入力(品目マスタに無い)の明細に紐づけて払い出す時に使います(任意)</span>
+                  </div>
+                )}
+                {showPicker && (
+                  <HoldingLinePickerModal
                     kind="sales"
+                    onClose={() => setShowPicker(false)}
                     onPick={(line) => {
                       setPickedTarget({ salesOrderId: line.orderId, salesOrderItemId: line.itemId });
                       setQuantity(String(line.quantity));
+                      setShowPicker(false);
                     }}
                   />
                 )}

@@ -9,7 +9,7 @@ import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { todayJst } from "../../../_shared/jst-date";
 import { NamedOption } from "../_hooks/useTemporaryHoldings";
 import { HoldingCategory } from "../_types/temporary-holdings";
-import { DirectLinePicker } from "./DirectLinePicker";
+import { HoldingLinePickerModal } from "./holding-line-pickers";
 
 // REQ-011(2): 一時保管への受入。発注の直接入力の明細から開いた時は、品名・数量・取引先を引き継ぐ
 export interface PurchaseOrderLineSource {
@@ -47,6 +47,7 @@ export function TemporaryHoldingReceiveModal({ warehouses, partners, source, onC
   // REQ-029: 一時保管のタブから開いた時に、発注番号で探して選んだ発注の明細
   const [pickedSource, setPickedSource] = useState<PurchaseOrderLineSource | null>(null);
   const lineSource = source ?? pickedSource;
+  const [showPicker, setShowPicker] = useState(false);
 
   // 発注の明細から開いた時は、品名・数量・取引先を引き継ぐ(画面で直せる)
   useEffect(() => {
@@ -134,13 +135,23 @@ export function TemporaryHoldingReceiveModal({ warehouses, partners, source, onC
           </p>
         )}
         {!source && !pickedSource && (
-          <DirectLinePicker
+          <div>
+            <Button size="sm" onClick={() => setShowPicker(true)}>
+              📦 発注から選択
+            </Button>
+            <span className="ml-2 text-[11px] text-slate-600">発注の直接入力(品目マスタに無い)の明細から受け入れる時に使います(任意)</span>
+          </div>
+        )}
+        {showPicker && (
+          <HoldingLinePickerModal
             kind="purchase"
+            onClose={() => setShowPicker(false)}
             onPick={(line) => {
               setPickedSource({ purchaseOrderId: line.orderId, purchaseOrderItemId: line.itemId });
               setItemName(line.itemName);
               setQuantity(String(line.quantity));
               if (line.partnerId) setPartnerId(line.partnerId);
+              setShowPicker(false);
             }}
           />
         )}
