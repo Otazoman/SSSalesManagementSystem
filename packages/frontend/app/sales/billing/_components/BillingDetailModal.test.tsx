@@ -316,3 +316,31 @@ describe("BillingDetailModal: REQ-018 入金の承認", () => {
     expect(screen.getByText("差戻し(消込に入れない)")).toBeInTheDocument();
   });
 });
+
+// BUG-120(BUG-114 の調べで見つけたもの): 発行・送信の結果を詳細画面の中に出す。送信のエラーは送信モーダルの中にも出す
+describe("BillingDetailModal: 結果の表示(BUG-120)", () => {
+  const props = {
+    detail: DETAIL,
+    onClose: vi.fn(),
+    onGeneratePDF: vi.fn(),
+    onRecordPaymentReceipt: vi.fn(async () => true),
+    setShowMailModal: vi.fn(),
+    recipientEmail: "",
+    setRecipientEmail: vi.fn(),
+    partnerContacts: [],
+    selectedContactId: "",
+    onContactSelect: vi.fn(),
+    onSendEmail: vi.fn(),
+    isMailSending: false,
+  };
+
+  it("成功のメッセージを詳細画面の中に出す", () => {
+    render(<BillingDetailModal {...props} showMailModal={false} message="📧 メールの送信を予約しました" />);
+    expect(screen.getByText("📧 メールの送信を予約しました")).toBeInTheDocument();
+  });
+
+  it("送信のエラーを、送信モーダルの中にも出す", () => {
+    render(<BillingDetailModal {...props} showMailModal error="メール送信に失敗しました" />);
+    expect(screen.getAllByText(/メール送信に失敗しました/).length).toBeGreaterThanOrEqual(2);
+  });
+});

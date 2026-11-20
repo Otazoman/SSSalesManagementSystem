@@ -1,5 +1,5 @@
 import { Context } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import * as schema from "../../db/schema";
 import { createDb } from "../../platform/db/create-db";
 import { getCompanySettings } from "../../platform/kv/company-settings-cache";
@@ -8,6 +8,7 @@ import { resolveOperatorEmployeeNumber } from "../../platform/repository/fallbac
 import { logAuditEvent } from "../../platform/audit/log-audit-event";
 import { BadRequestError, NotFoundError } from "../../platform/http/http-error";
 import { WarehousesRepository } from "../master/warehouses/warehouses.repository";
+import { WarehouseContactsRepository } from "../master/warehouse-contacts/warehouse-contacts.repository";
 import type { Env } from "../../types/env";
 
 /**
@@ -26,6 +27,7 @@ const CONFIG = {
     resourceKey: "inventory_instructions",
     headers: schema.itemReceiptInstructions,
     attachments: schema.receiptInstructionAttachments,
+    documentType: "receipt_instruction",
   },
   shipment: {
     label: "出荷指示書",
@@ -35,6 +37,7 @@ const CONFIG = {
     resourceKey: "inventory_instructions",
     headers: schema.itemShipmentInstructions,
     attachments: schema.shipmentInstructionAttachments,
+    documentType: "shipment_instruction",
   },
 } as const;
 
@@ -92,9 +95,29 @@ export async function sendInstructionEmail(
 }
 
 /**
+ * BUG-113(2026-11-20 案A): 指示書の宛先。倉庫の担当者のうち、この指示書を送る設定で有効な人のメールアドレス。
+ * いなければ倉庫マスタのメールアドレス(倉庫そのもの)。どちらも無ければ空。指示書のダウンロードの確認コード(OTP)の宛先と同じ決め方
+ */
+export async function resolveInstructionRecipientEmails(
+  d1: D1Database,
+  kind: InstructionKind,
+  warehouseId: string,
+): Promise<string[]> {
+  const contacts = await new WarehouseContactsRepository(d1).findActiveContactsForDocument(
+    warehouseId,
+    CONFIG[kind].documentType,
+  );
+  const contactEmails = contacts.map((ct) => ct.email?.trim()).filter((email): email is string => !!email);
+  if (contactEmails.length > 0) return Array.from(new Set(contactEmails));
+  const warehouse = await new WarehousesRepository(d1).findById(warehouseId);
+  const warehouseEmail = warehouse?.email?.trim();
+  return warehouseEmail ? [warehouseEmail] : [];
+}
+
+/**
  * BUG-113: 一括の「選択した指示書を一括発行・送信」用。REQ-012 で PDF の発行ではメールを送らないようにしたため、一括の時は
- * PDF を発行した後にこの処理で、指示書ごとに倉庫の登録済みの担当者(メール送信の対象・停止していない・メールアドレスあり)へ送る
- * (以前の自動送信と同じ宛先)。担当者がいない指示書・PDF が無い指示書は失敗として数える(他の指示書は送る)。
+ * PDF を発行した後にこの処理で、指示書ごとに倉庫の宛先(resolveInstructionRecipientEmails)へ送る。
+ * 宛先の無い指示書・PDF が無い指示書は失敗として数える(他の指示書は送る)。
  */
 export async function sendInstructionEmailsToRegisteredContacts(
   c: Context<{ Bindings: Env }>,
@@ -108,15 +131,11 @@ export async function sendInstructionEmailsToRegisteredContacts(
     try {
       const [header] = await db.select().from(config.headers).where(eq(config.headers.id, id)).limit(1);
       if (!header) throw new NotFoundError(`対象の${config.label}が見つかりません`);
-      const contacts = await db
-        .select()
-        .from(schema.warehouseContacts)
-        .where(and(eq(schema.warehouseContacts.warehouseId, header.warehouseId), eq(schema.warehouseContacts.isEmailTarget, true)));
-      const emails = contacts
-        .filter((ct) => ct.status !== "suspended" && ct.email && ct.email.trim() !== "")
-        .map((ct) => ct.email!.trim());
+      const emails = await resolveInstructionRecipientEmails(c.env.DB, kind, header.warehouseId);
       if (emails.length === 0) {
-        throw new BadRequestError("倉庫マスタに、メール送信の対象でメールアドレスのある担当者が登録されていません");
+        throw new BadRequestError(
+          "倉庫マスタに、宛先のメールアドレスがありません(この指示書を送る設定の担当者、または倉庫のメールアドレスを登録してください)",
+        );
       }
       await sendInstructionEmail(c, kind, id, emails.join(", "));
       results.push({ id, status: "PENDING" });

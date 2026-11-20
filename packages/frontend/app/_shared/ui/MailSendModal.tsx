@@ -39,6 +39,8 @@ interface MailSendModalProps {
   onClose: () => void;
   onSend: () => void;
   isMailSending: boolean;
+  /** 送信のエラー(BUG-120: 呼び出し元の画面の裏に出ると見えないため、モーダルの中にも出す)。省略可 */
+  error?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ export function MailSendModal({
   onClose,
   onSend,
   isMailSending,
+  error = "",
 }: MailSendModalProps) {
   const contacts = documentType
     ? filterContactsByDocumentType(allContacts, documentType)
@@ -84,6 +87,12 @@ export function MailSendModal({
         />
       }
     >
+      {error && (
+        <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-[11px] font-bold rounded-lg">
+          ⚠️ {error}
+        </div>
+      )}
+
       <FormField label={targetLabel}>
         <input
           type="text"

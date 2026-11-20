@@ -287,6 +287,7 @@ export default function PurchasePaymentPage() {
         onPreview={handlePreviewFirmBanking}
         onDownload={handleDownloadFirmBanking}
         onClose={handleCloseFirmBankingModal}
+        error={error}
       />
     </div>
   );

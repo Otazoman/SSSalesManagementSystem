@@ -331,6 +331,8 @@ export default function SalesBillingPage() {
         onContactSelect={handleContactSelect}
         onSendEmail={handleSendEmail}
         isMailSending={isMailSending}
+        message={message}
+        error={error}
       />
     </div>
   );

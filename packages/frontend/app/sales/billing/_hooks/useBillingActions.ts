@@ -155,6 +155,9 @@ export function useBillingActions({
   };
 
   const handleCloseDetail = () => {
+    // BUG-120: 結果は詳細画面の中に出したため、閉じる時に消す(次に開いた詳細に前の結果を出さない)
+    setMessage("");
+    setError("");
     setDetail(null);
     setShowMailModal(false);
     setRecipientEmail("");

@@ -13,6 +13,8 @@ interface BillingMailModalProps {
   onClose: () => void;
   onSend: () => void;
   isMailSending: boolean;
+  // BUG-120: 送信のエラーを送信モーダルの中に出す
+  error?: string;
 }
 
 // 伝票の個別メール送信モーダル。実体は共通部品 MailSendModal(この伝票のタイトル・対象ID・案内文だけを渡す)

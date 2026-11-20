@@ -15,6 +15,7 @@ import {
   HOLDING_STATUS_LABELS,
   TemporaryHoldingDetail,
 } from "../_types/temporary-holdings";
+import { DirectLinePicker } from "./DirectLinePicker";
 
 // REQ-011(2): 一時保管の詳細(動きの履歴)と、払出・数量の調整。受注の直接入力の明細から開いた時は、その明細に紐づけて払い出す
 export interface SalesOrderLineTarget {
@@ -57,6 +58,9 @@ export function TemporaryHoldingDetailModal({
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // REQ-029: 受注の明細から開いていない時に、受注番号で探して選んだ受注の明細
+  const [pickedTarget, setPickedTarget] = useState<SalesOrderLineTarget | null>(null);
+  const lineTarget = releaseTarget ?? pickedTarget;
 
   useEffect(() => {
     let cancelled = false;
@@ -87,8 +91,8 @@ export function TemporaryHoldingDetailModal({
                 quantity: Number(quantity),
                 movementDate,
                 memo: memo || null,
-                salesOrderId: releaseTarget?.salesOrderId ?? null,
-                salesOrderItemId: releaseTarget?.salesOrderItemId ?? null,
+                salesOrderId: lineTarget?.salesOrderId ?? null,
+                salesOrderItemId: lineTarget?.salesOrderItemId ?? null,
               }
             : { quantity: Number(quantity), movementDate, memo },
         defaultErrorMessage: mode === "release" ? "払出に失敗しました" : "数量の調整に失敗しました",
@@ -102,7 +106,7 @@ export function TemporaryHoldingDetailModal({
     } finally {
       setSaving(false);
     }
-  }, [holdingId, mode, quantity, movementDate, memo, releaseTarget, onChanged]);
+  }, [holdingId, mode, quantity, movementDate, memo, lineTarget, onChanged]);
 
   const remove = async () => {
     setError("");
@@ -185,10 +189,28 @@ export function TemporaryHoldingDetailModal({
                     </button>
                   ))}
                 </div>
-                {mode === "release" && releaseTarget && (
+                {mode === "release" && lineTarget && (
                   <p className="text-slate-700">
-                    受注[{releaseTarget.salesOrderId}]の直接入力の明細に紐づけて払い出します。
+                    受注[{lineTarget.salesOrderId}]の直接入力の明細に紐づけて払い出します。
+                    {pickedTarget && (
+                      <button
+                        type="button"
+                        onClick={() => setPickedTarget(null)}
+                        className="ml-2 font-bold text-slate-800 underline hover:text-slate-900"
+                      >
+                        受注とのつながりを外す
+                      </button>
+                    )}
                   </p>
+                )}
+                {mode === "release" && !releaseTarget && !pickedTarget && (
+                  <DirectLinePicker
+                    kind="sales"
+                    onPick={(line) => {
+                      setPickedTarget({ salesOrderId: line.orderId, salesOrderItemId: line.itemId });
+                      setQuantity(String(line.quantity));
+                    }}
+                  />
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <FormField

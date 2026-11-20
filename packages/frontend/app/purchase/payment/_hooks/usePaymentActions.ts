@@ -379,6 +379,8 @@ export function usePaymentActions({
   };
 
   const handleOpenFirmBankingModal = () => {
+    // BUG-120: エラーはモーダルの中にも出すため、前の操作のエラーを残さない
+    setError("");
     setFirmBankingPreview(null);
     setFirmBankingTransferDate(todayJst());
     setIsFirmBankingModalOpen(true);
@@ -403,6 +405,8 @@ export function usePaymentActions({
       );
       setFirmBankingPreview(data);
     } catch (err) {
+      // BUG-120: 確認に失敗したら、前の確認の結果(ダウンロードできる状態)を残さない
+      setFirmBankingPreview(null);
       if (err instanceof Error) setError(err.message);
     } finally {
       setIsFirmBankingLoading(false);

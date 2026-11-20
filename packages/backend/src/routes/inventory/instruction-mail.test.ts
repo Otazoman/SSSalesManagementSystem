@@ -122,9 +122,16 @@ describe("指示書の案内メールの一括送信(BUG-113)", () => {
       { id: "WC-2", warehouseId: "WH-MAIL", name: "対象外", email: "b@example.com", isEmailTarget: false, status: "active", ...audit },
       { id: "WC-3", warehouseId: "WH-MAIL", name: "停止", email: "c@example.com", isEmailTarget: true, status: "suspended", ...audit },
     ]);
+    // BUG-113(案A): 宛先は「指示書を送る設定(メールで送る帳票)で有効な担当者」。WC-2 は帳票の設定が無い、WC-3 は停止
+    await db.insert(schema.warehouseContactDocumentTypes).values([
+      { contactId: "WC-1", documentType: "receipt_instruction" },
+      { contactId: "WC-1", documentType: "shipment_instruction" },
+      { contactId: "WC-3", documentType: "receipt_instruction" },
+      { contactId: "WC-3", documentType: "shipment_instruction" },
+    ]);
   });
 
-  it("指示書ごとに、倉庫の登録済みの担当者(メール送信の対象・停止していない)へ送る。PDF が無い指示書は失敗として数える", async () => {
+  it("指示書ごとに、倉庫の担当者(この指示書を送る設定・停止していない)へ送る。PDF が無い指示書は失敗として数える", async () => {
     const res = await post(receiptInstructionsRouter, "/bulk-send-email", { ids: ["RI-MAIL", "RI-NOPDF"] });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { message: string; results: Array<{ id: string; status: string }> };
@@ -137,10 +144,17 @@ describe("指示書の案内メールの一括送信(BUG-113)", () => {
     expect(sent[0].recipientTo).toBe("a@example.com");
   });
 
-  it("出荷指示書も同じく送れる。担当者がいない倉庫の指示書は失敗にする", async () => {
+  it("出荷指示書も同じく送れる。担当者がいない倉庫は倉庫のメールアドレスへ送り、それも無ければ失敗にする(BUG-113 案A)", async () => {
     expect((await post(shipmentInstructionsRouter, "/bulk-send-email", { ids: ["SI-MAIL"] })).status).toBe(200);
     expect((await mails())[0].recipientTo).toBe("a@example.com");
+
+    await db.delete(schema.warehouseContactDocumentTypes);
     await db.delete(schema.warehouseContacts);
+    await dbLog.delete(auditSchema.mailDeliveryLogs);
+    expect((await post(shipmentInstructionsRouter, "/bulk-send-email", { ids: ["SI-MAIL"] })).status).toBe(200);
+    expect((await mails())[0].recipientTo).toBe("wh@example.com");
+
+    await db.update(schema.warehouses).set({ email: null }).where(eq(schema.warehouses.id, "WH-MAIL"));
     await dbLog.delete(auditSchema.mailDeliveryLogs);
     const res = await post(shipmentInstructionsRouter, "/bulk-send-email", { ids: ["SI-MAIL"] });
     const body = (await res.json()) as { results: Array<{ status: string; error?: string }> };

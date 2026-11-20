@@ -9,6 +9,7 @@ import { apiFetch } from "../../../_shared/hooks/use-api-fetch";
 import { todayJst } from "../../../_shared/jst-date";
 import { NamedOption } from "../_hooks/useTemporaryHoldings";
 import { HoldingCategory } from "../_types/temporary-holdings";
+import { DirectLinePicker } from "./DirectLinePicker";
 
 // REQ-011(2): 一時保管への受入。発注の直接入力の明細から開いた時は、品名・数量・取引先を引き継ぐ
 export interface PurchaseOrderLineSource {
@@ -43,6 +44,9 @@ export function TemporaryHoldingReceiveModal({ warehouses, partners, source, onC
   const [memo, setMemo] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // REQ-029: 一時保管のタブから開いた時に、発注番号で探して選んだ発注の明細
+  const [pickedSource, setPickedSource] = useState<PurchaseOrderLineSource | null>(null);
+  const lineSource = source ?? pickedSource;
 
   // 発注の明細から開いた時は、品名・数量・取引先を引き継ぐ(画面で直せる)
   useEffect(() => {
@@ -83,8 +87,8 @@ export function TemporaryHoldingReceiveModal({ warehouses, partners, source, onC
           partnerId: partnerId || null,
           receivedDate,
           plannedReleaseDate: plannedReleaseDate || null,
-          purchaseOrderId: source?.purchaseOrderId ?? null,
-          purchaseOrderItemId: source?.purchaseOrderItemId ?? null,
+          purchaseOrderId: lineSource?.purchaseOrderId ?? null,
+          purchaseOrderItemId: lineSource?.purchaseOrderItemId ?? null,
           memo: memo || null,
         },
         defaultErrorMessage: "一時保管への受入に失敗しました",
@@ -115,10 +119,30 @@ export function TemporaryHoldingReceiveModal({ warehouses, partners, source, onC
     >
       <div className="space-y-3">
         <MessageBanner error={error} />
-        {source && (
+        {lineSource && (
           <p className="text-xs text-slate-700">
-            発注[{source.purchaseOrderId}]の直接入力の明細から受け入れます(発注の入荷済数量には数えません)。
+            発注[{lineSource.purchaseOrderId}]の直接入力の明細から受け入れます(発注の入荷済数量には数えません)。
+            {pickedSource && (
+              <button
+                type="button"
+                onClick={() => setPickedSource(null)}
+                className="ml-2 font-bold text-slate-800 underline hover:text-slate-900"
+              >
+                発注とのつながりを外す
+              </button>
+            )}
           </p>
+        )}
+        {!source && !pickedSource && (
+          <DirectLinePicker
+            kind="purchase"
+            onPick={(line) => {
+              setPickedSource({ purchaseOrderId: line.orderId, purchaseOrderItemId: line.itemId });
+              setItemName(line.itemName);
+              setQuantity(String(line.quantity));
+              if (line.partnerId) setPartnerId(line.partnerId);
+            }}
+          />
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="区分" required>

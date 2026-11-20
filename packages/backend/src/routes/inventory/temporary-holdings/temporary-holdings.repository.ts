@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { and, asc, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { Context } from "hono";
 import * as schema from "../../../db/schema";
 import { Env } from "../../../types/env";
@@ -33,7 +33,15 @@ export class TemporaryHoldingsRepository {
       params.status && params.status !== "all" ? eq(t.status, params.status) : undefined,
       params.warehouseId ? eq(t.warehouseId, params.warehouseId) : undefined,
       params.partnerId ? eq(t.partnerId, params.partnerId) : undefined,
-      keyword ? or(like(t.itemName, `%${keyword}%`), like(t.id, `%${keyword}%`), like(t.sourceId, `%${keyword}%`)) : undefined,
+      keyword
+        ? or(
+            like(t.itemName, `%${keyword}%`),
+            like(t.id, `%${keyword}%`),
+            like(t.sourceId, `%${keyword}%`),
+            // REQ-029: 払い出した受注の番号でも探す(払出の動きの元の伝票)
+            sql`EXISTS (SELECT 1 FROM ${schema.temporaryHoldingMovements} m WHERE m.holding_id = ${t.id} AND m.source_type = 'SALES_ORDER' AND m.source_id LIKE ${`%${keyword}%`})`,
+          )
+        : undefined,
     ];
     return this.db
       .select()

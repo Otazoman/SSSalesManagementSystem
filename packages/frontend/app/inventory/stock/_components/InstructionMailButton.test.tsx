@@ -52,4 +52,27 @@ describe("InstructionMailButton(REQ-012)", () => {
     await userEvent.click(screen.getByRole("button", { name: "送信" }));
     await waitFor(() => expect(onResult).toHaveBeenCalledWith({ error: "先に出荷指示書の PDF を発行してください" }));
   });
+
+  // BUG-113(案A): 指示書を送る設定の担当者がいない倉庫は、倉庫のメールアドレスを宛先の候補に出す
+  it("担当者がいない倉庫は、倉庫のメールアドレスを候補に出して送れる", async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/warehouse-contacts")) return json([]);
+      if (url.includes("/api/warehouses")) return json([{ id: "WH-1", name: "第一倉庫", email: "store@example.com" }]);
+      if (url.includes("/send-email")) return json({ message: "予約しました" });
+      return json([]);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const onResult = vi.fn();
+    render(<InstructionMailButton kind="receipt" instructionId="RI-1" warehouseId="WH-1" onResult={onResult} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "✉️ メール送信" }));
+    const option = await screen.findByRole("option", { name: /第一倉庫\(倉庫のメールアドレス\)/ });
+    await userEvent.selectOptions(screen.getByRole("combobox"), option);
+    await userEvent.click(screen.getByRole("button", { name: "送信" }));
+
+    await waitFor(() => expect(onResult).toHaveBeenCalledWith({ message: "予約しました" }));
+    const sendCall = fetchSpy.mock.calls.find(([u]) => String(u).includes("/send-email"));
+    expect(JSON.parse(String((sendCall as unknown as [string, RequestInit])[1].body))).toEqual({ recipientEmail: "store@example.com" });
+  });
 });

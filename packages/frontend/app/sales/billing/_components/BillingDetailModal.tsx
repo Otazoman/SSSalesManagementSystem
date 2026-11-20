@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "../../../_shared/ui/Button";
 import { Modal } from "../../../_shared/ui/Modal";
+import { MessageBanner } from "../../../_shared/ui/MessageBanner";
 import { BillingDetail } from "../_types";
 import { PartnerContactOption } from "../_hooks/useBillingActions";
 import { BillingMailModal } from "./BillingMailModal";
@@ -37,6 +38,9 @@ interface BillingDetailModalProps {
   onContactSelect: (contactId: string) => void;
   onSendEmail: () => void;
   isMailSending: boolean;
+  // BUG-120(BUG-114 の調べで見つけたもの): 発行・送信・入金の記録の結果を詳細画面の中に出す(以前は裏の一覧の上にしか出なかった)
+  message?: string;
+  error?: string;
 }
 
 // Item8 Phase4: 請求内容の確認・PDF発行・手動消込入力を行う詳細モーダル
@@ -57,6 +61,8 @@ export function BillingDetailModal({
   onContactSelect,
   onSendEmail,
   isMailSending,
+  message = "",
+  error = "",
 }: BillingDetailModalProps) {
   const [receivedDate, setReceivedDate] = useState(
     todayJst(),
@@ -151,6 +157,8 @@ export function BillingDetailModal({
       >
         {/* 進捗確認(閲覧専用)に表示される完了/進行中の手動設定。この画面の更新権限がある場合のみ変更できる */}
         <DocumentCompletionControl stageKey="billing" documentId={detail.id} />
+
+        <MessageBanner message={message || undefined} error={error ? `⚠️ ${error}` : undefined} />
 
         <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-lg p-3.5 border border-slate-200/80 text-xs">
           <div>
@@ -459,6 +467,7 @@ export function BillingDetailModal({
           onClose={() => setShowMailModal(false)}
           onSend={onSendEmail}
           isMailSending={isMailSending}
+          error={error}
         />
       )}
     </>

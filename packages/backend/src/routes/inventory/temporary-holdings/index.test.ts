@@ -206,4 +206,18 @@ describe("承認フローがある時(REQ-011(2))", () => {
     const release = (await movementsOf(id)).find((m) => m.movementType === "RELEASE");
     expect(release).toMatchObject({ sourceType: "SALES_ORDER", sourceId: "SO-1", sourceItemId: "SOI-D", approvalStatus: "PENDING" });
   });
+
+  // REQ-029: 払い出した受注の番号でも一覧を探せる
+  it("一覧のキーワードで、払い出した受注の番号でも探せる", async () => {
+    const { id, movementId } = await receive();
+    await decide("approve", movementId);
+    await db.insert(schema.salesOrders).values({ id: "SO-777", partnerId: "P-1", orderDate: now, status: "APPROVED", totalAmount: 0, taxAmount: 0, ...audit } as typeof schema.salesOrders.$inferInsert);
+    await db.insert(schema.salesOrderItems).values({ id: "SOI-7", salesOrderId: "SO-777", itemName: "特注品", inputType: "DIRECT", quantity: 1, unitPrice: 100, amount: 100 } as typeof schema.salesOrderItems.$inferInsert);
+    expect((await post(`/${id}/release`, { quantity: 1, movementDate: "2026-11-16", salesOrderId: "SO-777", salesOrderItemId: "SOI-7" })).status).toBe(200);
+
+    const hit = (await (await call("/?status=all&keyword=SO-777")).json()) as Array<{ id: string }>;
+    expect(hit.map((h) => h.id)).toEqual([id]);
+    const miss = (await (await call("/?status=all&keyword=SO-999")).json()) as Array<{ id: string }>;
+    expect(miss).toEqual([]);
+  });
 });

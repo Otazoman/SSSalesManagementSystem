@@ -74,7 +74,7 @@ export function TemporaryHoldingsPanel({ canCreate, canDelete, initialReceiveSou
         <input
           aria-label="キーワード"
           className={`${formFieldInputClass} w-48`}
-          placeholder="品名・番号・発注番号"
+          placeholder="品名・番号・発注番号・受注番号"
           value={f.keyword}
           onChange={(e) => setFilter("keyword", e.target.value)}
         />
