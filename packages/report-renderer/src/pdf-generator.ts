@@ -1,5 +1,6 @@
 // utils/pdfGenerator.ts
 import { PDFDocument, rgb, PDFPage, PDFFont } from "pdf-lib";
+import { fitTextToWidth, wrapTextToWidth } from "./fit-text";
 import fontkit from "@pdf-lib/fontkit";
 import reportLayouts from "./report-layouts.json";
 
@@ -163,26 +164,33 @@ function drawPartnerAndConditionsBlock(
     const tableWidth = 260;
     const labelWidth = 65;
 
+    // BUG-115: 値がセルに収まらない時(所在地など)は、セルの中で2行に折り返し、その行だけ高くする(以前は1行のままで枠の右へはみ出していた)
+    const valueWidth = tableWidth - labelWidth;
+    const lineHeight = 10;
+    let rowTop = tableTop;
     conditions.forEach(
-      (cond: { key: string; label: string }, idx: number) => {
-        const y = tableTop - idx * rowHeight;
+      (cond: { key: string; label: string }) => {
         const rawValue = data[cond.key as keyof PDFInvoiceData];
         const displayValue =
           typeof rawValue === "string" ? rawValue : "別途協議";
+        const lines = wrapTextToWidth((t, s) => customFont.widthOfTextAtSize(t, s), displayValue, 8.5, valueWidth);
+        const thisRowHeight = rowHeight + (lines.length - 1) * lineHeight;
+        const y = rowTop;
+        rowTop -= thisRowHeight;
 
         page.drawRectangle({
           x: 50,
-          y: y - rowHeight,
+          y: y - thisRowHeight,
           width: tableWidth,
-          height: rowHeight,
+          height: thisRowHeight,
           borderWidth: 0.5,
           borderColor: rgb(0.2, 0.2, 0.2),
         });
         page.drawRectangle({
           x: 50,
-          y: y - rowHeight,
+          y: y - thisRowHeight,
           width: labelWidth,
-          height: rowHeight,
+          height: thisRowHeight,
           color: rgb(0.92, 0.92, 0.92),
           borderWidth: 0.5,
           borderColor: rgb(0.2, 0.2, 0.2),
@@ -192,21 +200,23 @@ function drawPartnerAndConditionsBlock(
           page,
           cond.label,
           54,
-          y - rowHeight + 4,
+          y - thisRowHeight + 4,
           8.5,
           rgb(0.1, 0.1, 0.1),
         );
-        drawTextOnPage(
-          page,
-          displayValue,
-          54 + labelWidth,
-          y - rowHeight + 4,
-          8.5,
-        );
+        lines.forEach((line, lineIdx) => {
+          drawTextOnPage(
+            page,
+            line,
+            54 + labelWidth,
+            y - rowHeight + 4 - lineIdx * lineHeight,
+            8.5,
+          );
+        });
       },
     );
 
-    currentY -= conditions.length * rowHeight;
+    currentY = rowTop;
 
     // 画面構成再編: 納品書(DELIVERY)は元々小計/消費税/合計を一切表示していなかったため、
     // layoutConfig.showTotals === false の場合はこの金額ボックス自体を描画しない
@@ -269,6 +279,8 @@ async function drawCompanyInfoBlock(
   height: number,
   drawTextOnPage: DrawTextFn,
   options: { showInvoiceNo: boolean } = { showInvoiceNo: true },
+  // BUG-115: 住所の文字幅を測る(用紙の右端を越えないようにする)。省略すると今までどおり
+  customFont?: PDFFont,
 ): Promise<void> {
   const rightAreaX = 360; // 右側エリアの開始X座標
 
@@ -342,12 +354,16 @@ async function drawCompanyInfoBlock(
     8,
     rgb(0.3, 0.3, 0.3),
   );
+  // BUG-115: 住所が長い時は、用紙の右端(545pt)を越えないよう文字を小さくする(この欄は行の位置が決まっているため折り返さない)
+  const fittedCompAddr = customFont
+    ? fitTextToWidth((t, s) => customFont.widthOfTextAtSize(t, s), finalCompAddr, 8, 545 - rightAreaX)
+    : { text: finalCompAddr, size: 8 };
   drawTextOnPage(
     page,
-    finalCompAddr,
+    fittedCompAddr.text,
     rightAreaX,
     height - 130,
-    8,
+    fittedCompAddr.size,
     rgb(0.3, 0.3, 0.3),
   );
 
@@ -944,7 +960,7 @@ export async function generateDocumentPDF(
     await drawCompanyInfoBlock(pdfDoc, page, data, resources, height, drawTextOnPage, {
       // BUG-092: 登録番号を出すかは帳票ごと(report-layouts.json の showInvoiceNo。省略時は出す。納品書は出さない)
       showInvoiceNo: (layoutConfig as { showInvoiceNo?: boolean }).showInvoiceNo !== false,
-    });
+    }, customFont);
   }
 
   const tableResult = drawItemsTable(

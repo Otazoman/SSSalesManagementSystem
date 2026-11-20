@@ -37,12 +37,14 @@
   | 在庫・棚卸管理 | 棚卸・品質区分の変更・廃棄・返品 |
   | 仕入管理 | 仕入 |
   | 請求管理 | 請求・入金(請求への入金・単体入金) |
-  | 支払管理 | 支払の消込 |
+  | 支払管理 | 支払・支払の消込 |
+  | 取引先マスタ | 取引先・取引先の納品先 |
 
 - 同じメニューの中で、伝票の種類ごとに承認者を変える時は、条件の **対象フィールド名** に `documentKind`、**期待値** に次の値を入れます。
   入荷: `RECEIPT`(入庫・入荷実績)・`RECEIPT_INSTRUCTION`(入荷指示)、出荷: `SHIPMENT`(出庫・出荷実績)・`SHIPMENT_INSTRUCTION`(出荷指示)、
   在庫・棚卸管理: `AUDIT`(棚卸)・`RECLASSIFICATION`(品質区分変更)・`DISPOSAL`(廃棄)・`RETURN`(返品)、
-  請求管理: `BILLING`(請求)・`PAYMENT_RECEIPT`(請求への入金)・`CASH_RECEIPT`(単体入金)。
+  請求管理: `BILLING`(請求)・`PAYMENT_RECEIPT`(請求への入金)・`CASH_RECEIPT`(単体入金)、
+  支払管理: `PAYMENT`(支払)・`PAYMENT_DISBURSEMENT`(支払の消込)、取引先マスタ: `DELIVERY_DESTINATION`(取引先の納品先。取引先そのものの申請には値がありません)。
 - 承認を使うかどうか(ON/OFF)は、[会社設定](company-settings.md) の承認機能で、伝票ごとに切り替えます。
 - 各段の承認者は、申請者(または申請時に選んだ申請部署)の部署と、設定したロールから決まります。
 

@@ -23,10 +23,12 @@ import { purchaseRequisitionsAdapter } from "./purchase-requisitions.adapter";
 import { purchaseOrdersAdapter } from "./purchase-orders.adapter";
 import { purchaseRecognitionsAdapter } from "./purchase-recognitions.adapter";
 import { partnerContactsAdapter } from "./partner-contacts.adapter";
+import { partnerDeliveryDestinationsAdapter } from "./partner-delivery-destinations.adapter";
 import { unitsAdapter } from "./units.adapter";
 import { projectsAdapter } from "./projects.adapter";
 import { itemReorderSettingsAdapter } from "./item-reorder-settings.adapter";
 import { billingAdapter } from "./billing.adapter";
+import { paymentsAdapter } from "./payments.adapter";
 import { temporaryHoldingsAdapter } from "./temporary-holdings.adapter";
 import { paymentReceiptsAdapter, cashReceiptsAdapter, paymentDisbursementsAdapter } from "./reconciliation.adapter";
 import { locationsAdapter } from "./locations.adapter";
@@ -143,6 +145,8 @@ const registry: Record<string, TargetAdapter> = {
   purchase_orders: purchaseOrdersAdapter,
   purchase_recognitions: purchaseRecognitionsAdapter,
   master_contacts: partnerContactsAdapter,
+  // BUG-112: 取引先の納品先(取引先マスタの承認フローを使う)
+  master_delivery_destinations: partnerDeliveryDestinationsAdapter,
   master_units: unitsAdapter,
   // BUG-097
   master_projects: projectsAdapter,
@@ -150,6 +154,8 @@ const registry: Record<string, TargetAdapter> = {
   master_item_reorder_settings: itemReorderSettingsAdapter,
   // REQ-017
   sales_billing: billingAdapter,
+  // REQ-026
+  purchase_payment: paymentsAdapter,
   // REQ-018
   sales_payment_receipts: paymentReceiptsAdapter,
   sales_cash_receipts: cashReceiptsAdapter,

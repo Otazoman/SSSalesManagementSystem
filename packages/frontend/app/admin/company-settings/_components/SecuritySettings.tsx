@@ -285,6 +285,7 @@ export function SecuritySettings({
                       { key: "is_purchase_approval_enabled", label: "仕入" },
                       { key: "is_billing_approval_enabled", label: "請求" },
                       { key: "is_cash_receipt_approval_enabled", label: "入金" },
+                      { key: "is_payment_approval_enabled", label: "支払" },
                       { key: "is_payment_disbursement_approval_enabled", label: "支払の消込" },
                     ] as const
                   ).map(({ key, label }) => (

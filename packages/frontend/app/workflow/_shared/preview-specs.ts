@@ -252,6 +252,40 @@ export const PREVIEW_SPECS: Record<string, PreviewSpec> = {
     },
   },
 
+  // REQ-026: 支払(支払管理。承認されると支払の記録・総合振込データの対象になる)
+  purchase_payment: {
+    table: "paymentHeaders",
+    header: {
+      id: { label: "支払番号" },
+      title: { label: "件名" },
+      partnerId: { label: "支払先", ref: "partner" },
+      paymentDate: { label: "支払予定日", format: "date" },
+      mode: { label: "支払の種類", options: { PER_TRANSACTION: "都度支払", PERIODIC: "締め支払" } },
+      periodStart: { label: "対象期間(開始)", format: "date" },
+      periodEnd: { label: "対象期間(終了)", format: "date" },
+      totalAmount: { label: "合計金額(税込)", format: "currency" },
+      taxAmount: { label: "消費税額", format: "currency" },
+      memo: { label: "備考", format: "multiline" },
+    },
+    hidden: {
+      ...AUDIT_HIDDEN,
+      status: "伝票の状態(申請の状態として別に出す)",
+      reconciledAmount: "支払の消込額(支払の記録で決まる。承認の時点では0円)",
+      reconciliationStatus: "消込の状況(支払の記録で決まる)",
+    },
+    items: {
+      table: "paymentHeaderItems",
+      columns: {
+        purchaseRecognitionId: { label: "仕入番号" },
+        itemReceiptId: { label: "検収(入庫)番号" },
+        itemName: { label: "品名(手入力の行)" },
+        amount: { label: "金額(税込)", format: "currency" },
+        taxAmount: { label: "消費税額", format: "currency" },
+      },
+      hidden: { ...ITEM_HIDDEN, paymentHeaderId: "支払番号(ヘッダーに出す)" },
+    },
+  },
+
   // REQ-018: 請求への入金(sales/billing の入金消込)
   sales_payment_receipts: {
     table: "paymentReceipts",
@@ -730,6 +764,20 @@ const MASTER_SPECS: Record<string, PreviewSpec> = {
       memo: { label: "備考", format: "multiline" },
     },
     hidden: MASTER_HIDDEN,
+  },
+  // BUG-112: 取引先の納品先(取引先マスタの承認フローで承認する)
+  master_delivery_destinations: {
+    table: "partnerDeliveryDestinations",
+    header: {
+      partnerId: { label: "取引先", ref: "partner" },
+      name: { label: "納品先名" },
+      postalCode: { label: "郵便番号" },
+      address: { label: "住所" },
+      phone: { label: "電話番号" },
+      status: MASTER_STATUS,
+      memo: { label: "備考", format: "multiline" },
+    },
+    hidden: { ...MASTER_HIDDEN, id: "納品先の内部の番号(画面には出さない)" },
   },
   master_units: {
     table: "units",

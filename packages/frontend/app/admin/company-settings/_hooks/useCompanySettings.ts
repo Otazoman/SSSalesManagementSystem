@@ -36,6 +36,7 @@ export function useCompanySettings() {
     is_billing_approval_enabled: false,
     is_cash_receipt_approval_enabled: false,
     is_payment_disbursement_approval_enabled: false,
+    is_payment_approval_enabled: false,
     is_sales_invoice_requires_shipment: false,
     is_purchase_recognition_requires_receipt: false,
     is_receiving_approval_enabled: false,

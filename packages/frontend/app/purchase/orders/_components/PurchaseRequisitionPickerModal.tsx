@@ -146,6 +146,8 @@ export function PurchaseRequisitionPickerModal({
       taxCategoryCode: item.taxCategoryCode ?? null,
       // 表示用トレーサビリティ(どの購買申請明細に由来するか)
       purchaseRequestItemId: item.id,
+      // BUG-116: 受注明細とのつながりも引き継ぐ(直送完了・出荷の判定に使う)
+      salesOrderItemId: item.salesOrderItemId ?? null,
     }));
 
     let deliveryPlace: string | null = null;

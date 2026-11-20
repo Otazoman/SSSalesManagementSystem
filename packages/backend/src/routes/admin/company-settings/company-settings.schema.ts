@@ -43,6 +43,8 @@ export const UpdateCompanySettingsSchema = v.object({
   is_billing_approval_enabled: v.optional(booleanTransform, false),
   is_cash_receipt_approval_enabled: v.optional(booleanTransform, false),
   is_payment_disbursement_approval_enabled: v.optional(booleanTransform, false),
+  // REQ-026: 支払の作成の承認
+  is_payment_approval_enabled: v.optional(booleanTransform, false),
   // Item4-e: 伝票単位の承認トグル(旧is_document_approval_enabledという単一グローバルフラグを廃止し、
   // 伝票種別ごとに置き換え)。現時点で実際に機能を持つのはis_quote_approval_enabledのみ。
   // 他7項目は将来のItem7-10実装時に使う想定で、値の保存先だけ先に用意しておく。

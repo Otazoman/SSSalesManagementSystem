@@ -373,6 +373,7 @@ export function usePurchaseRecognitionForm({
     selections: Array<{ progress: OrderItemProgress; quantity: number }>,
     orderProjectId?: string | null,
     orderPartnerId?: string | null,
+    orderTitle?: string | null,
   ): string | undefined => {
     if (orderPartnerId && orderPartnerId !== partnerId && items.some((item) => !!item.sourceOrderItemId)) {
       return "別の仕入先の発注明細が既に入っているため、この発注は追加できません(1つの仕入には同じ仕入先の発注だけをまとめられます)";
@@ -395,6 +396,8 @@ export function usePurchaseRecognitionForm({
     // 対象検収は仕入先ごとの記録のため、仕入先が変わる場合は選択をクリアする(handlePartnerChangeと同じ)
     if (orderPartnerId) handlePartnerChange(orderPartnerId);
     if (orderProjectId) setProjectId(orderProjectId);
+    // BUG-117: 件名が空なら、発注の件名を引き継ぐ(入力済みの件名は変えない)
+    if (orderTitle && !recognitionTitle.trim()) setRecognitionTitle(orderTitle);
     setItems((prev) => {
       const withoutEmptyFirstRow = prev.length === 1 && !prev[0].itemId ? [] : prev;
       return [...withoutEmptyFirstRow, ...newItems];

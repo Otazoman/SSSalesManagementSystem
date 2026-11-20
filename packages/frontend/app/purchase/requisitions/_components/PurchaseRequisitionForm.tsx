@@ -436,6 +436,20 @@ export function PurchaseRequisitionForm({
                 </Button>
               )}
 
+            {/* BUG-108: 承認機能が無効の時は、発注と同じく下書きから直接確定する(サーバーは申請で直接確定する) */}
+            {editingId &&
+              editingStatus === "DRAFT" &&
+              !isPurchaseRequisitionWfEnabled && (
+                <Button
+                  variant="success"
+                  className="flex-1"
+                  disabled={isSubmitting}
+                  onClick={onSubmitForApproval}
+                >
+                  {isSubmitting ? "処理を実行中..." : "✅ このまま確定する"}
+                </Button>
+              )}
+
             <button
               type="button"
               onClick={onCancel}

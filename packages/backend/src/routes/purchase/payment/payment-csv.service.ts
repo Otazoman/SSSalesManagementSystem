@@ -1,3 +1,5 @@
+import { paymentApprovalBlockReason } from "./payment-approval.service";
+import { isPaymentWorkflowGloballyEnabled } from "../../../workflow-engine/settings";
 import { Context } from "hono";
 import { PaymentRepository } from "./payment.repository";
 import { RESOURCE_KEY } from "./payment-constants";
@@ -105,6 +107,29 @@ export class PaymentCsvService {
     const idxItemAmount = getIdx(["itemamount", "item_amount"]);
     const idxItemTaxAmount = getIdx(["itemtaxamount", "item_tax_amount"]);
 
+    // REQ-026: 支払の承認が ON の時は、承認申請中・承認済みの支払を CSV で書き換えない(1件も書き込む前に断る)
+    const paymentApprovalEnabled = await isPaymentWorkflowGloballyEnabled(c.env.COMPANY_SETTINGS);
+    const existingStatusById = new Map<string, string>();
+    if (paymentApprovalEnabled) {
+      const csvIds = [
+        ...new Set(
+          allLines
+            .slice(1)
+            .map((cols) => (cols.length > idxId && cols[idxId] ? cols[idxId].trim() : ""))
+            .filter((id) => id && id !== "id"),
+        ),
+      ];
+      for (const header of csvIds.length > 0 ? await this.repo.findHeadersByIds(csvIds) : []) {
+        existingStatusById.set(header.id, header.status);
+      }
+      const locked = [...existingStatusById].filter(([, status]) => status !== "DRAFT").map(([id]) => id);
+      if (locked.length > 0) {
+        throw new BadRequestError(
+          `支払の承認機能が有効なため、承認申請中・承認済みの支払は CSV で変更できません(${locked.slice(0, 3).join(", ")}${locked.length > 3 ? " ほか" : ""})`,
+        );
+      }
+    }
+
     let count = 0;
     const clearedHeaderIds = new Set<string>();
     const headerSortOrders = new Map<string, number>();
@@ -142,7 +167,8 @@ export class PaymentCsvService {
           mode: rawMode || "PER_TRANSACTION",
           periodStart: getCellVal(idxPeriodStart) ? new Date(getCellVal(idxPeriodStart)!) : null,
           periodEnd: getCellVal(idxPeriodEnd) ? new Date(getCellVal(idxPeriodEnd)!) : null,
-          status: rawStatus || "DRAFT",
+          // REQ-026: 支払の承認が ON の時は、CSV で状態を変えない(新しい支払は下書き。承認は申請で行う)
+          status: paymentApprovalEnabled ? (existingStatusById.get(id) ?? "DRAFT") : rawStatus || "DRAFT",
           totalAmount: rawTotal ? Number(rawTotal) : 0,
           taxAmount: rawTax ? Number(rawTax) : 0,
           reconciledAmount: rawReconciled ? Number(rawReconciled) : 0,
@@ -276,6 +302,9 @@ export class PaymentCsvService {
     for (const id of new Set(rows.map((r) => r.headerId))) {
       const header = await this.repo.findHeaderById(id);
       if (!header) continue;
+      // REQ-026: 支払の承認が ON の時は、承認済みの支払の消込だけ取り込む
+      const blocked = await paymentApprovalBlockReason(c, header, "支払消込を取り込");
+      if (blocked) parseErrors.push(blocked);
       existingHeaderIds.add(id);
       // REQ-018: 差し戻された行は数えない(消込額・重複の確認とも)
       const existing = (await this.repo.findDisbursementsByHeaderId(id)).filter((r) => r.approvalStatus !== "REMANDED");

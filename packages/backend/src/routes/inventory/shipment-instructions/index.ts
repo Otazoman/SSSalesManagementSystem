@@ -6,7 +6,7 @@ import { ShipmentInstructionsService } from "./shipment-instructions.service";
 import { ShipmentInstructionPdfService } from "./shipment-instruction-pdf.service";
 import { ShipmentInstructionDownloadService } from "./shipment-instruction-download.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
-import { sendInstructionEmail } from "../instruction-mail.service";
+import { sendInstructionEmail, sendInstructionEmailsToRegisteredContacts } from "../instruction-mail.service";
 import { registerBrowserPdfRoutes } from "../../../platform/report-templates/browser-pdf-routes";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import {
@@ -358,6 +358,11 @@ shipmentInstructionsRouter.post(
 );
 
 // REQ-012: 出荷指示書の案内メールを送る(以前は PDF の発行と同時に自動で送っていた。納品書・検収書と同じく明示の操作にした)
+// BUG-113: 一括送信の対象の指示書
+const BulkSendInstructionEmailSchema = v.object({
+  ids: v.pipe(v.array(v.string()), v.minLength(1, "送信する指示書を1件以上指定してください")),
+});
+
 const SendInstructionEmailSchema = v.looseObject({
   recipientEmail: v.pipe(
     v.string(),
@@ -383,6 +388,26 @@ shipmentInstructionsRouter.post(
     if (!parsed.success) return respondValidationError(c, parsed.issues);
     try {
       return c.json(await sendInstructionEmail(c, "shipment", c.req.param("id"), parsed.output.recipientEmail));
+    } catch (err) {
+      return respondError(c, err);
+    }
+  },
+);
+
+// BUG-113: 一括の送信(指示書ごとに倉庫の登録済みの担当者へ送る)。画面は PDF を一括で発行した後に呼ぶ
+shipmentInstructionsRouter.post(
+  "/bulk-send-email",
+  describeApiRoute({
+    summary: "出荷指示書の案内メールの一括送信(倉庫の登録済みの担当者へ)",
+    tags: ["shipment-instructions"],
+    json: BulkSendInstructionEmailSchema,
+    responses: { 200: { description: "送信を予約した(指示書ごとの結果つき)" }, 400: { description: "入力の不備" } },
+  }),
+  async (c) => {
+    const parsed = v.safeParse(BulkSendInstructionEmailSchema, await c.req.json().catch(() => null));
+    if (!parsed.success) return respondValidationError(c, parsed.issues);
+    try {
+      return c.json(await sendInstructionEmailsToRegisteredContacts(c, "shipment", parsed.output.ids));
     } catch (err) {
       return respondError(c, err);
     }

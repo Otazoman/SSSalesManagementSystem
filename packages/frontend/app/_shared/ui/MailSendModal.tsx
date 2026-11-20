@@ -96,7 +96,8 @@ export function MailSendModal({
       {/* 取引先担当者マスタからの選択。宛先制限がONの場合は必須の選択手段になる */}
       {hasContacts && (
         <FormField
-          label={`📇 取引先担当者マスタから選択${restrictToRegisteredContacts ? " *" : "(任意)"}`}
+          // BUG-113: 倉庫(指示書)の時は「倉庫の担当者」と出す
+          label={`📇 ${partnerWord === "倉庫" ? "倉庫マスタの担当者" : "取引先担当者マスタ"}から選択${restrictToRegisteredContacts ? " *" : "(任意)"}`}
         >
           <select
             required={restrictToRegisteredContacts}

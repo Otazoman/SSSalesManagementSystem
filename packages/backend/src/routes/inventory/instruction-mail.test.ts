@@ -112,3 +112,39 @@ describe("指示書の案内メール(REQ-012)", () => {
     expect(await mails()).toEqual([]);
   });
 });
+
+describe("指示書の案内メールの一括送信(BUG-113)", () => {
+  beforeEach(async () => {
+    await db.delete(schema.warehouseContacts);
+    const audit = { createdBy: "SYSTEM", createdAt: now, updatedBy: "SYSTEM", updatedAt: now };
+    await db.insert(schema.warehouseContacts).values([
+      { id: "WC-1", warehouseId: "WH-MAIL", name: "担当A", email: "a@example.com", isEmailTarget: true, status: "active", ...audit },
+      { id: "WC-2", warehouseId: "WH-MAIL", name: "対象外", email: "b@example.com", isEmailTarget: false, status: "active", ...audit },
+      { id: "WC-3", warehouseId: "WH-MAIL", name: "停止", email: "c@example.com", isEmailTarget: true, status: "suspended", ...audit },
+    ]);
+  });
+
+  it("指示書ごとに、倉庫の登録済みの担当者(メール送信の対象・停止していない)へ送る。PDF が無い指示書は失敗として数える", async () => {
+    const res = await post(receiptInstructionsRouter, "/bulk-send-email", { ids: ["RI-MAIL", "RI-NOPDF"] });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { message: string; results: Array<{ id: string; status: string }> };
+    expect(body.results).toEqual([
+      expect.objectContaining({ id: "RI-MAIL", status: "PENDING" }),
+      expect.objectContaining({ id: "RI-NOPDF", status: "FAILED" }),
+    ]);
+    const sent = await mails();
+    expect(sent).toHaveLength(1);
+    expect(sent[0].recipientTo).toBe("a@example.com");
+  });
+
+  it("出荷指示書も同じく送れる。担当者がいない倉庫の指示書は失敗にする", async () => {
+    expect((await post(shipmentInstructionsRouter, "/bulk-send-email", { ids: ["SI-MAIL"] })).status).toBe(200);
+    expect((await mails())[0].recipientTo).toBe("a@example.com");
+    await db.delete(schema.warehouseContacts);
+    await dbLog.delete(auditSchema.mailDeliveryLogs);
+    const res = await post(shipmentInstructionsRouter, "/bulk-send-email", { ids: ["SI-MAIL"] });
+    const body = (await res.json()) as { results: Array<{ status: string; error?: string }> };
+    expect(body.results[0]).toMatchObject({ status: "FAILED" });
+    expect(await mails()).toEqual([]);
+  });
+});

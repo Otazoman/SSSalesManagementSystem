@@ -184,3 +184,38 @@ describe("PaymentDetailModal: REQ-018 支払の消込の承認", () => {
     expect(screen.getByRole("button", { name: "支払を記録する" })).toBeDisabled();
   });
 });
+
+// REQ-026: 支払の承認が ON の時は、承認済みになるまで支払を記録できず、下書きなら承認申請のボタンを出す
+describe("PaymentDetailModal(支払の承認)", () => {
+  it("承認が ON で下書きの時は、申請のボタンを出し、支払の記録はできない", () => {
+    const onSubmit = vi.fn();
+    render(
+      <PaymentDetailModal
+        detail={DETAIL}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+        approvalEnabled
+        onSubmitForApproval={onSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1000" } });
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /承認を申請する/ }));
+    expect(onSubmit).toHaveBeenCalledWith("PAY-1");
+  });
+
+  it("承認済みなら、申請の案内を出さずに支払を記録できる", () => {
+    render(
+      <PaymentDetailModal
+        detail={{ ...DETAIL, status: "APPROVED" }}
+        onClose={vi.fn()}
+        onRecordDisbursement={vi.fn(async () => true)}
+        approvalEnabled
+        onSubmitForApproval={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1000" } });
+    expect(screen.getByRole("button", { name: "支払を記録する" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /承認を申請する/ })).not.toBeInTheDocument();
+  });
+});

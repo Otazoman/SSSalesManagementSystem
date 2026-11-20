@@ -1,3 +1,4 @@
+import { assertPaymentApprovedIfRequired } from "./payment-approval.service";
 import { Context } from "hono";
 import { PaymentRepository } from "./payment.repository";
 import { RESOURCE_KEY } from "./payment-constants";
@@ -19,6 +20,8 @@ export class PaymentReconciliationService {
   async recordDisbursement(c: Context, paymentHeaderId: string, body: PaymentDisbursementPayload) {
     const header = await this.repo.findHeaderById(paymentHeaderId);
     if (!header) throw new NotFoundError("対象の支払が見つかりません");
+    // REQ-026: 支払の承認が ON の時は、承認済みの支払だけ記録できる
+    await assertPaymentApprovedIfRequired(c, header, "支払を記録");
     // BUG-051: 支払額を超える支払は記録しない(仕入側には単体の前渡金の仕組みが無いため)
     const amount = Number(body.amount) || 0;
     // REQ-018: 支払の消込の承認が ON の時は、承認申請中の支払も未消込額から引く(承認待ちの間に二重に記録しないように)

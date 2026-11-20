@@ -1,5 +1,5 @@
 import { Context } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import * as schema from "../../db/schema";
 import { createDb } from "../../platform/db/create-db";
 import { getCompanySettings } from "../../platform/kv/company-settings-cache";
@@ -89,4 +89,46 @@ export async function sendInstructionEmail(
   );
 
   return { success: true, message: `宛先「${to}」へのメール送信を予約しました` };
+}
+
+/**
+ * BUG-113: 一括の「選択した指示書を一括発行・送信」用。REQ-012 で PDF の発行ではメールを送らないようにしたため、一括の時は
+ * PDF を発行した後にこの処理で、指示書ごとに倉庫の登録済みの担当者(メール送信の対象・停止していない・メールアドレスあり)へ送る
+ * (以前の自動送信と同じ宛先)。担当者がいない指示書・PDF が無い指示書は失敗として数える(他の指示書は送る)。
+ */
+export async function sendInstructionEmailsToRegisteredContacts(
+  c: Context<{ Bindings: Env }>,
+  kind: InstructionKind,
+  instructionIds: string[],
+) {
+  const config = CONFIG[kind];
+  const db = createDb(c.env.DB);
+  const results: Array<{ id: string; status: "PENDING" | "FAILED"; error?: string }> = [];
+  for (const id of instructionIds) {
+    try {
+      const [header] = await db.select().from(config.headers).where(eq(config.headers.id, id)).limit(1);
+      if (!header) throw new NotFoundError(`対象の${config.label}が見つかりません`);
+      const contacts = await db
+        .select()
+        .from(schema.warehouseContacts)
+        .where(and(eq(schema.warehouseContacts.warehouseId, header.warehouseId), eq(schema.warehouseContacts.isEmailTarget, true)));
+      const emails = contacts
+        .filter((ct) => ct.status !== "suspended" && ct.email && ct.email.trim() !== "")
+        .map((ct) => ct.email!.trim());
+      if (emails.length === 0) {
+        throw new BadRequestError("倉庫マスタに、メール送信の対象でメールアドレスのある担当者が登録されていません");
+      }
+      await sendInstructionEmail(c, kind, id, emails.join(", "));
+      results.push({ id, status: "PENDING" });
+    } catch (err) {
+      results.push({ id, status: "FAILED", error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  const sent = results.filter((r) => r.status === "PENDING").length;
+  const failed = results.length - sent;
+  return {
+    success: failed === 0,
+    message: `${sent} 件の${config.label}のメール送信を予約しました${failed > 0 ? `(失敗: ${failed}件)` : ""}`,
+    results,
+  };
 }

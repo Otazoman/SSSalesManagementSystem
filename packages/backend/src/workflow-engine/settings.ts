@@ -24,6 +24,8 @@ const WORKFLOW_FLAG_CONFIG_KEYS = {
   // REQ-018: 入金(請求への入金・単体入金)と、支払の消込の承認
   isCashReceiptWfEnabled: "is_cash_receipt_approval_enabled",
   isPaymentDisbursementWfEnabled: "is_payment_disbursement_approval_enabled",
+  // REQ-026: 支払の作成の承認(既定 OFF)
+  isPaymentWfEnabled: "is_payment_approval_enabled",
   isReceivingWfEnabled: "is_receiving_approval_enabled",
   isShippingWfEnabled: "is_shipping_approval_enabled",
   isInventoryWfEnabled: "is_inventory_approval_enabled",
@@ -387,6 +389,11 @@ export async function isCashReceiptWorkflowGloballyEnabled(kv: any): Promise<boo
 
 export async function isPaymentDisbursementWorkflowGloballyEnabled(kv: any): Promise<boolean> {
   return readWorkflowFlagFromKv(kv, "isPaymentDisbursementWfEnabled", "支払消込承認ワークフロー設定");
+}
+
+// REQ-026: 支払の作成の承認
+export async function isPaymentWorkflowGloballyEnabled(kv: any): Promise<boolean> {
+  return readWorkflowFlagFromKv(kv, "isPaymentWfEnabled", "支払承認ワークフロー設定");
 }
 
 export async function isSalesInvoiceWorkflowGloballyEnabled(kv: any): Promise<boolean> {

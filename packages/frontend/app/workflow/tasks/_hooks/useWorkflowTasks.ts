@@ -155,15 +155,18 @@ export function useWorkflowTasks() {
     };
 
     try {
-      await apiFetch(`/api/workflow-tasks/${actionType}`, {
+      const data = await apiFetch<{ nextStepRoleName?: string | null }>(`/api/workflow-tasks/${actionType}`, {
         method: "POST",
         json: payload,
         defaultErrorMessage: "処理に失敗しました",
       });
 
+      // REQ-023: 次の段に回った時は、その段のロール名を添える
       setMessage(
         actionType === "approve"
-          ? `「${task.targetName}」の申請を承認しました`
+          ? `「${task.targetName}」の申請を承認しました${
+              data?.nextStepRoleName ? `(次の段「${data.nextStepRoleName}」の承認待ちになりました)` : ""
+            }`
           : `「${task.targetName}」の申請を差戻しました`,
       );
 

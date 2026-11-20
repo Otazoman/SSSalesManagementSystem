@@ -175,7 +175,8 @@ export function FlowForm({
             (分岐条件の無いフローは、そのメニューの全ての伝票に使います)。
             入荷: RECEIPT(入庫・入荷実績)・RECEIPT_INSTRUCTION(入荷指示) / 出荷: SHIPMENT(出庫・出荷実績)・SHIPMENT_INSTRUCTION(出荷指示) /
             在庫・棚卸管理: AUDIT(棚卸)・RECLASSIFICATION(品質区分変更)・DISPOSAL(廃棄)・RETURN(返品) /
-            請求管理: BILLING(請求)・PAYMENT_RECEIPT(請求への入金)・CASH_RECEIPT(単体入金)
+            請求管理: BILLING(請求)・PAYMENT_RECEIPT(請求への入金)・CASH_RECEIPT(単体入金) /
+            支払管理: PAYMENT(支払)・PAYMENT_DISBURSEMENT(支払の消込) / 取引先マスタ: DELIVERY_DESTINATION(取引先の納品先)
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>

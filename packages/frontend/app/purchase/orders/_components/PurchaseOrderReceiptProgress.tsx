@@ -143,6 +143,13 @@ export function PurchaseOrderReceiptProgress({
         </Button>
       )}
 
+      {/* BUG-116: 直送の発注なのに受注明細とつながる明細が無い時は、ボタンを出せない理由を知らせる */}
+      {directSalesOrderId && directLines.length === 0 && hasRemaining && (
+        <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold rounded-lg">
+          ⚠️ この発注の明細は受注[{directSalesOrderId}]の明細とつながっていないため、直送完了にできません。受注(または受注から作った購買申請)から発注を作り直してください。
+        </div>
+      )}
+
       {showDirectCompletion && directSalesOrderId && (
         <DirectShipmentCompletionModal
           orderId={orderId}

@@ -24,6 +24,8 @@ export class WorkflowTasksBulkService {
     const { logIds, userId, comment } = params;
     const now = new Date();
     const results = { successCount: 0, failedCount: 0, errors: [] as string[] };
+    // REQ-023: 次の段の承認待ちになった件を、その段のロールごとに数える(最後の段まで承認した件は数えない)
+    const nextStepCountByRole = new Map<string, number>();
 
     const finalComment =
       comment && comment.trim() !== "" ? comment : "一括承認";
@@ -35,6 +37,8 @@ export class WorkflowTasksBulkService {
     const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
     for (const logId of logIds) {
+      // REQ-023: この件が次の段に回った時の、その段のロール
+      let movedToRoleId: string | null = null;
       try {
         const oldSnapshot = await WorkflowTasksRepository.getLogById(db, logId);
 
@@ -94,6 +98,7 @@ export class WorkflowTasksBulkService {
                 : null;
 
             if (nextStep) {
+              movedToRoleId = nextStep.approverRoleId;
               await WorkflowTasksRepository.insertWorkflowLog(db, {
                 id: crypto.randomUUID(),
                 targetType: reqParent.targetType,
@@ -221,15 +226,33 @@ export class WorkflowTasksBulkService {
         );
 
         results.successCount++;
+        if (movedToRoleId) {
+          nextStepCountByRole.set(movedToRoleId, (nextStepCountByRole.get(movedToRoleId) ?? 0) + 1);
+        }
       } catch (err: unknown) {
         results.failedCount++;
         if (err instanceof Error) results.errors.push(err.message);
       }
     }
 
+    // REQ-023: ロール名はロールマスタの名称(無ければロール ID)
+    const nextStepRoles: Array<{ roleId: string; roleName: string; count: number }> = [];
+    for (const [roleId, count] of nextStepCountByRole) {
+      const roleName = (await WorkflowTasksRepository.getRoleName(db, roleId)) || roleId;
+      nextStepRoles.push({ roleId, roleName, count });
+    }
+    const nextStepCount = nextStepRoles.reduce((sum, r) => sum + r.count, 0);
+    const nextStepNote =
+      nextStepCount > 0
+        ? `(うち${nextStepRoles.map((r) => `${r.count}件は次の段「${r.roleName}」`).join("、")}の承認待ちになりました)`
+        : "";
+
     return {
       success: results.failedCount === 0,
-      message: `${results.successCount} 件を承認しました。${results.failedCount > 0 ? `(失敗: ${results.failedCount}件)` : ""}`,
+      message: `${results.successCount} 件を承認しました${nextStepNote}。${results.failedCount > 0 ? `(失敗: ${results.failedCount}件)` : ""}`,
+      completedCount: results.successCount - nextStepCount,
+      nextStepCount,
+      nextStepRoles,
     };
   }
 

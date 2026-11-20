@@ -229,7 +229,17 @@ export class WorkflowTasksApprovalService {
       }),
     );
 
-    return { success: true, message: "承認処理が完了しました" };
+    // REQ-023: 次の段に回った時は、その段のロール名(ロールマスタの名称。無ければロール ID)を返し、メッセージでも知らせる
+    if (nextStep) {
+      const nextStepRoleName =
+        (await WorkflowTasksRepository.getRoleName(db, nextStep.approverRoleId)) || nextStep.approverRoleId;
+      return {
+        success: true,
+        message: `承認しました。次の段「${nextStepRoleName}」の承認待ちになりました`,
+        nextStepRoleName,
+      };
+    }
+    return { success: true, message: "承認処理が完了しました", nextStepRoleName: null };
   }
 
   static async remandTask(

@@ -46,3 +46,43 @@ export function fitTextToWidth(
 
   return { text, size, width };
 }
+
+/**
+ * BUG-115: 長い値(所在地など)を、セルの幅で折り返して最大 maxLines 行にする(日本語のため1文字ずつ測る)。
+ * 行に収まらない分は、最後の行の末尾を省略記号にする。空白は折り返しの位置の目安にする(英数字の語の途中で切らないように)
+ */
+export function wrapTextToWidth(
+  measureWidth: (text: string, size: number) => number,
+  text: string,
+  size: number,
+  cellWidthPt: number,
+  maxLines = 2,
+): string[] {
+  const maxWidth = Math.max(cellWidthPt - CELL_PADDING_PT * 2, 0);
+  if (!text || maxWidth <= 0 || measureWidth(text, size) <= maxWidth + WIDTH_EPSILON_PT) return [text];
+  const lines: string[] = [];
+  let rest = text;
+  while (rest.length > 0 && lines.length < maxLines) {
+    if (measureWidth(rest, size) <= maxWidth + WIDTH_EPSILON_PT) {
+      lines.push(rest);
+      rest = "";
+      break;
+    }
+    let cut = 1;
+    while (cut < rest.length && measureWidth(rest.slice(0, cut + 1), size) <= maxWidth + WIDTH_EPSILON_PT) cut++;
+    // 空白があれば、その手前で折り返す(行の半分より後ろにある時だけ)
+    const space = rest.slice(0, cut).lastIndexOf(" ");
+    if (space > cut / 2 && cut < rest.length) cut = space + 1;
+    lines.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest.length > 0) {
+    const last = lines[lines.length - 1];
+    lines[lines.length - 1] = fitTextToWidth(measureWidth, `${last}${rest}`, size, cellWidthPt).text;
+    // 文字は縮めない(行の高さを揃えるため)。省略記号つきの形を、元の大きさで作り直す
+    let truncated = last;
+    while (truncated.length > 1 && measureWidth(`${truncated}...`, size) > maxWidth) truncated = truncated.slice(0, -1);
+    lines[lines.length - 1] = `${truncated}...`;
+  }
+  return lines;
+}

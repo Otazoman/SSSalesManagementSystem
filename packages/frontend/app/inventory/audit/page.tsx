@@ -18,7 +18,6 @@ import {
   parseOpenedAuditDocumentKind,
 } from "./_components/OpenedAuditDocumentCard";
 import { useDeepLinkId } from "../../_shared/hooks/use-deep-link-id";
-import { usePermissionContext } from "../../context/permissioncontext";
 import { TemporaryHoldingsPanel } from "./_components/TemporaryHoldingsPanel";
 // 在庫照会・返品履歴・廃棄履歴タブは、入荷/出荷ページ(/inventory/receiving・/inventory/shipping)
 // と同じ共有コンポーネントをそのまま再利用する(instructions/page.tsxと同じ使い方)
@@ -40,6 +39,7 @@ export default function InventoryAuditPage() {
   const {
     canCreate,
     canRead,
+    canDelete,
     isDamageWfEnabled,
     isDisposalWfEnabled,
     isReturnWfEnabled,
@@ -59,11 +59,8 @@ export default function InventoryAuditPage() {
     const salesOrderItemId = urlSearchParams.get("releaseSoItem");
     return salesOrderId && salesOrderItemId ? { salesOrderId, salesOrderItemId } : null;
   });
-  // REQ-011(2): 「一時保管」タブの権限は、画面マスタの「一時保管」(inventory_temporary_holdings)で判定する(メニューには出さない画面)
-  const { user } = usePermissionContext();
-  const holdingPermission = (action: string) =>
-    user?.roleId === "admin" || !!user?.permissions.includes(`inventory_temporary_holdings:${action}`);
-  const canReadHoldings = holdingPermission("read") || holdingPermission("menu");
+  // BUG-111(2026-11-20 ユーザー確認): 「一時保管」タブは、在庫・棚卸管理の権限(閲覧・登録・削除)で使える
+  const canReadHoldings = canRead;
   const [message, setMessage] = useState("");
   const [editTarget, setEditTarget] = useState<AuditEditTarget | null>(null);
   const [reclassifyEditTarget, setReclassifyEditTarget] =
@@ -290,8 +287,8 @@ export default function InventoryAuditPage() {
       )}
       {tab === "holdings" && canReadHoldings && (
         <TemporaryHoldingsPanel
-          canCreate={holdingPermission("create")}
-          canDelete={holdingPermission("delete")}
+          canCreate={canCreate}
+          canDelete={canDelete}
           initialReceiveSource={holdingReceiveSource}
           releaseTarget={holdingReleaseTarget}
         />

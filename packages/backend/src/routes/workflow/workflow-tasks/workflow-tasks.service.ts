@@ -114,6 +114,11 @@ export class WorkflowTasksService {
     return WorkflowTasksHistoryService.getHistoryPage(db, queryParams, params);
   }
 
+  // BUG-119: 申請履歴の行を開いた時の中身
+  static getHistoryDetail(db: any, queryParams: HistoryQuery, logId: string) {
+    return WorkflowTasksHistoryService.getHistoryDetail(db, queryParams, logId);
+  }
+
   static cancelTask(
     c: Context,
     db: any,

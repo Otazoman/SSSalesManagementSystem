@@ -95,12 +95,14 @@ export class PartnerDeliveryDestinationsRepository {
     id: string,
     data: CreatePartnerDeliveryDestinationInput,
     operatorId: string,
+    // BUG-112: 取引先の承認が有効な時は仮登録(temporary)で作り、承認で有効にする
+    status: "active" | "temporary" = "active",
   ) {
     const now = new Date();
     await this.db.insert(schema.partnerDeliveryDestinations).values({
       id,
       ...data,
-      status: "active",
+      status,
       createdBy: operatorId,
       createdAt: now,
       updatedBy: operatorId,

@@ -1,5 +1,7 @@
 import { WorkflowEngine } from "../../../workflow-engine/engine";
 import { pickDisplayNames, resolvePreviewDisplayNames } from "./preview-display-names";
+import { resolveHistoryTargetNames } from "./history-target-names";
+import { NotFoundError } from "../../../platform/http/http-error";
 import { getTargetAdapter } from "../../../workflow-engine/target-adapters/registry";
 import {
   WorkflowTasksRepository,
@@ -475,12 +477,64 @@ export class WorkflowTasksHistoryService {
 
     const start = toOffset(params);
     const pageRows = filtered.slice(start, start + params.limit);
-    const data = await WorkflowTasksHistoryService.buildHistoryItems(db, pageRows, defs);
+    // BUG-119: 一覧では申請の中身(プレビュー)・承認の進み具合を作らない(行を開いた時に getHistoryDetail で読む)
+    void defs;
+    const data = await WorkflowTasksHistoryService.buildHistoryListItems(db, pageRows);
     return {
       ...buildListResponse(data, buildPaginationMeta(params, filtered.length)),
       isAdmin,
       counts,
     };
+  }
+
+  /**
+   * BUG-119: 申請履歴の一覧用の軽い行。名前(申請者・承認者・対象)だけをまとめて引き、申請の中身(プレビュー)・承認の進み具合は付けない
+   * (snapshotNew・snapshotOld は null、flowProgress は空。画面は行を開いた時に GET /history/:logId/detail で読む)。
+   * 以前は1ページ(50件)の申請ごとに中身を読んでいたため、CPU の上限を超えていた。
+   */
+  static async buildHistoryListItems(db: any, rows: HistoryRow[]): Promise<HistoryItem[]> {
+    if (rows.length === 0) return [];
+    const userIds = [
+      ...rows.map((r) => r.reqParent.applicantId),
+      ...rows.map((r) => r.log.approverId).filter((id): id is string => Boolean(id)),
+    ];
+    const [users, targetNames] = await Promise.all([
+      WorkflowTasksRepository.getUsersByIds(db, [...new Set(userIds)]),
+      resolveHistoryTargetNames(db, rows.map((r) => ({ targetType: r.log.targetType, targetId: r.log.targetId }))),
+    ]);
+    const userNames = new Map(users.map((u: { id: string; name: string | null }) => [u.id, u.name]));
+    const nameOf = (userId: string) => userNames.get(userId) || userId;
+    return rows.map(({ log, reqParent }) => ({
+      logId: log.id,
+      requestId: reqParent.id,
+      targetType: log.targetType,
+      targetId: log.targetId,
+      targetName: targetNames.get(`${log.targetType}:${log.targetId}`) ?? log.targetId,
+      layer: log.layer,
+      requestType: reqParent.requestType,
+      applicantId: `${nameOf(reqParent.applicantId)} (ID: ${reqParent.applicantId.substring(0, 8)})`,
+      applicantDepartmentId: null,
+      status: log.status,
+      comment: log.comment,
+      performedAt: log.performedAt,
+      approverName: log.approverId ? nameOf(log.approverId) : null,
+      snapshotNew: null,
+      snapshotOld: null,
+      displayNames: {},
+      parentStatus: reqParent.status,
+      flowProgress: [],
+    }));
+  }
+
+  /**
+   * BUG-119: 申請履歴の行を開いた時の中身(プレビュー・承認の進み具合・申請者の所属)。見られる行(一覧と同じ判定)だけを返す
+   */
+  static async getHistoryDetail(db: any, queryParams: HistoryQuery, logId: string): Promise<HistoryItem> {
+    const { rows, defs } = await WorkflowTasksHistoryService.collectHistoryRows(db, { ...queryParams, status: undefined });
+    const row = rows.find((r) => r.log.id === logId);
+    if (!row) throw new NotFoundError("対象の申請履歴が見つかりません");
+    const [item] = await WorkflowTasksHistoryService.buildHistoryItems(db, [row], defs);
+    return item;
   }
 }
 

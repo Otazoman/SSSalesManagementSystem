@@ -185,6 +185,27 @@ workflowTasksRouter.get(
   }
 });
 
+/** BUG-119: 申請履歴の行を開いた時の中身(プレビュー・承認の進み具合)。一覧には中身を付けない */
+workflowTasksRouter.get(
+  "/history/:logId/detail",
+  describeApiRoute({
+    summary: "申請履歴の1行の中身(プレビュー・承認の進み具合)",
+    tags: ["workflow-tasks"],
+    responses: { 200: { description: "申請履歴の行(中身つき)" }, 401: { description: "未ログイン" }, 404: { description: "見られる行に無い" } },
+  }),
+  async (c) => {
+    try {
+      const userId = await getSessionUserId(c);
+      if (!userId) return unauthorized(c);
+      const db = createWorkflowTasksDb(c.env.DB);
+      const item = await WorkflowTasksService.getHistoryDetail(db, { userId, status: "", applicantId: "", startDate: "", endDate: "" }, c.req.param("logId"));
+      return c.json(item);
+    } catch (err) {
+      return respondError(c, err, "申請履歴の中身の取得に失敗しました");
+    }
+  },
+);
+
 /** 一括承認処理 */
 workflowTasksRouter.post(
   "/bulk-approve",

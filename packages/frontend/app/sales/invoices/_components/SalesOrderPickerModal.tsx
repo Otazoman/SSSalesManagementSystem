@@ -17,6 +17,8 @@ interface SalesOrderPickerModalProps {
     // BUG-050: 選択した受注・発注の取引先。フォーム側で取引先を切り替える。
     // 取り込めない場合は理由を返し、このモーダルに表示する
     partnerId?: string | null,
+    // BUG-117: 選択した受注の件名(売上の件名が空なら引き継ぐ。仕入と同じ)
+    title?: string | null,
   ) => string | undefined | void;
 }
 
@@ -121,6 +123,7 @@ export function SalesOrderPickerModal({
       selections,
       selectedOrderProject,
       selectedOrder?.partnerId ?? null,
+      selectedOrder?.title ?? null,
     );
     if (applyError) setError(applyError);
   };

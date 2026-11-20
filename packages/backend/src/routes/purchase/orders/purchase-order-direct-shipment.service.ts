@@ -77,7 +77,7 @@ export class PurchaseOrderDirectShipmentService {
       }
       // 発注の残数量(入荷済数量を除く)・受注の残数量(出荷済数量を除く)を超えないこと
       await receiptService.validateRemainingQuantity(poItem.id, line.quantity);
-      await shipmentService.validateRemainingQuantity(salesOrderItem.id, line.quantity);
+      await shipmentService.validateRemainingQuantity(salesOrderItem.id, line.quantity, { allowDirectShipment: true });
       const [product] = await db
         .select({ accountCode: schema.items.accountCode })
         .from(schema.items)

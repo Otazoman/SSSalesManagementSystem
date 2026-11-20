@@ -111,7 +111,23 @@ export function ReceiptInstructionPanel({
     setBulkSending(true);
     try {
       const result = await issueReportPdfs("/api/receipt-instructions", Array.from(selectedIds), { defaultErrorMessage: "一括PDF発行・送信に失敗しました" });
-      setMessageState({ message: result.message });
+      // BUG-113: REQ-012 で PDF の発行ではメールを送らなくなったため、発行できた指示書を倉庫の登録済みの担当者へ送る
+      const issuedIds = result.results.filter((r) => r.success).map((r) => r.id);
+      const issued = `${result.results.length}件中${issuedIds.length}件のPDFを発行しました。`;
+      if (issuedIds.length === 0) {
+        setMessageState({ error: `${issued}${result.results.map((r) => r.message).filter(Boolean).join(" / ")}` });
+      } else {
+        const mail = await apiFetch<{ message?: string; results?: Array<{ id: string; status: string; error?: string }> }>(
+          "/api/receipt-instructions/bulk-send-email",
+          { method: "POST", json: { ids: issuedIds }, defaultErrorMessage: "メールの一括送信に失敗しました" },
+        );
+        const failures = (mail.results ?? []).filter((r) => r.status === "FAILED").map((r) => `${r.id}: ${r.error}`);
+        setMessageState(
+          failures.length > 0
+            ? { message: `${issued}${mail.message ?? ""}`, error: failures.join(" / ") }
+            : { message: `${issued}${mail.message ?? ""}` },
+        );
+      }
       setSelectedIds(new Set());
       void history.refetch();
     } catch (err: unknown) {

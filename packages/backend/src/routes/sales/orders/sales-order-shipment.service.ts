@@ -20,6 +20,8 @@ export interface ShipmentProgressItem {
   shippedQuantity: number;
   remainingQuantity: number;
   reservations: ShipmentProgressWarehouseBreakdown[];
+  // BUG-109: 直送の発注とつながる明細。発注の「直送完了」で出荷するため、出荷指示・出庫の対象にしない
+  isDirectShipment: boolean;
 }
 
 // Item7残課題6: 受注→出荷指示/出庫の消込連携。既存のsales-order-csv.service.ts等と同じ、
@@ -39,9 +41,10 @@ export class SalesOrderShipmentService {
     const itemIds = items.map((i: any) => i.id);
 
     const warehouseReservationRepo = new WarehouseStockReservationRepository(d1);
-    const [shippedRows, reservationRows] = await Promise.all([
+    const [shippedRows, reservationRows, directItemIds] = await Promise.all([
       this.repo.getShippedQuantitiesByOrderItemIds(itemIds),
       warehouseReservationRepo.findReservationsByOrderItemIds(itemIds),
+      this.repo.findDirectShipmentOrderItemIds(itemIds),
     ]);
 
     const shippedByItemId = new Map(shippedRows.map((r) => [r.salesOrderItemId, r.shippedQuantity]));
@@ -83,13 +86,19 @@ export class SalesOrderShipmentService {
         shippedQuantity,
         remainingQuantity: Math.max(item.quantity - shippedQuantity, 0),
         reservations: reservationsByItemId.get(item.id) || [],
+        isDirectShipment: directItemIds.has(item.id),
       };
     });
   }
 
   // 出荷指示・出庫の明細作成時、対応する受注明細の残数量(受注数量-既出荷数量)を
-  // 超えていないか検証する(超過時はエラーでブロックする、ユーザー確認済み)
-  async validateRemainingQuantity(salesOrderItemId: string, requestedQuantity: number): Promise<void> {
+  // 超えていないか検証する(超過時はエラーでブロックする、ユーザー確認済み)。
+  // BUG-109: 直送の明細は出荷指示・出庫の対象外。発注の直送完了から呼ぶ時だけ allowDirectShipment を付ける
+  async validateRemainingQuantity(
+    salesOrderItemId: string,
+    requestedQuantity: number,
+    options: { allowDirectShipment?: boolean } = {},
+  ): Promise<void> {
     const orderItem = await this.repo.findOrderItemById(salesOrderItemId);
     if (!orderItem) {
       throw new NotFoundError(`受注明細が見つかりません: ${salesOrderItemId}`);
@@ -101,6 +110,11 @@ export class SalesOrderShipmentService {
     }
     if ((await this.repo.findServiceItemIds([orderItem.itemId])).size > 0) {
       throw new BadRequestError(`受注明細[${salesOrderItemId}]はサービス品目(役務)のため、出荷の対象外です`);
+    }
+    if (!options.allowDirectShipment && (await this.repo.findDirectShipmentOrderItemIds([salesOrderItemId])).size > 0) {
+      throw new BadRequestError(
+        `受注明細[${salesOrderItemId}]は直送の発注とつながっているため、出荷指示・出庫の対象外です(発注の「直送完了」で出荷します)`,
+      );
     }
     const shippedRows = await this.repo.getShippedQuantitiesByOrderItemIds([salesOrderItemId]);
     const shippedQuantity = shippedRows[0]?.shippedQuantity || 0;

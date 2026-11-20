@@ -123,7 +123,8 @@ export const SCREEN_MASTER: ScreenDefinition[] = [
     icon: "📋",
     path: "/inventory/audit",
   },
-  // REQ-011(2): 一時保管(在庫・棚卸管理の「一時保管」タブ)。権限・承認フローの対象にするための画面で、メニューには出さない
+  // REQ-011(2): 一時保管(在庫・棚卸管理の「一時保管」タブ)。承認フローの対象(一時保管の受入・払出・調整)にするための画面で、メニューには出さない。
+  // BUG-111(2026-11-20): タブを使う権限は在庫・棚卸管理の権限で判定する(この画面の権限は使わない)
   {
     resource: "inventory_temporary_holdings",
     name: "一時保管",

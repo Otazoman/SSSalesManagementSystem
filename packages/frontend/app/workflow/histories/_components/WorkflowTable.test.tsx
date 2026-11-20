@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkflowTable } from "./WorkflowTable";
@@ -47,6 +47,13 @@ function baseProps(overrides: Partial<Parameters<typeof WorkflowTable>[0]> = {})
     ...overrides,
   };
 }
+
+// BUG-119: 行を開くと、申請の中身(プレビュー・承認の進み具合)を GET /history/:logId/detail で読む
+beforeEach(() => {
+  mockApiFetch.mockImplementation(async (url: string) =>
+    url.includes("/detail") ? { ...baseTask(), snapshotNew: { name: "個(詳細)" }, displayNames: {}, flowProgress: [] } : { path: "/master/units" },
+  );
+});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -163,7 +170,11 @@ describe("WorkflowTable", () => {
   });
 
   it("プレビューに、元の伝票を別タブで開くリンクを出す(REQ-016)", async () => {
-    mockApiFetch.mockResolvedValue({ path: "/inventory/receiving" });
+    mockApiFetch.mockImplementation(async (url: string) =>
+      url.includes("/detail")
+        ? { ...baseTask({ targetType: "inventory_instructions", targetId: "RI-1" }), flowProgress: [], displayNames: {} }
+        : { path: "/inventory/receiving" },
+    );
     const user = { roleId: "staff", permissions: ["inventory_receiving:menu"] } as never;
     const screens = [
       { title: "入荷", icon: "", path: "/inventory/receiving", resource: "inventory_receiving", category: "inventory" },
@@ -178,5 +189,16 @@ describe("WorkflowTable", () => {
     await userEvent.click(screen.getByText("👁️ プレビュー"));
     const link = await screen.findByRole("link", { name: /伝票を開く/ });
     expect(link).toHaveAttribute("href", "/inventory/receiving?openId=RI-1&openKind=instruction");
+  });
+
+  it("行を開いた時に、その行の中身を読む(一覧には中身が無い。BUG-119)", async () => {
+    render(<WorkflowTable {...baseProps({ histories: [baseTask()] })} />);
+    expect(mockApiFetch).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByText("👁️ プレビュー"));
+    expect(mockApiFetch).toHaveBeenCalledWith("/api/workflow-tasks/history/L1/detail", expect.anything());
+    // 閉じて開き直しても、もう一度は読まない
+    await userEvent.click(screen.getByText("▲ 閉じる"));
+    await userEvent.click(screen.getByText("👁️ プレビュー"));
+    expect(mockApiFetch.mock.calls.filter(([u]) => String(u).includes("/detail"))).toHaveLength(1);
   });
 });

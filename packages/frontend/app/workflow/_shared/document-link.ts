@@ -6,7 +6,13 @@
 //  - 請求の画面: openId(REQ-017)
 //  - 在庫・棚卸の画面: openId(棚卸は openKind=audit。品質区分変更・廃棄・返品は種類が分からないため、画面が順に探す)
 
-const ROW_ONLY_TARGET_TYPES = ["sales_payment_receipts", "sales_cash_receipts", "purchase_payment_disbursements"];
+// BUG-112: 取引先の納品先も、番号は取引先の画面で開く番号ではないため、取引先マスタの画面だけを開く
+const ROW_ONLY_TARGET_TYPES = [
+  "sales_payment_receipts",
+  "sales_cash_receipts",
+  "purchase_payment_disbursements",
+  "master_delivery_destinations",
+];
 
 function openKindOf(targetType: string, path: string): string | null {
   if (path === "/inventory/audit") {
@@ -17,6 +23,8 @@ function openKindOf(targetType: string, path: string): string | null {
   }
   // REQ-017: 請求の画面は、進捗確認と同じ openId で詳細のモーダルを開く
   if (path === "/sales/billing") return "";
+  // REQ-026: 支払の画面も openId で詳細のモーダルを開く
+  if (path === "/purchase/payment") return "";
   const isReceiving = path === "/inventory/receiving";
   const isShipping = path === "/inventory/shipping";
   if (!isReceiving && !isShipping) return null;

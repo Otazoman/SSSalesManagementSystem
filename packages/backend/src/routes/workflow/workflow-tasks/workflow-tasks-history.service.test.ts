@@ -680,7 +680,9 @@ describe("申請履歴の問い合わせ回数(PERF-02)", () => {
     }, 60_000);
   }
 
-  it("1ページ分の行にも、今と同じく名前・プレビュー・承認の進み具合が付く", async () => {
+  // BUG-119: 一覧(1ページ分)の行には中身(プレビュー)・承認の進み具合を付けず、名前だけを付ける。中身は行を開いた時に getHistoryDetail で読み、
+  // 以前の一覧の行と同じ内容になる
+  it("1ページ分の行は名前だけを付け、行の中身(getHistoryDetail)は以前の一覧の行と同じ内容になる", async () => {
     await seedPerfUsers();
     await seedUnitRequests(3, "applicant-1");
 
@@ -692,17 +694,35 @@ describe("申請履歴の問い合わせ回数(PERF-02)", () => {
     const full = await WorkflowTasksHistoryService.getHistory(db, { userId: "admin-1" } as any);
 
     expect(page.data).toHaveLength(2);
-    // 同じ行は、全件を組み立てた場合と内容が一致する
     for (const item of page.data as any[]) {
-      expect(item).toEqual(full.histories.find((h) => h.logId === item.logId));
+      const fullItem = full.histories.find((h) => h.logId === item.logId)!;
+      // 一覧の行: 中身・承認の進み具合は付けない。名前(対象・申請者・承認者)と状態は以前と同じ
+      expect(item.snapshotNew).toBeNull();
+      expect(item.flowProgress).toEqual([]);
+      expect(item.targetName).toBe(fullItem.targetName);
+      expect(item.applicantId).toBe(fullItem.applicantId);
+      expect(item.approverName).toBe(fullItem.approverName);
+      expect(item.status).toBe(fullItem.status);
+      // 行を開いた時の中身は、以前の一覧の行と同じ
+      const detail = await WorkflowTasksHistoryService.getHistoryDetail(db, { userId: "admin-1" } as any, item.logId);
+      expect(detail).toEqual(fullItem);
     }
-    const pending = (page.data as any[]).find((h) => h.status === "PENDING");
-    expect(pending.targetName).toBe(pending.snapshotNew.name);
-    expect(pending.applicantId).toBe("applicant-1 (ID: applican)");
+    const pendingLogId = (page.data as any[]).find((h) => h.status === "PENDING").logId;
+    const pending = await WorkflowTasksHistoryService.getHistoryDetail(db, { userId: "admin-1" } as any, pendingLogId);
+    expect(pending.targetName).toBe((pending.snapshotNew as any).name);
     expect(pending.flowProgress.map((s: any) => [s.stepOrder, s.status, s.performedBy])).toEqual([
       [1, "APPROVED", "承認者太郎"],
       [2, "PENDING", "承認者次郎"],
     ]);
+  });
+
+  it("見られない行の中身は返さない(404)", async () => {
+    await seedPerfUsers();
+    await seedUnitRequests(1, "applicant-1");
+    const full = await WorkflowTasksHistoryService.getHistory(db, { userId: "admin-1" } as any);
+    await expect(
+      WorkflowTasksHistoryService.getHistoryDetail(db, { userId: "unrelated-user" } as any, full.histories[0].logId),
+    ).rejects.toThrow("対象の申請履歴が見つかりません");
   });
 });
 

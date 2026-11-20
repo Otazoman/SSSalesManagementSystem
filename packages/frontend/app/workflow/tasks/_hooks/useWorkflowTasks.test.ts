@@ -155,6 +155,24 @@ describe("useWorkflowTasks", () => {
     expect(calledUrls.filter((u) => u.includes("/api/workflow-tasks/my-pending")).length).toBe(2);
   });
 
+  // REQ-023: 次の段に回った時は、その段のロール名を添える
+  it("handleAction(approve)で次の段に回った時は、次の段のロール名をメッセージに出す", async () => {
+    mockFetch((url) => {
+      if (url.includes("/api/workflow-tasks/approve")) {
+        return jsonResponse({ success: true, nextStepRoleName: "課長" });
+      }
+      return jsonResponse([{ logId: "L1", targetName: "単位マスタ" }]);
+    });
+    const { result } = renderHook(() => useWorkflowTasks());
+    await waitFor(() => expect(result.current.tasks.length).toBe(1));
+
+    await act(async () => {
+      await result.current.handleAction(result.current.tasks[0], "approve");
+    });
+
+    expect(result.current.message).toBe("「単位マスタ」の申請を承認しました(次の段「課長」の承認待ちになりました)");
+  });
+
   it("handleBulkActionは選択0件の場合エラーを設定しAPIを呼ばない", async () => {
     const fetchSpy = mockFetch(() => jsonResponse([]));
     const { result } = renderHook(() => useWorkflowTasks());

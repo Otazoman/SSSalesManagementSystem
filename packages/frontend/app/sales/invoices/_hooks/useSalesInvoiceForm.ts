@@ -443,6 +443,7 @@ export function useSalesInvoiceForm({
     selections: Array<{ progress: SalesOrderItemProgress; quantity: number }>,
     orderProjectId?: string | null,
     orderPartnerId?: string | null,
+    orderTitle?: string | null,
   ): string | undefined => {
     if (orderPartnerId && orderPartnerId !== partnerId && items.some((item) => !!item.sourceOrderItemId)) {
       return "別の得意先の受注明細が既に入っているため、この受注は追加できません(1つの売上には同じ得意先の受注だけをまとめられます)";
@@ -464,6 +465,8 @@ export function useSalesInvoiceForm({
     setSalesOrderId(targetOrderId);
     if (orderPartnerId) setPartnerId(orderPartnerId);
     if (orderProjectId) setProjectId(orderProjectId);
+    // BUG-117: 件名が空なら、受注の件名を引き継ぐ(入力済みの件名は変えない)
+    if (orderTitle && !invoiceTitle.trim()) setInvoiceTitle(orderTitle);
     setItems((prev) => {
       const withoutEmptyFirstRow = prev.length === 1 && !prev[0].itemId ? [] : prev;
       return [...withoutEmptyFirstRow, ...newItems];

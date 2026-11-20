@@ -37,6 +37,8 @@ export interface SystemSettings {
   // REQ-018: 入金(請求への入金・単体入金)と支払の消込の承認
   is_cash_receipt_approval_enabled: boolean;
   is_payment_disbursement_approval_enabled: boolean;
+  // REQ-026: 支払の作成の承認
+  is_payment_approval_enabled: boolean;
   is_sales_approval_enabled: boolean;
   is_purchase_approval_enabled: boolean;
   is_sales_invoice_requires_shipment: boolean;

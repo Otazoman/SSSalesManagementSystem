@@ -1027,3 +1027,57 @@ describe("resolveEditPath: 承認のtargetTypeと画面resourceが異なる伝�
     expect(await WorkflowTasksApprovalService.resolveEditPath({}, "sales_invoices", "X")).toBe("/sales/invoices");
   });
 });
+
+// REQ-023: 個別の承認でも、次の段に回った時はその段のロール名を返し、メッセージで知らせる
+describe("REQ-023: 個別の承認の結果の次の段", () => {
+  async function seedTwoStepRequest() {
+    await seedUser("applicant-1");
+    await seedUser("approver-1");
+    await seedRole("role1");
+    await db.insert(schema.roles).values({ id: "role-director", name: "部長", createdAt: now });
+    await seedUserRole("approver-1", "role1", null);
+    await seedUserRole("approver-1", "role-director", null);
+    await seedPartner("partner-1", "テスト取引先", "applicant-1");
+    await seedApprovalFlow("flow-1", "master_partners", [
+      { order: 1, roleId: "role1" },
+      { order: 2, roleId: "role-director" },
+    ]);
+    await db.insert(schema.masterApprovalRequests).values({
+      id: "req-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      requestType: "REGISTER",
+      status: "PENDING",
+      applicantId: "applicant-1",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.workflowLogs).values({
+      id: "log-1",
+      targetType: "master_partners",
+      targetId: "partner-1",
+      approverRoleId: "role1",
+      layer: 1,
+      status: "PENDING",
+    });
+  }
+
+  it("1段目を承認すると次の段のロール名を返し、最後の段を承認すると返さない", async () => {
+    await seedTwoStepRequest();
+
+    const first = await callApproveTask({ logId: "log-1", requestId: "req-1", userId: "approver-1", comment: null });
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      message: "承認しました。次の段「部長」の承認待ちになりました",
+      nextStepRoleName: "部長",
+    });
+
+    const [next] = await db
+      .select()
+      .from(schema.workflowLogs)
+      .where(eq(schema.workflowLogs.status, "PENDING"));
+    const last = await callApproveTask({ logId: next.id, requestId: "req-1", userId: "approver-1", comment: null });
+    expect(last.status).toBe(200);
+    expect(await last.json()).toMatchObject({ message: "承認処理が完了しました", nextStepRoleName: null });
+  });
+});

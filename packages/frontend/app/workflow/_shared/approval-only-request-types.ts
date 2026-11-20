@@ -8,4 +8,6 @@ export const APPROVAL_ONLY_REQUEST_TYPES: Array<{ resource: string; name: string
   { resource: "inventory_stock", name: "入出庫・品質区分変更・廃棄・返品", category: "daily_work" },
   { resource: "inventory_instructions", name: "入荷指示・出荷指示", category: "daily_work" },
   { resource: "purchase_recognitions", name: "仕入", category: "daily_work" },
+  // BUG-112: 取引先の納品先(承認フローは「取引先マスタ」のものを使う。分岐条件 documentKind = DELIVERY_DESTINATION)
+  { resource: "master_delivery_destinations", name: "取引先の納品先", category: "business_master" },
 ];

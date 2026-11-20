@@ -324,6 +324,16 @@ describe("担当者・登録番号の行(BUG-092)", () => {
     expect(without).not.toContain("所在地");
   });
 
+  // BUG-115: 枠に収まらない長い値は、枠の中で2行に折り返す(以前は1行のまま枠の右へはみ出していた)
+  it("発注書の長い所在地は、枠の中で2行に分けて描く(元の文字は欠けない)", async () => {
+    const address = "〒000-0005 大阪府サンプル市サンプル町50-5 サンプルビル12階 物流センター受付窓口";
+    const texts = await drawnTexts(base({ templateType: "ORDER", deliveryPlace: "直送: サンプル得意先", deliveryPlaceAddress: address }));
+    expect(texts).not.toContain(address);
+    const index = texts.findIndex((t) => address.startsWith(t) && t.length > 5);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect((texts[index] + texts[index + 1]).replace(/ /g, "")).toBe(address.replace(/ /g, ""));
+  });
+
   it("請求書には登録番号を描き、納品書には描かない", async () => {
     expect(await drawnTexts(base({}))).toContain("登録番号: T1234567890123");
     const delivery = await drawnTexts(base({ templateType: "DELIVERY" }));

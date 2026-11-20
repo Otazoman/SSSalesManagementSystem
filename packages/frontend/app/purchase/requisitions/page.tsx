@@ -452,20 +452,17 @@ export default function PurchaseRequisitionsPage() {
           partnerLabel="仕入先名"
           summary={savedSummary}
           previewLabel="👁️ 保存した購買申請を内容確認で見る"
-          approveLabel={isPurchaseRequisitionWfEnabled ? "🚀 このまま承認を申請する" : undefined}
+          approveLabel={isPurchaseRequisitionWfEnabled ? "🚀 このまま承認を申請する" : "✅ このまま確定する"}
           onPreview={() => {
             const targetId = savedSummary.id;
             setSavedSummary(null);
             void handleOpenPreview({ id: targetId } as PurchaseRequisitionRecord);
           }}
-          onApprove={
-            isPurchaseRequisitionWfEnabled
-              ? () => {
-                  setSavedSummary(null);
-                  void handleSubmitForApproval();
-                }
-              : undefined
-          }
+          // BUG-108: 承認機能が無効の時も、保存の後にそのまま確定できる(発注と同じ)
+          onApprove={() => {
+            setSavedSummary(null);
+            void handleSubmitForApproval();
+          }}
           onContinue={() => setSavedSummary(null)}
           onBackToList={() => {
             setSavedSummary(null);

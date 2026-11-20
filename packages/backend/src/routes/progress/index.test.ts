@@ -33,6 +33,8 @@ beforeEach(async () => {
   await db.delete(schema.approvalFlowSteps);
   await db.delete(schema.approvalFlows);
   await db.delete(schema.purchaseRecognitions);
+  // BUG-110: 発注明細(受注明細とつながる)のテスト用。発注・受注明細より先に消す
+  await db.delete(schema.orderItems);
   await db.delete(schema.orders);
   await db.delete(schema.purchaseRequestItems);
   await db.delete(schema.purchaseRequests);
@@ -160,6 +162,56 @@ describe("GET / (進捗一覧)", () => {
     expect(row.stages.purchase_request.map((d: any) => d.id)).toEqual(["PR-1"]);
     expect(row.stages.purchase_order[0]).toMatchObject({ id: "PO-1", assigneeName: "営業太郎" });
     expect(row.stages.sales_invoice).toEqual([]);
+  });
+
+  // BUG-110: 受注から直接作った発注(直送・受注の欠品から。購買申請を通らない)は、発注明細と受注明細のつながりで受注の案件に載せる
+  it("購買申請を通らずに受注から作った発注は、受注の案件の発注の欄に載り、単独の行にならない。発注番号でも受注の案件が見つかる", async () => {
+    await db.insert(schema.salesOrders).values({
+      id: "SO-D",
+      partnerId: "P-1",
+      orderDate: later,
+      status: "APPROVED",
+      totalAmount: 0,
+      taxAmount: 0,
+      ...audit,
+    });
+    await db.insert(schema.salesOrderItems).values({
+      id: "SOI-D",
+      salesOrderId: "SO-D",
+      itemId: "ITEM1",
+      inputType: "MASTER",
+      quantity: 2,
+      unitPrice: 100,
+      amount: 200,
+      sortOrder: 0,
+    });
+    await db.insert(schema.orders).values({
+      id: "PO-D",
+      title: "直送の発注",
+      partnerId: "P-1",
+      orderDate: later,
+      status: "APPROVED",
+      isDirectShipment: true,
+      directSalesOrderId: "SO-D",
+      totalAmount: 200,
+      taxAmount: 0,
+      ...audit,
+    });
+    await db.insert(schema.orderItems).values({
+      id: "POI-D",
+      orderId: "PO-D",
+      itemId: "ITEM1",
+      quantity: 2,
+      unitPrice: 100,
+      salesOrderItemId: "SOI-D",
+    });
+
+    const body = (await (await callProgress()).json()) as any;
+    expect(body.items.map((r: any) => `${r.rootKind}:${r.rootId}`)).toEqual(["sales_order:SO-D"]);
+    expect(body.items[0].stages.purchase_order.map((d: any) => d.id)).toEqual(["PO-D"]);
+
+    const byOrderNumber = (await (await callProgress("?docNumber=PO-D")).json()) as any;
+    expect(byOrderNumber.items.map((r: any) => r.rootId)).toEqual(["SO-D"]);
   });
 
   it("REQ-015: 失注の見積の案件は完了として扱い、見積の欄に失注を出す", async () => {

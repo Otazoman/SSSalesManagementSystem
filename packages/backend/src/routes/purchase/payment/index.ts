@@ -3,6 +3,7 @@ import * as v from "valibot";
 import { Env } from "../../../types/env";
 import { PaymentRepository } from "./payment.repository";
 import { PaymentService } from "./payment.service";
+import { submitPaymentForApproval } from "./payment-approval.service";
 import { respondError, respondValidationError } from "../../../platform/http/error-handler";
 import { parsePaginationParams } from "../../../platform/http/pagination";
 import { describeApiRoute, describeListRoute, describeCsvDownloadRoute, describeMutationRoute } from "../../../platform/openapi/describe-route";
@@ -293,6 +294,33 @@ paymentRouter.post(
     }
 
     const result = await getService(c).createPayment(c, parsed.output);
+    return c.json(result);
+  },
+);
+
+// ==========================================
+// REQ-026: 支払の承認申請(会社設定で支払の承認が ON の時だけ使える)
+// ==========================================
+paymentRouter.post(
+  "/:id/submit-for-approval",
+  describeApiRoute({
+    summary: "支払の承認申請",
+    tags: ["purchase-payment"],
+    responses: {
+      200: { description: "申請成功" },
+      400: { description: "承認機能が OFF、下書き状態でない、または承認フロー未定義等" },
+      404: { description: "対象の支払が見つからない" },
+    },
+  }),
+  async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await submitPaymentForApproval(
+      c,
+      new PaymentRepository(c.env.DB),
+      id,
+      body?.applicantDepartmentSurrogateId || null,
+    );
     return c.json(result);
   },
 );

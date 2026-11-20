@@ -24,6 +24,8 @@ export interface UserState {
   isItemReorderSettingWfEnabled?: boolean;
   // REQ-017: 請求の承認
   isBillingWfEnabled?: boolean;
+  // REQ-026
+  isPaymentWfEnabled?: boolean;
   isLocationWfEnabled: boolean;
   isProductPriceWfEnabled: boolean;
   isProductWfEnabled: boolean;

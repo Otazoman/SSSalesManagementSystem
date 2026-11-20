@@ -26,6 +26,8 @@ interface UserState {
   isProjectWfEnabled?: boolean;
   isItemReorderSettingWfEnabled?: boolean;
   isBillingWfEnabled?: boolean;
+  // REQ-026
+  isPaymentWfEnabled?: boolean;
   isLocationWfEnabled: boolean;
   isProductPriceWfEnabled: boolean;
   isProductWfEnabled: boolean;

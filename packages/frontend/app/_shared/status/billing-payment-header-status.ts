@@ -6,7 +6,7 @@ import { StatusBadgeSpec } from "../ui/StatusBadge";
 export const BILLING_PAYMENT_HEADER_STATUS: Record<string, StatusBadgeSpec> = {
   DRAFT: { label: "⚪ 下書き", tone: "slate" },
   ISSUED: { label: "🟢 発行済み", tone: "emerald" },
-  // REQ-017: 請求の承認が ON の時だけ使う状態(支払には無い)
+  // REQ-017・REQ-026: 請求・支払の承認が ON の時だけ使う状態(支払は承認済みで消込・振込の対象になる)
   PENDING_APPROVAL: { label: "🟡 承認申請中", tone: "amber" },
   APPROVED: { label: "🔵 承認済み(未発行)", tone: "sky" },
 };

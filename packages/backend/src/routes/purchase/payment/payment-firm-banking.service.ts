@@ -11,6 +11,7 @@ import {
 import { logAuditEvent } from "../../../platform/audit/log-audit-event";
 import { BadRequestError, NotFoundError } from "../../../platform/http/http-error";
 import { RESOURCE_KEY } from "./payment-constants";
+import { paymentApprovalBlockReason } from "./payment-approval.service";
 import { Env } from "../../../types/env";
 
 function toAccountType(value: unknown): AccountType {
@@ -50,6 +51,12 @@ export class PaymentFirmBankingService {
     const errors: string[] = [];
 
     for (const header of headers) {
+      // REQ-026: 支払の承認が ON の時は、承認済みの支払だけ振込の対象にする
+      const blocked = await paymentApprovalBlockReason(c, header, "振込の対象に");
+      if (blocked) {
+        errors.push(blocked);
+        continue;
+      }
       const remaining = header.totalAmount - header.reconciledAmount;
       if (remaining <= 0) {
         errors.push(`支払[${header.id}]は既に全額消込済みのため振込対象にできません`);

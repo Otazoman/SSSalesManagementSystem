@@ -34,6 +34,13 @@ export class PaymentRepository {
     this.db = drizzle(d1, { schema });
   }
 
+  // REQ-026: 承認のアダプター(workflow-engine)から、取得済みの drizzle を使って作る
+  static fromDb(db: ReturnType<typeof drizzle<typeof schema>>): PaymentRepository {
+    const repo: PaymentRepository = Object.create(PaymentRepository.prototype);
+    repo.db = db;
+    return repo;
+  }
+
   async getFallbackOperatorId(c: Context<{ Bindings: Env }>): Promise<string> {
     return resolveOperatorEmployeeNumber(c, this.db);
   }

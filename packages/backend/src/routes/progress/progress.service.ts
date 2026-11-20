@@ -250,6 +250,8 @@ export class ProgressService {
     const invoicedQtyByItem = await this.repo.findInvoicedQuantities(soItems.map((i) => i.id));
     const soItemsBySo = groupBy(soItems, (i) => i.salesOrderId);
     const prLinks = await this.repo.findPurchaseRequestLinksBySalesOrderItem(soItems.map((i) => i.id));
+    // BUG-110: 受注から直接作った発注(直送・受注の欠品から。購買申請を通らない)
+    const directOrderLinks = await this.repo.findDirectOrderLinksBySalesOrderItem(soItems.map((i) => i.id));
 
     const shipmentInstructionsBySo = groupBy(
       await this.repo.findShipmentInstructionsBySalesOrder(salesOrderRootIds),
@@ -271,12 +273,21 @@ export class ProgressService {
       if (!requestIdsBySo.has(soId)) requestIdsBySo.set(soId, new Set());
       requestIdsBySo.get(soId)!.add(link.requestId);
     }
+    const directOrderIdsBySo = new Map<string, Set<string>>();
+    for (const link of directOrderLinks) {
+      const soId = link.salesOrderItemId ? salesOrderIdByItemId.get(link.salesOrderItemId) : undefined;
+      if (!soId || !link.orderId) continue;
+      if (!directOrderIdsBySo.has(soId)) directOrderIdsBySo.set(soId, new Set());
+      directOrderIdsBySo.get(soId)!.add(link.orderId);
+    }
     const allRequestIds = [...new Set([...prLinks.map((l) => l.requestId), ...requestRootIds])];
     const purchaseRequests = await this.repo.findPurchaseRequests(allRequestIds);
     const requestById = new Map(purchaseRequests.map((r) => [r.id, r]));
 
     const ordersByRequest = await this.repo.findOrdersByRequest(allRequestIds);
-    const rootOrders = await this.repo.findOrdersByIds(orderRootIds);
+    const rootOrders = await this.repo.findOrdersByIds([
+      ...new Set([...orderRootIds, ...[...directOrderIdsBySo.values()].flatMap((ids) => [...ids])]),
+    ]);
     const orderById = new Map([...ordersByRequest, ...rootOrders].map((o) => [o.id, o]));
     const allOrderIds = [...orderById.keys()];
     const ordersByRequestId = groupBy(ordersByRequest, (o) => o.requestId);
@@ -485,7 +496,7 @@ export class ProgressService {
             }
           }
         }
-        addPurchaseSide(stages, [...(requestIdsBySo.get(root.id) ?? [])], []);
+        addPurchaseSide(stages, [...(requestIdsBySo.get(root.id) ?? [])], [...(directOrderIdsBySo.get(root.id) ?? [])]);
       } else if (root.kind === "purchase_request") {
         const req = requestById.get(root.id);
         partnerId = req?.partnerId ?? null;

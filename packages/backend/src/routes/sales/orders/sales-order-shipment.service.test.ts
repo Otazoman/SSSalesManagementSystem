@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
@@ -461,5 +461,97 @@ describe("BUG-065: サービス品目(isService)は出荷の対象外", () => {
 
     expect(res.status).toBe(200);
     expect((await findOrder("O-1"))?.shipmentStatus).toBe("SHIPPED");
+  });
+});
+
+// BUG-109: 直送の発注とつながる受注明細は、発注の「直送完了」で出荷する。出荷指示・出庫の対象にしない
+describe("BUG-109: 直送の明細は出荷指示・出庫の対象外", () => {
+  // 発注明細が受注明細を参照するため、共通の後始末(受注明細の削除)より先に消す
+  afterEach(async () => {
+    await db.delete(schema.orderItems);
+    await db.delete(schema.orders);
+  });
+  async function callGetShipmentProgress(id: string) {
+    const ctx = createExecutionContext();
+    const res = await salesOrdersRouter.request(
+      `/${id}/shipment-progress`,
+      { method: "GET", headers: { Cookie: await buildSessionCookieHeader("applicant-1") } },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+  async function postShipment(body: unknown) {
+    const ctx = createExecutionContext();
+    const res = await stockShipmentsRouter.request(
+      "/register",
+      {
+        method: "POST",
+        headers: { Cookie: await buildSessionCookieHeader("applicant-1"), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+  async function seedOrderWithDirectLine() {
+    await seedItemMasterAndStock("ITEM-1", 100);
+    await seedOrder("O-1", { status: "DRAFT" });
+    await seedOrderItem("O-1", { id: "SOI-STOCK", itemId: "ITEM-1", quantity: 10, inputType: "MASTER" });
+    await seedOrderItem("O-1", { id: "SOI-DIRECT", itemId: "ITEM-1", quantity: 4, inputType: "MASTER", sortOrder: 1 });
+    await callSubmitForApproval("O-1", "applicant-1");
+    await db.insert(schema.orders).values({
+      id: "PO-DIRECT",
+      orderDate: now,
+      status: "APPROVED",
+      isDirectShipment: true,
+      directSalesOrderId: "O-1",
+      createdBy: "applicant-1",
+      createdAt: now,
+      updatedBy: "applicant-1",
+      updatedAt: now,
+    });
+    await db.insert(schema.orderItems).values({
+      id: "POI-DIRECT",
+      orderId: "PO-DIRECT",
+      itemId: "ITEM-1",
+      quantity: 4,
+      unitPrice: 500,
+      salesOrderItemId: "SOI-DIRECT",
+    });
+  }
+
+  it("出荷状況で、直送の発注とつながる明細に isDirectShipment が付く", async () => {
+    await seedOrderWithDirectLine();
+
+    const body = (await (await callGetShipmentProgress("O-1")).json()) as Array<{
+      salesOrderItemId: string;
+      isDirectShipment: boolean;
+    }>;
+
+    expect(body.map((b) => [b.salesOrderItemId, b.isDirectShipment])).toEqual([
+      ["SOI-STOCK", false],
+      ["SOI-DIRECT", true],
+    ]);
+  });
+
+  it("直送の明細は出庫できない。直送でない明細は今までどおり出庫できる", async () => {
+    await seedOrderWithDirectLine();
+
+    const rejected = await postShipment({
+      shippedDate: "2026-08-20",
+      items: [{ locationId: "LOC1", itemId: "ITEM-1", quantity: 1, salesOrderItemId: "SOI-DIRECT" }],
+    });
+    expect(rejected.status).toBe(400);
+    expect(JSON.stringify(await rejected.json())).toContain("直送");
+
+    const ok = await postShipment({
+      shippedDate: "2026-08-20",
+      items: [{ locationId: "LOC1", itemId: "ITEM-1", quantity: 10, salesOrderItemId: "SOI-STOCK" }],
+    });
+    expect(ok.status).toBe(200);
   });
 });

@@ -98,6 +98,11 @@ export class ProgressRepository {
         SELECT 'purchase_order', o.id, o.order_date, o.partner_id, o.title, o.project_id,
           o.purchase_person_employee_number, o.input_person_employee_number, 0
           FROM orders o WHERE o.request_id IS NULL
+          -- BUG-110: 受注から直接作った発注(直送・受注の欠品から。購買申請を通らない)は受注の案件に載せる
+          AND NOT EXISTS (
+            SELECT 1 FROM order_items oi
+            WHERE oi.order_id = o.id AND oi.sales_order_item_id IS NOT NULL
+          )
       ) WHERE ${kindFilter} AND ${keywordFilter} AND ${partnerFilter} AND ${personFilter} AND ${exactPersonFilter}
         AND ${startFilter} AND ${endFilter} AND ${titleFilter} AND ${projectFilter} AND ${docFilter}
         AND ${keywordAnyFilter} AND ${fromQuoteFilter}
@@ -129,7 +134,11 @@ export class ProgressRepository {
                    JOIN sales_order_items soi ON soi.id = pri.sales_order_item_id
                    WHERE soi.sales_order_id = rid AND (
                      ${containsText(sql`pri.request_id`, keyword)}
-                     OR EXISTS (SELECT 1 FROM orders o WHERE o.request_id = pri.request_id AND ${orderSubtree})))))
+                     OR EXISTS (SELECT 1 FROM orders o WHERE o.request_id = pri.request_id AND ${orderSubtree})))
+        OR EXISTS (SELECT 1 FROM order_items oi
+                   JOIN sales_order_items soi2 ON soi2.id = oi.sales_order_item_id
+                   JOIN orders o ON o.id = oi.order_id
+                   WHERE soi2.sales_order_id = rid AND o.request_id IS NULL AND ${orderSubtree})))
       OR (rk = 'purchase_request' AND EXISTS (SELECT 1 FROM orders o WHERE o.request_id = rid AND ${orderSubtree}))
       OR (rk = 'purchase_order' AND EXISTS (SELECT 1 FROM orders o WHERE o.id = rid AND ${orderSubtree})))`;
   }
@@ -465,6 +474,20 @@ export class ProgressRepository {
         })
         .from(schema.purchaseRequestItems)
         .where(inArray(schema.purchaseRequestItems.salesOrderItemId, chunk)),
+    );
+  }
+
+  // BUG-110: 受注明細から直接作った発注(購買申請を通らない。直送・受注の欠品から)の、発注と受注明細のつながり
+  findDirectOrderLinksBySalesOrderItem(salesOrderItemIds: string[]) {
+    return this.inChunks(salesOrderItemIds, (chunk) =>
+      this.db
+        .selectDistinct({
+          orderId: schema.orderItems.orderId,
+          salesOrderItemId: schema.orderItems.salesOrderItemId,
+        })
+        .from(schema.orderItems)
+        .innerJoin(schema.orders, eq(schema.orders.id, schema.orderItems.orderId))
+        .where(and(inArray(schema.orderItems.salesOrderItemId, chunk), isNull(schema.orders.requestId))),
     );
   }
 

@@ -79,6 +79,8 @@ export interface ShipmentProgressItem {
   shippedQuantity: number;
   remainingQuantity: number;
   reservations: ShipmentProgressWarehouseBreakdown[];
+  // BUG-109: 直送の発注とつながる明細(発注の「直送完了」で出荷する。出荷指示・出庫の対象外)
+  isDirectShipment?: boolean;
 }
 
 // 受注一覧からの一括出荷指示/出庫作成プレビュー・実行結果の型

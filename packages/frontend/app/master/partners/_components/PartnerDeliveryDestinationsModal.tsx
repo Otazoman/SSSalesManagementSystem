@@ -27,7 +27,7 @@ interface PartnerDeliveryDestinationsModalProps {
 }
 
 // 新規要望(2026-09-23): 取引先マスタの複数納品先(受注の納品先選択で使う)管理モーダル。
-// warehouses画面のWarehouseContactsModal(承認ワークフローなしの簡易版)と同じ方式
+// BUG-112: 取引先の承認が有効な時は、追加・無効化はサーバーが承認の申請にする(承認待ちの間は「承認待ち」と出し、操作できない)
 export function PartnerDeliveryDestinationsModal({
   partnerId,
   partnerName,
@@ -143,6 +143,7 @@ export function PartnerDeliveryDestinationsModal({
     >
       <p className="text-xs text-slate-600">
         ここに登録した納品先が、受注の「納品場所」選択で使えます(複数登録可)。あわせて手入力も引き続き使えます。
+        取引先の承認が有効な時は、追加・無効化は承認の後に反映されます。
       </p>
 
       <MessageBanner message={message} error={error} />
@@ -211,13 +212,16 @@ export function PartnerDeliveryDestinationsModal({
                   {d.status === "suspended" && (
                     <span className="text-[10px] text-red-600 font-bold ml-1">無効化済み</span>
                   )}
+                  {d.status === "temporary" && (
+                    <span className="text-[10px] text-amber-800 font-bold ml-1">承認待ち</span>
+                  )}
                 </p>
                 <p className="text-slate-700 text-xs">
                   〒{d.postalCode || "-"} {d.address || ""}
                 </p>
                 {d.phone && <p className="text-slate-700 text-xs">TEL: {d.phone}</p>}
               </div>
-              {canUpdate && (
+              {canUpdate && d.status !== "temporary" && (
                 <div className="space-x-3 shrink-0">
                   {d.status !== "suspended" ? (
                     <button

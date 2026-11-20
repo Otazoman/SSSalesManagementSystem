@@ -80,6 +80,7 @@ export function useAuthAndMenu(isAuthPage: boolean) {
           isProjectWfEnabled: profileData.isProjectWfEnabled || false,
           isItemReorderSettingWfEnabled: profileData.isItemReorderSettingWfEnabled || false,
           isBillingWfEnabled: profileData.isBillingWfEnabled || false,
+          isPaymentWfEnabled: profileData.isPaymentWfEnabled || false,
           isLocationWfEnabled: profileData.isLocationWfEnabled || false,
           isProductPriceWfEnabled:
             profileData.isProductPriceWfEnabled || false,

@@ -119,8 +119,9 @@ export default function InventoryShippingPage() {
         ),
       ]);
 
+      // BUG-109: 直送の明細は発注の「直送完了」で出荷するため、出荷指示に入れない
       const remaining = progress.filter(
-        (item) => item.remainingQuantity > 0 && !!item.itemId,
+        (item) => item.remainingQuantity > 0 && !!item.itemId && !item.isDirectShipment,
       );
       if (remaining.length > 0) {
         const candidates = remaining.flatMap((item) =>

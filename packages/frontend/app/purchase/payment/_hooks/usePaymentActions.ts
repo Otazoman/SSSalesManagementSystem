@@ -350,6 +350,29 @@ export function usePaymentActions({
     }
   };
 
+  // REQ-026: 支払の承認申請(会社設定で支払の承認が ON の時だけ使う)。承認されると支払の記録・総合振込データの対象になる
+  const handleSubmitForApproval = async (id: string) => {
+    if (!(await confirm(`支払 [ ${id} ] の承認を申請しますか？`))) return;
+    setError("");
+    setMessage("");
+    try {
+      const data = await apiFetch<{ message?: string }>(`/api/purchase-payments/${id}/submit-for-approval`, {
+        method: "POST",
+        json: { applicantDepartmentSurrogateId: null },
+        defaultErrorMessage: "承認申請に失敗しました",
+      });
+      setMessage(data.message || "支払の承認を申請しました");
+      void handleOpenDetail(id);
+      void syncPayments({
+        ...filters,
+        mode: filterMode === "all" ? "" : filterMode,
+        reconciliationStatus: filterReconciliationStatus === "all" ? "" : filterReconciliationStatus,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "承認申請に失敗しました");
+    }
+  };
+
   // ファームバンキング: 一覧での選択トグル
   const handleToggleSelectPayment = (id: string) => {
     setSelectedPaymentIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -508,6 +531,7 @@ export function usePaymentActions({
     setCreateForm,
     handleSubmitCreatePayment,
     handleRecordDisbursement,
+    handleSubmitForApproval,
     handleCSVImportChange,
     selectedPaymentIds,
     handleToggleSelectPayment,

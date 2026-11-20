@@ -5,7 +5,7 @@
 // 専用の軽量レンダラーとして新設する。
 import { PDFDocument, PDFPage, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { fitTextToWidth } from "./fit-text";
+import { fitTextToWidth, wrapTextToWidth } from "./fit-text";
 
 export interface InstructionPdfItem {
   itemId: string;
@@ -170,9 +170,13 @@ export async function generateInstructionPdf(
   leftY -= 18;
   drawTextOnPage(page, `${data.recipientName} 御中`, 50, leftY, 14, rgb(0.1, 0.1, 0.1));
   leftY -= 18;
+  // BUG-115: 長い住所は、右の自社情報(x=380)の手前で折り返す(以前は1行のまま自社情報に重なった)
   if (data.recipientAddress) {
-    drawTextOnPage(page, data.recipientAddress, 50, leftY, 9);
-    leftY -= 14;
+    for (const line of wrapTextToWidth((t, s) => customFont.widthOfTextAtSize(t, s), data.recipientAddress, 9, 380 - 50 - 10)) {
+      drawTextOnPage(page, line, 50, leftY, 9);
+      leftY -= 12;
+    }
+    leftY -= 2;
   }
   if (data.recipientTel) {
     drawTextOnPage(page, `TEL: ${data.recipientTel}`, 50, leftY, 9);
@@ -225,8 +229,11 @@ export async function generateInstructionPdf(
     drawTextOnPage(page, `〒${data.companyZip}`, 380, rightY, 8.5);
     rightY -= 12;
   }
-  drawTextOnPage(page, data.companyAddress, 380, rightY, 8.5);
-  rightY -= 12;
+  // BUG-115: 長い住所は、用紙の右端の手前で折り返す
+  for (const line of wrapTextToWidth((t, s) => customFont.widthOfTextAtSize(t, s), data.companyAddress, 8.5, TABLE_RIGHT - 380)) {
+    drawTextOnPage(page, line, 380, rightY, 8.5);
+    rightY -= 12;
+  }
   drawTextOnPage(page, `TEL: ${data.companyTel} FAX: ${data.companyFax}`, 380, rightY, 8.5);
   rightY -= 12;
 
@@ -355,7 +362,8 @@ export async function generateInstructionPdf(
         });
       }
       drawTextOnPage(page, label, TABLE_LEFT + CELL_PADDING, deliveryRowY + 6, 8.5, rgb(0.1, 0.1, 0.1));
-      drawTextOnPage(page, value, TABLE_LEFT + refLabelWidth + CELL_PADDING, deliveryRowY + 6, 8.5);
+      // BUG-115: 枠に収まらない長い値は、文字を小さくして枠に収める(行の高さは揃える)
+      drawFittedCellText(page, value, TABLE_LEFT + refLabelWidth + CELL_PADDING, deliveryRowY + 6, TABLE_WIDTH - refLabelWidth - CELL_PADDING);
     };
     drawDeliveryRow("納品先宛名", data.deliveryAddressee || "-");
     if (data.deliveryLocation) drawDeliveryRow("納品場所", data.deliveryLocation);

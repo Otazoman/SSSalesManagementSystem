@@ -167,6 +167,8 @@ export interface SourceRequisitionItem {
   unitCode: string | null;
   taxCategoryCode: string | null;
   memo?: string | null;
+  // BUG-116: 受注から作った購買申請の明細は受注明細につながる。発注へ引き継がないと直送完了できない
+  salesOrderItemId?: string | null;
 }
 
 export interface PurchaseOrderPrefillData {

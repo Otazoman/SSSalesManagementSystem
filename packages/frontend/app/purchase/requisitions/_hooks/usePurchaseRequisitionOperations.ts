@@ -257,7 +257,8 @@ export function usePurchaseRequisitionOperations({
     setEditingId(null);
     setEditingStatus(null);
     setTitle("");
-    setDepartmentSurrogateId(departments[0]?.id ?? "");
+    // REQ-027: 申請部署の初期値は申請者(ログインしているユーザー)の所属部署。選択肢の値は surrogateId のため id ではなく surrogateId を入れる
+    setDepartmentSurrogateId(departments[0]?.surrogateId ?? "");
     setRequestType("ONE_TIME");
     setMemo("");
     setItems([]);
@@ -837,7 +838,7 @@ export function usePurchaseRequisitionOperations({
           defaultErrorMessage: "承認申請に失敗しました",
         },
       );
-      setMessage(data.message || "承認を申請しました");
+      setMessage(data.message || (isPurchaseRequisitionWfEnabled ? "承認を申請しました" : "購買申請を確定しました"));
       setViewMode("LIST");
       handleClearForm();
       void syncRequisitions(filterStatus);
